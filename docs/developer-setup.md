@@ -135,7 +135,12 @@ Set `PHASE3_STORE_BACKEND=postgres` for the API and ingestion jobs after migrati
 - Planning Commission agenda PDFs are public meeting documents, but parsed records are reviewer-gated.
 - Agenda geometries default to low-confidence review points until a reviewer draws or matches a reliable geometry.
 - Public submissions are low-confidence staged records until a reviewer validates the source and duplicate risk.
-- Watch-area alerts are queued as email-channel records; SMTP delivery is a later operational integration.
+- Watch-area alerts are queued as email-channel records. SMTP delivery is disabled unless
+  `ALERT_DELIVERY_ENABLED=true`, `SMTP_HOST`, and `SMTP_FROM_EMAIL` are configured.
+- Run `make send-alerts` to process a bounded delivery batch. `ALERT_DELIVERY_RATE_LIMIT` controls
+  the maximum alerts sent per run.
+- Watch areas store the delivery address privately for outbound email and expose only
+  `email_hash`/`email_hint` through reviewer APIs. Every watch area gets an unsubscribe token.
 - `PHASE3_STORE_BACKEND=postgres` stores source documents, staged agenda/submission records,
   published reviewer records, watch areas, alerts, record versions, and change-log entries in
   Postgres instead of `data/processed/phase3_*.json`.

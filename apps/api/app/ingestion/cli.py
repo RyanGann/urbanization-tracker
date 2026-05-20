@@ -4,6 +4,7 @@ import argparse
 import json
 from pathlib import Path
 
+from app.alert_delivery import send_queued_email_alerts
 from app.config import get_settings
 from app.ingestion.agenda_pipeline import ingest_huntsville_agendas
 from app.ingestion.pipeline import ingest_huntsville
@@ -56,6 +57,16 @@ def main() -> None:
         "migrate-phase3-artifacts-to-postgres",
         help="Copy existing Phase 3 JSON collection artifacts into the Postgres store.",
     )
+    send_alerts = subparsers.add_parser(
+        "send-alerts",
+        help="Deliver queued email alerts through the configured SMTP provider.",
+    )
+    send_alerts.add_argument(
+        "--limit",
+        type=int,
+        default=None,
+        help="Maximum queued alerts to send in this run.",
+    )
 
     args = parser.parse_args()
     if args.command == "ingest-huntsville":
@@ -73,6 +84,9 @@ def main() -> None:
         print(json.dumps(result, indent=2, sort_keys=True))
     elif args.command == "migrate-phase3-artifacts-to-postgres":
         result = migrate_artifact_collections_to_postgres()
+        print(json.dumps(result, indent=2, sort_keys=True))
+    elif args.command == "send-alerts":
+        result = send_queued_email_alerts(limit=args.limit)
         print(json.dumps(result, indent=2, sort_keys=True))
 
 

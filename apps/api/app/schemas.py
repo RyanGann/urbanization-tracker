@@ -156,6 +156,13 @@ class WatchAreaReceipt(BaseModel):
     alert_count: int = 0
 
 
+class UnsubscribeReceipt(BaseModel):
+    id: str
+    name: str
+    email_hint: str
+    unsubscribed_at: str
+
+
 class Alert(BaseModel):
     id: str
     watch_area_id: str
@@ -167,6 +174,15 @@ class Alert(BaseModel):
     created_at: str
     sent_at: str | None = None
     summary: str
+
+
+class AlertDeliveryResult(BaseModel):
+    configured: bool
+    attempted: int
+    sent: int
+    suppressed: int
+    failed: int
+    errors: list[str] = Field(default_factory=list)
 
 
 class RecordVersion(BaseModel):

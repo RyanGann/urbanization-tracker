@@ -1,7 +1,9 @@
 from fastapi.testclient import TestClient
 
+from app.alert_delivery import send_queued_email_alerts
 from app.config import get_settings
 from app.main import app
+from app.phase3_store import list_alerts, list_watch_areas
 from app.seed_store import reset_seed_state
 
 client = TestClient(app)
@@ -155,12 +157,91 @@ def test_watch_area_queues_matching_email_alerts() -> None:
     watch_area = response.json()
     assert watch_area["alert_count"] >= 1
     assert "email_hash" not in watch_area
+    assert "email_address" not in watch_area
+    assert "unsubscribe_token" not in watch_area
     assert "geometry" not in watch_area
 
     alerts_response = client.get("/api/reviewer/alerts")
     assert alerts_response.status_code == 200
     alerts = alerts_response.json()
     assert any(alert["watch_area_id"] == watch_area["id"] for alert in alerts)
+
+    stored_watch_area = list_watch_areas()[0]
+    assert stored_watch_area["email_address"] == "watcher@example.test"
+    assert stored_watch_area["unsubscribe_token"]
+
+    unsubscribe_response = client.get(
+        f"/api/watch-areas/unsubscribe/{stored_watch_area['unsubscribe_token']}"
+    )
+    assert unsubscribe_response.status_code == 200
+    assert unsubscribe_response.json()["email_hint"] == "wa***@example.test"
+    assert list_watch_areas()[0]["unsubscribed_at"]
+
+
+def test_send_queued_email_alerts_marks_alert_sent(monkeypatch) -> None:
+    sent_messages = []
+
+    class FakeSmtp:
+        def __init__(self, host: str, port: int, timeout: int) -> None:
+            assert host == "smtp.example.test"
+            assert port == 2525
+            assert timeout == 20
+
+        def __enter__(self) -> "FakeSmtp":
+            return self
+
+        def __exit__(self, *_args: object) -> None:
+            return None
+
+        def starttls(self) -> None:
+            return None
+
+        def send_message(self, message: object) -> None:
+            sent_messages.append(message)
+
+    client.post(
+        "/api/watch-areas",
+        json={
+            "name": "Southwest Huntsville",
+            "email": "watcher@example.test",
+            "geometry": {
+                "type": "Polygon",
+                "coordinates": [
+                    [
+                        [-87.0, 34.5],
+                        [-86.0, 34.5],
+                        [-86.0, 35.0],
+                        [-87.0, 35.0],
+                        [-87.0, 34.5],
+                    ]
+                ],
+            },
+            "filters": {
+                "statuses": ["layout"],
+                "development_types": ["subdivision"],
+            },
+        },
+    )
+
+    monkeypatch.setenv("ALERT_DELIVERY_ENABLED", "true")
+    monkeypatch.setenv("ALERT_DELIVERY_RATE_LIMIT", "1")
+    monkeypatch.setenv("SMTP_HOST", "smtp.example.test")
+    monkeypatch.setenv("SMTP_PORT", "2525")
+    monkeypatch.setenv("SMTP_FROM_EMAIL", "alerts@example.test")
+    monkeypatch.setenv("PUBLIC_BASE_URL", "https://tracker.example.test")
+    monkeypatch.setattr("app.alert_delivery.smtplib.SMTP", FakeSmtp)
+    get_settings.cache_clear()
+    try:
+        result = send_queued_email_alerts()
+    finally:
+        get_settings.cache_clear()
+
+    assert result["configured"] is True
+    assert result["attempted"] == 1
+    assert result["sent"] == 1
+    assert sent_messages
+    assert list_alerts()[0]["status"] == "sent"
+    assert list_alerts()[0]["sent_at"]
 
 
 def test_record_versions_and_change_log_are_available() -> None:

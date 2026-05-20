@@ -4,6 +4,7 @@ import copy
 import hashlib
 import json
 import re
+import secrets
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any, cast
@@ -241,15 +242,20 @@ def set_public_submission_status(
 
 
 def create_watch_area(payload: dict[str, Any], published_records: list[Any]) -> dict[str, Any]:
-    watch_area_id = _stable_id("watch", payload["name"], payload["email"], _now())
+    created_at = _now()
+    email = str(payload["email"]).strip().lower()
+    watch_area_id = _stable_id("watch", payload["name"], email, created_at)
     watch_area = {
         "id": watch_area_id,
         "name": payload["name"],
-        "email_hash": _hash_contact(payload["email"]) or "",
-        "email_hint": _email_hint(payload["email"]),
+        "email_address": email,
+        "email_hash": _hash_contact(email) or "",
+        "email_hint": _email_hint(email),
+        "unsubscribe_token": secrets.token_urlsafe(32),
+        "unsubscribed_at": None,
         "geometry": payload["geometry"],
         "filters": payload.get("filters") or {},
-        "created_at": _now(),
+        "created_at": created_at,
         "alert_count": 0,
     }
     watch_areas = _read_collection("watch_areas")
@@ -262,6 +268,41 @@ def create_watch_area(payload: dict[str, Any], published_records: list[Any]) -> 
     _write_collection("alerts", _dedupe(alerts, key="id"))
     watch_area["alert_count"] = len(new_alerts)
     return watch_area
+
+
+def unsubscribe_watch_area(token: str) -> dict[str, Any] | None:
+    watch_areas = _read_collection("watch_areas")
+    unsubscribed: dict[str, Any] | None = None
+    for watch_area in watch_areas:
+        if watch_area.get("unsubscribe_token") == token:
+            watch_area["unsubscribed_at"] = watch_area.get("unsubscribed_at") or _now()
+            unsubscribed = copy.deepcopy(watch_area)
+            break
+    if unsubscribed is None:
+        return None
+    _write_collection("watch_areas", watch_areas)
+    return unsubscribed
+
+
+def mark_alert_delivery_result(
+    alert_id: str,
+    *,
+    status: str,
+    sent_at: str | None = None,
+    error: str | None = None,
+) -> dict[str, Any] | None:
+    alerts = _read_collection("alerts")
+    for alert in alerts:
+        if alert["id"] == alert_id:
+            alert["status"] = status
+            alert["delivery_attempts"] = int(alert.get("delivery_attempts") or 0) + 1
+            alert["last_delivery_attempt_at"] = _now()
+            alert["last_delivery_error"] = error
+            if sent_at is not None:
+                alert["sent_at"] = sent_at
+            _write_collection("alerts", alerts)
+            return copy.deepcopy(alert)
+    return None
 
 
 def record_versions_for(public_id: str, fallback_record: Any | None = None) -> list[dict[str, Any]]:
@@ -531,6 +572,9 @@ def _alerts_for_watch_area(
                 "delivery_channel": "email",
                 "created_at": _now(),
                 "sent_at": None,
+                "delivery_attempts": 0,
+                "last_delivery_attempt_at": None,
+                "last_delivery_error": None,
                 "summary": f"{record['title']} intersects the watch area {watch_area['name']}.",
             }
         )

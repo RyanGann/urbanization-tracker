@@ -22,7 +22,8 @@ Use Render for the first public alpha:
 - Database: managed Postgres with the PostGIS extension enabled.
 - Edge access: Cloudflare Access or equivalent email allowlist for `/review` and
   `/api/reviewer/*`.
-- Email delivery: keep queued alerts internal until a provider-backed mail worker is added.
+- Email delivery: keep queued alerts internal until SMTP credentials and a scheduled delivery job
+  are configured.
 
 This keeps infrastructure small while avoiding a user-auth buildout.
 
@@ -41,6 +42,11 @@ API service:
   - `CORS_ORIGINS`: production web origin.
   - `REVIEWER_API_TOKEN`: generated secret shared only with reviewers.
   - `PHASE3_STORE_BACKEND`: `postgres`.
+  - `PUBLIC_BASE_URL`: production origin used in record and unsubscribe links.
+  - `ALERT_DELIVERY_ENABLED`: `true` only after SMTP credentials are configured.
+  - `ALERT_DELIVERY_RATE_LIMIT`: start conservatively, for example `25`.
+  - `SMTP_HOST`, `SMTP_PORT`, `SMTP_USERNAME`, `SMTP_PASSWORD`, `SMTP_FROM_EMAIL`,
+    `SMTP_USE_TLS`: provider settings for outbound alerts.
 
 Web static site:
 
@@ -91,7 +97,8 @@ Auth now would add an account model before the product needs one.
 - Configure database backups and PostGIS.
 - Configure production `CORS_ORIGINS`.
 - Add uptime/error monitoring and a basic source-health check.
-- Keep SMTP disabled until unsubscribe, bounce handling, and provider credentials are ready.
+- Keep SMTP disabled until provider credentials are ready. Unsubscribe links and per-run rate limits
+  are implemented; bounce handling is still provider/manual-ops work.
 
 ## Reference Links
 

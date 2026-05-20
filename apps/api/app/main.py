@@ -3,6 +3,7 @@ from typing import Annotated
 from fastapi import APIRouter, Depends, FastAPI, HTTPException, Query
 from fastapi.middleware.cors import CORSMiddleware
 
+from app.alert_delivery import send_queued_email_alerts
 from app.auth import require_reviewer_access
 from app.config import get_settings
 from app.jurisdictions import connector_health, list_jurisdictions
@@ -20,6 +21,7 @@ from app.phase3_store import (
 )
 from app.schemas import (
     Alert,
+    AlertDeliveryResult,
     ChangeLogEntry,
     ConnectorHealth,
     DevelopmentRecord,
@@ -35,6 +37,7 @@ from app.schemas import (
     ReviewerDecisionSnapshot,
     SourceDocument,
     StagedDevelopmentRecord,
+    UnsubscribeReceipt,
     UserSubmission,
     UserSubmissionCreate,
     UserSubmissionReceipt,
@@ -203,9 +206,24 @@ def post_watch_area(watch_area: WatchAreaCreate) -> WatchAreaReceipt:
     return WatchAreaReceipt.model_validate(created)
 
 
+@app.get("/api/watch-areas/unsubscribe/{token}", response_model=UnsubscribeReceipt)
+def get_unsubscribe_watch_area(token: str) -> UnsubscribeReceipt:
+    from app.phase3_store import unsubscribe_watch_area
+
+    watch_area = unsubscribe_watch_area(token)
+    if watch_area is None:
+        raise HTTPException(status_code=404, detail="Watch area subscription not found")
+    return UnsubscribeReceipt.model_validate(watch_area)
+
+
 @reviewer_router.get("/alerts", response_model=list[Alert])
 def get_reviewer_alerts() -> list[Alert]:
     return [Alert.model_validate(alert) for alert in list_alerts()]
+
+
+@reviewer_router.post("/alerts/send", response_model=AlertDeliveryResult)
+def post_reviewer_send_alerts(limit: int | None = None) -> AlertDeliveryResult:
+    return AlertDeliveryResult.model_validate(send_queued_email_alerts(limit=limit))
 
 
 @reviewer_router.get("/staged-records", response_model=list[StagedDevelopmentRecord])

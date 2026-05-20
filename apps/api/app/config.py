@@ -36,6 +36,24 @@ class Settings(BaseSettings):
         default="artifact",
         description="Phase 3 store backend: 'artifact' for JSON files or 'postgres' for DB rows.",
     )
+    public_base_url: str = Field(
+        default="http://localhost:5173",
+        description="Public web origin used for absolute links in outbound alerts.",
+    )
+    alert_delivery_enabled: bool = Field(
+        default=False,
+        description="Enable SMTP delivery for queued email alerts.",
+    )
+    alert_delivery_rate_limit: int = Field(
+        default=25,
+        description="Maximum queued alerts to send per delivery run.",
+    )
+    smtp_host: str | None = None
+    smtp_port: int = 587
+    smtp_username: str | None = None
+    smtp_password: str | None = None
+    smtp_from_email: str | None = None
+    smtp_use_tls: bool = True
 
     model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8")
 

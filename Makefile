@@ -3,7 +3,7 @@ SHELL := /bin/bash
 API_DIR := apps/api
 WEB_DIR := apps/web
 
-.PHONY: install install-api install-web dev dev-api dev-web docker-up docker-down db-migrate ingest-huntsville ingest-huntsville-agendas migrate-phase3-postgres docker-migrate-phase3-postgres lint typecheck test test-api test-web test-performance e2e build clean
+.PHONY: install install-api install-web dev dev-api dev-web docker-up docker-down db-migrate ingest-huntsville ingest-huntsville-agendas migrate-phase3-postgres docker-migrate-phase3-postgres send-alerts lint typecheck test test-api test-web test-performance e2e build clean
 
 install: install-api install-web
 
@@ -41,6 +41,9 @@ migrate-phase3-postgres:
 
 docker-migrate-phase3-postgres:
 	docker compose exec -e PHASE3_STORE_BACKEND=postgres api python -m app.ingestion.cli migrate-phase3-artifacts-to-postgres
+
+send-alerts:
+	cd $(API_DIR) && . .venv/bin/activate && python -m app.ingestion.cli send-alerts
 
 lint:
 	cd $(API_DIR) && . .venv/bin/activate && ruff check .

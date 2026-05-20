@@ -72,8 +72,18 @@ into the database before switching a persistent environment.
 
 Alerts are queued as email-channel records when a saved watch area intersects a matching published
 record. Email is only used as an alert contact, not as a user account or login identifier. SMTP
-delivery is intentionally not configured in this local MVP; the queue is the durable handoff point
-for a later mail worker.
+delivery is opt-in with `ALERT_DELIVERY_ENABLED=true` plus SMTP settings. The app stores the
+delivery address privately in the Phase 3 store, returns only the hash/hint through reviewer APIs,
+and includes an unsubscribe token for each watch area.
+
+Run a delivery pass with:
+
+```bash
+make send-alerts
+```
+
+Delivery is rate-limited by `ALERT_DELIVERY_RATE_LIMIT` per run. Unsubscribe links call
+`GET /api/watch-areas/unsubscribe/{token}` and suppress future queued deliveries for that watch.
 
 ## Review Rules
 
