@@ -12,6 +12,7 @@ from app.config import get_settings
 
 HUNTSVILLE_CENTER: tuple[float, float] = (-86.5861, 34.7304)
 PUBLIC_SUBMISSION_SOURCE = "public-submission://local"
+DUPLICATE_TOKEN_FANOUT_LIMIT = 100
 
 _memory_only = False
 _memory_collections: dict[str, list[dict[str, Any]]] = {}
@@ -319,17 +320,31 @@ def build_duplicate_candidates(
 ) -> list[dict[str, Any]]:
     candidates: list[dict[str, Any]] = []
     indexed_published: list[tuple[dict[str, Any], set[str]]] = []
+    token_counts: dict[str, int] = {}
     for published_record in published_records:
         published = _record_to_dict(published_record)
         published_tokens = _title_tokens(str(published["title"]))
         if published_tokens:
             indexed_published.append((published, published_tokens))
+            for token in published_tokens:
+                token_counts[token] = token_counts.get(token, 0) + 1
+
+    published_by_token: dict[str, list[tuple[dict[str, Any], set[str]]]] = {}
+    for published, published_tokens in indexed_published:
+        for token in published_tokens:
+            if token_counts[token] > DUPLICATE_TOKEN_FANOUT_LIMIT:
+                continue
+            published_by_token.setdefault(token, []).append((published, published_tokens))
 
     for staged in staged_records:
         staged_tokens = _title_tokens(str(staged["title"]))
         if not staged_tokens:
             continue
-        for published, published_tokens in indexed_published:
+        candidate_pool: dict[str, tuple[dict[str, Any], set[str]]] = {}
+        for token in staged_tokens:
+            for published, published_tokens in published_by_token.get(token, []):
+                candidate_pool[str(published["public_id"])] = (published, published_tokens)
+        for published, published_tokens in candidate_pool.values():
             overlap = staged_tokens & published_tokens
             score = len(overlap) / max(len(staged_tokens | published_tokens), 1)
             if score >= 0.45:
