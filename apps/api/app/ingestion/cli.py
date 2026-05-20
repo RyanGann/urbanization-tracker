@@ -1,0 +1,72 @@
+from __future__ import annotations
+
+import argparse
+import json
+from pathlib import Path
+
+from app.config import get_settings
+from app.ingestion.agenda_pipeline import ingest_huntsville_agendas
+from app.ingestion.pipeline import ingest_huntsville
+
+
+def main() -> None:
+    parser = argparse.ArgumentParser(description="Urbanization Tracker ingestion commands")
+    subparsers = parser.add_subparsers(dest="command", required=True)
+
+    huntsville = subparsers.add_parser(
+        "ingest-huntsville",
+        help="Fetch Huntsville New Subdivisions, Building Permits, and selected context layers.",
+    )
+    huntsville.add_argument(
+        "--data-dir",
+        type=Path,
+        default=get_settings().ingestion_data_dir,
+        help="Directory for raw, processed, and run health artifacts.",
+    )
+    huntsville.add_argument(
+        "--permit-limit",
+        type=int,
+        default=500,
+        help="Maximum recent building permits to fetch for point context.",
+    )
+    huntsville.add_argument(
+        "--context-limit",
+        type=int,
+        default=2000,
+        help="Maximum features per environmental context layer.",
+    )
+    agendas = subparsers.add_parser(
+        "ingest-huntsville-agendas",
+        help="Fetch Huntsville Planning Commission agenda PDFs into reviewer-gated records.",
+    )
+    agendas.add_argument(
+        "--data-dir",
+        type=Path,
+        default=get_settings().ingestion_data_dir,
+        help="Directory for raw, processed, and run health artifacts.",
+    )
+    agendas.add_argument(
+        "--document-limit",
+        type=int,
+        default=3,
+        help="Maximum agenda PDFs to fetch from the archive page.",
+    )
+
+    args = parser.parse_args()
+    if args.command == "ingest-huntsville":
+        result = ingest_huntsville(
+            data_dir=args.data_dir,
+            permit_limit=args.permit_limit,
+            context_limit=args.context_limit,
+        )
+        print(json.dumps(result, indent=2, sort_keys=True))
+    elif args.command == "ingest-huntsville-agendas":
+        result = ingest_huntsville_agendas(
+            data_dir=args.data_dir,
+            document_limit=args.document_limit,
+        )
+        print(json.dumps(result, indent=2, sort_keys=True))
+
+
+if __name__ == "__main__":
+    main()

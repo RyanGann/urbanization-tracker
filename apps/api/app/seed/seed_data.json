@@ -1,0 +1,479 @@
+{
+  "development_records": [
+    {
+      "public_id": "hsv-westmoore-landing-ph1",
+      "title": "Westmoore Landing Phase 1",
+      "description": "Representative seed subdivision polygon based on the Huntsville New Subdivisions source pattern.",
+      "development_type": "subdivision",
+      "status": "preliminary",
+      "source_status": "Preliminary",
+      "source_url": "https://maps.huntsvilleal.gov/server/rest/services/Housing/NewSubdivisions/MapServer/0",
+      "source_agency": "City of Huntsville GIS",
+      "date_discovered": "2026-05-20",
+      "date_last_checked": "2026-05-20",
+      "application_date": "2026-02-24",
+      "approval_date": "2026-03-24",
+      "permit_issue_date": null,
+      "review_status": "published",
+      "confidence_level": "high",
+      "geometry_source": "Seed fixture modeled after New Subdivisions polygon geometry",
+      "geometry_confidence": "high",
+      "geometry": {
+        "type": "Polygon",
+        "coordinates": [
+          [
+            [-86.7267, 34.7334],
+            [-86.7182, 34.7336],
+            [-86.7181, 34.7277],
+            [-86.7265, 34.7274],
+            [-86.7267, 34.7334]
+          ]
+        ]
+      },
+      "centroid": [-86.7224, 34.7305],
+      "area_sq_m": 307000,
+      "address": null,
+      "parcel_ids": [],
+      "source_fields": {
+        "SubdID": "seed-1001",
+        "Subdivision": "Westmoore Landing",
+        "Phase": "Ph 1",
+        "Status": "Preliminary",
+        "HousingUnits": 86,
+        "HousingUnitType": "Lots",
+        "CouncilDistrict": 4
+      },
+      "proximity_flags": [
+        {
+          "flag_type": "near_waterway",
+          "label": "Within 100 m of mapped hydrography",
+          "relationship": "within",
+          "distance_m": 82,
+          "threshold_m": 100,
+          "source_name": "Huntsville Hydrography seed overlay",
+          "source_url": "https://maps.huntsvilleal.gov/server/rest/services/NaturalResources/Hydrography/MapServer",
+          "caveat": "Screening-level context only; not a jurisdictional or engineering determination."
+        }
+      ]
+    },
+    {
+      "public_id": "hsv-greenbrier-preserve-maple-grove-ph2",
+      "title": "Greenbrier Preserve / Maple Grove Phase 2",
+      "description": "Representative layout-stage subdivision record with nearby wetland and floodplain context.",
+      "development_type": "subdivision",
+      "status": "layout",
+      "source_status": "Layout",
+      "source_url": "https://maps.huntsvilleal.gov/server/rest/services/Housing/NewSubdivisions/MapServer/0",
+      "source_agency": "City of Huntsville GIS",
+      "date_discovered": "2026-05-20",
+      "date_last_checked": "2026-05-20",
+      "application_date": "2026-01-27",
+      "approval_date": null,
+      "permit_issue_date": null,
+      "review_status": "published",
+      "confidence_level": "medium",
+      "geometry_source": "Seed fixture modeled after New Subdivisions polygon geometry",
+      "geometry_confidence": "high",
+      "geometry": {
+        "type": "Polygon",
+        "coordinates": [
+          [
+            [-86.8087, 34.6789],
+            [-86.7988, 34.6792],
+            [-86.7984, 34.6718],
+            [-86.8068, 34.6707],
+            [-86.8087, 34.6789]
+          ]
+        ]
+      },
+      "centroid": [-86.8037, 34.6753],
+      "area_sq_m": 535000,
+      "address": null,
+      "parcel_ids": [],
+      "source_fields": {
+        "SubdID": "seed-1002",
+        "Subdivision": "Greenbrier Preserve / Maple Grove",
+        "Phase": "Ph 2",
+        "Status": "Layout",
+        "HousingUnits": 142,
+        "HousingUnitType": "Lots",
+        "CouncilDistrict": 5
+      },
+      "proximity_flags": [
+        {
+          "flag_type": "near_wetland",
+          "label": "Within 500 m of mapped wetlands",
+          "relationship": "within",
+          "distance_m": 310,
+          "threshold_m": 500,
+          "source_name": "USFWS Wetlands local seed overlay",
+          "source_url": "https://maps.huntsvilleal.gov/server/rest/services/NaturalResources/USFWSWetlands/MapServer",
+          "caveat": "Mapped wetlands are screening context only and are not a jurisdictional wetland determination."
+        },
+        {
+          "flag_type": "intersects_floodplain",
+          "label": "Intersects effective FEMA floodplain seed overlay",
+          "relationship": "intersects",
+          "distance_m": 0,
+          "threshold_m": 0,
+          "source_name": "Huntsville FEMA 2018 floodplain seed overlay",
+          "source_url": "https://maps.huntsvilleal.gov/server/rest/services/Flood/FEMA2018FloodInsuranceRateMap/MapServer",
+          "caveat": "Floodplain context is not a flood insurance or engineering determination."
+        }
+      ]
+    },
+    {
+      "public_id": "hsv-martinson-ranch-final",
+      "title": "Martinson Ranch Final Plat",
+      "description": "Representative final-stage subdivision record for map filtering and detail-page provenance.",
+      "development_type": "subdivision",
+      "status": "final",
+      "source_status": "Final",
+      "source_url": "https://maps.huntsvilleal.gov/server/rest/services/Housing/NewSubdivisions/MapServer/0",
+      "source_agency": "City of Huntsville GIS",
+      "date_discovered": "2026-05-20",
+      "date_last_checked": "2026-05-20",
+      "application_date": "2025-12-16",
+      "approval_date": "2026-03-24",
+      "permit_issue_date": null,
+      "review_status": "published",
+      "confidence_level": "high",
+      "geometry_source": "Seed fixture modeled after New Subdivisions polygon geometry",
+      "geometry_confidence": "high",
+      "geometry": {
+        "type": "Polygon",
+        "coordinates": [
+          [
+            [-86.5449, 34.8242],
+            [-86.5345, 34.8246],
+            [-86.5342, 34.8172],
+            [-86.5455, 34.8171],
+            [-86.5449, 34.8242]
+          ]
+        ]
+      },
+      "centroid": [-86.5398, 34.8208],
+      "area_sq_m": 692000,
+      "address": null,
+      "parcel_ids": [],
+      "source_fields": {
+        "SubdID": "seed-1003",
+        "Subdivision": "Martinson Ranch",
+        "Phase": "Final Plat",
+        "Status": "Final",
+        "HousingUnits": 64,
+        "HousingUnitType": "Lots",
+        "CouncilDistrict": 1
+      },
+      "proximity_flags": [
+        {
+          "flag_type": "near_protected_area",
+          "label": "Within 500 m of park/open-space seed overlay",
+          "relationship": "within",
+          "distance_m": 420,
+          "threshold_m": 500,
+          "source_name": "Huntsville parks and open space seed overlay",
+          "source_url": "https://maps.huntsvilleal.gov/server/rest/services/Recreation/Parks/MapServer",
+          "caveat": "Open-space proximity is context only and does not imply an approval issue."
+        }
+      ]
+    },
+    {
+      "public_id": "hsv-south-parkway-multifamily-permit",
+      "title": "South Parkway Multifamily Building Permit",
+      "description": "Representative issued building permit point. Point geometry should not be read as a development footprint.",
+      "development_type": "building_permit",
+      "status": "issued_permit",
+      "source_status": "Issued",
+      "source_url": "https://maps.huntsvilleal.gov/server/rest/services/Licenses/BuildingPermits/MapServer/0",
+      "source_agency": "City of Huntsville GIS",
+      "date_discovered": "2026-05-20",
+      "date_last_checked": "2026-05-20",
+      "application_date": null,
+      "approval_date": null,
+      "permit_issue_date": "2026-05-08",
+      "review_status": "published",
+      "confidence_level": "medium",
+      "geometry_source": "Seed fixture modeled after Building Permits point geometry",
+      "geometry_confidence": "low",
+      "geometry": {
+        "type": "Point",
+        "coordinates": [-86.5863, 34.6825]
+      },
+      "centroid": [-86.5863, 34.6825],
+      "area_sq_m": null,
+      "address": "Generalized South Parkway area",
+      "parcel_ids": [],
+      "source_fields": {
+        "PermitID": "seed-2001",
+        "OccupancyType": "Multi Apt",
+        "TypeOfWork": "New Construction",
+        "NumberOfUnits": 48,
+        "CouncilDistrict": 3,
+        "ShowDetails": "Yes"
+      },
+      "proximity_flags": []
+    }
+  ],
+  "staged_records": [
+    {
+      "id": "stage-bradford-crossing-layout",
+      "title": "Bradford Crossing Layout",
+      "description": "Agenda-derived candidate record awaiting reviewer confirmation because a simple subdivision-layer match was uncertain in Phase 0 notes.",
+      "development_type": "subdivision",
+      "source_status": "Layout",
+      "normalized_status": "layout",
+      "source_url": "https://www.huntsvilleal.gov/planningagendas/",
+      "source_agency": "City of Huntsville Planning Commission",
+      "date_discovered": "2026-05-20",
+      "review_status": "pending",
+      "record_confidence": "medium",
+      "geometry_source": "Reviewer-drawn seed polygon from agenda location text",
+      "geometry_confidence": "low",
+      "geometry": {
+        "type": "Polygon",
+        "coordinates": [
+          [
+            [-86.6288, 34.7591],
+            [-86.6215, 34.7588],
+            [-86.6212, 34.7531],
+            [-86.6285, 34.7528],
+            [-86.6288, 34.7591]
+          ]
+        ]
+      },
+      "source_payload": {
+        "meeting_label": "February 24, 2026",
+        "section": "Public hearings and presentations for approval",
+        "item_text": "Bradford Crossing - layout subdivision item, representative seed text",
+        "parse_confidence": "medium"
+      },
+      "normalization_notes": "Agenda item name did not match the New Subdivisions layer with simple LIKE checks; reviewer should confirm geometry and status before publishing.",
+      "publish_record": {
+        "public_id": "hsv-bradford-crossing-layout",
+        "title": "Bradford Crossing Layout",
+        "description": "Reviewer-approved seed record created from a Planning Commission agenda candidate.",
+        "development_type": "subdivision",
+        "status": "layout",
+        "source_status": "Layout",
+        "source_url": "https://www.huntsvilleal.gov/planningagendas/",
+        "source_agency": "City of Huntsville Planning Commission",
+        "date_discovered": "2026-05-20",
+        "date_last_checked": "2026-05-20",
+        "application_date": "2026-02-24",
+        "approval_date": null,
+        "permit_issue_date": null,
+        "review_status": "published",
+        "confidence_level": "medium",
+        "geometry_source": "Reviewer-approved seed geometry from Planning Commission agenda",
+        "geometry_confidence": "low",
+        "geometry": {
+          "type": "Polygon",
+          "coordinates": [
+            [
+              [-86.6288, 34.7591],
+              [-86.6215, 34.7588],
+              [-86.6212, 34.7531],
+              [-86.6285, 34.7528],
+              [-86.6288, 34.7591]
+            ]
+          ]
+        },
+        "centroid": [-86.625, 34.756],
+        "area_sq_m": 316000,
+        "address": null,
+        "parcel_ids": [],
+        "source_fields": {
+          "source_document": "Planning Commission agenda archive seed fixture",
+          "meeting_label": "February 24, 2026",
+          "parse_confidence": "medium"
+        },
+        "proximity_flags": [
+          {
+            "flag_type": "near_waterway",
+            "label": "Within 100 m of mapped hydrography",
+            "relationship": "within",
+            "distance_m": 96,
+            "threshold_m": 100,
+            "source_name": "Huntsville Hydrography seed overlay",
+            "source_url": "https://maps.huntsvilleal.gov/server/rest/services/NaturalResources/Hydrography/MapServer",
+            "caveat": "Screening-level context only; not a jurisdictional or engineering determination."
+          }
+        ]
+      }
+    }
+  ],
+  "environmental_overlays": [
+    {
+      "id": "pilot-boundary",
+      "name": "City of Huntsville Pilot Boundary",
+      "category": "boundary",
+      "source_url": "https://maps.huntsvilleal.gov/server/rest/services/Boundaries/CityLimits/MapServer",
+      "attribution": "City of Huntsville GIS",
+      "caveat": "Seed boundary is generalized for MVP development and should not be used as an official city boundary.",
+      "geom_type": "polygon",
+      "features": {
+        "type": "FeatureCollection",
+        "features": [
+          {
+            "type": "Feature",
+            "properties": {
+              "name": "Generalized Huntsville pilot area"
+            },
+            "geometry": {
+              "type": "Polygon",
+              "coordinates": [
+                [
+                  [-86.86, 34.61],
+                  [-86.45, 34.61],
+                  [-86.45, 34.9],
+                  [-86.86, 34.9],
+                  [-86.86, 34.61]
+                ]
+              ]
+            }
+          }
+        ]
+      }
+    },
+    {
+      "id": "wetlands",
+      "name": "Mapped Wetlands",
+      "category": "wetlands",
+      "source_url": "https://maps.huntsvilleal.gov/server/rest/services/NaturalResources/USFWSWetlands/MapServer",
+      "attribution": "USFWS NWI via Huntsville GIS seed overlay",
+      "caveat": "Mapped wetland context only; not a jurisdictional wetland determination.",
+      "geom_type": "polygon",
+      "features": {
+        "type": "FeatureCollection",
+        "features": [
+          {
+            "type": "Feature",
+            "properties": {
+              "name": "Generalized wetland context"
+            },
+            "geometry": {
+              "type": "Polygon",
+              "coordinates": [
+                [
+                  [-86.8144, 34.6812],
+                  [-86.7944, 34.6818],
+                  [-86.7936, 34.6655],
+                  [-86.8135, 34.665],
+                  [-86.8144, 34.6812]
+                ]
+              ]
+            }
+          }
+        ]
+      }
+    },
+    {
+      "id": "floodplain",
+      "name": "Effective FEMA Floodplain",
+      "category": "floodplain",
+      "source_url": "https://maps.huntsvilleal.gov/server/rest/services/Flood/FEMA2018FloodInsuranceRateMap/MapServer",
+      "attribution": "FEMA NFHL mirrored by Huntsville GIS seed overlay",
+      "caveat": "Floodplain context only; not a flood insurance, legal, or engineering determination.",
+      "geom_type": "polygon",
+      "features": {
+        "type": "FeatureCollection",
+        "features": [
+          {
+            "type": "Feature",
+            "properties": {
+              "name": "Generalized floodplain context"
+            },
+            "geometry": {
+              "type": "Polygon",
+              "coordinates": [
+                [
+                  [-86.8119, 34.677],
+                  [-86.7961, 34.6772],
+                  [-86.7957, 34.6702],
+                  [-86.8116, 34.6698],
+                  [-86.8119, 34.677]
+                ]
+              ]
+            }
+          }
+        ]
+      }
+    },
+    {
+      "id": "hydrography",
+      "name": "Hydrography",
+      "category": "waterways",
+      "source_url": "https://maps.huntsvilleal.gov/server/rest/services/NaturalResources/Hydrography/MapServer",
+      "attribution": "City of Huntsville GIS seed overlay",
+      "caveat": "Mapped waterways are screening context only.",
+      "geom_type": "line",
+      "features": {
+        "type": "FeatureCollection",
+        "features": [
+          {
+            "type": "Feature",
+            "properties": {
+              "name": "Generalized stream segment"
+            },
+            "geometry": {
+              "type": "LineString",
+              "coordinates": [
+                [-86.7411, 34.7317],
+                [-86.7195, 34.731],
+                [-86.6964, 34.7278],
+                [-86.6733, 34.7246]
+              ]
+            }
+          },
+          {
+            "type": "Feature",
+            "properties": {
+              "name": "Generalized north Huntsville drainage"
+            },
+            "geometry": {
+              "type": "LineString",
+              "coordinates": [
+                [-86.6404, 34.7602],
+                [-86.6234, 34.7574],
+                [-86.6028, 34.7541]
+              ]
+            }
+          }
+        ]
+      }
+    },
+    {
+      "id": "parks-open-space",
+      "name": "Parks and Open Space",
+      "category": "protected_area",
+      "source_url": "https://maps.huntsvilleal.gov/server/rest/services/Recreation/Parks/MapServer",
+      "attribution": "City of Huntsville GIS seed overlay",
+      "caveat": "Open-space context only; not a survey boundary.",
+      "geom_type": "polygon",
+      "features": {
+        "type": "FeatureCollection",
+        "features": [
+          {
+            "type": "Feature",
+            "properties": {
+              "name": "Generalized park/open-space context"
+            },
+            "geometry": {
+              "type": "Polygon",
+              "coordinates": [
+                [
+                  [-86.5327, 34.8273],
+                  [-86.5225, 34.8271],
+                  [-86.522, 34.818],
+                  [-86.5325, 34.8178],
+                  [-86.5327, 34.8273]
+                ]
+              ]
+            }
+          }
+        ]
+      }
+    }
+  ]
+}

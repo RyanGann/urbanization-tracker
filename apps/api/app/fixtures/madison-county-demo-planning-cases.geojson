@@ -1,0 +1,29 @@
+{
+  "type": "FeatureCollection",
+  "features": [
+    {
+      "type": "Feature",
+      "id": "madison-demo-001",
+      "properties": {
+        "name": "Demo Northern Growth Area",
+        "status": "proposed",
+        "development_type": "subdivision",
+        "source_status": "Planning review",
+        "source_agency": "Madison County Demo",
+        "source_url": "app://fixtures/madison-county-demo-planning-cases.geojson"
+      },
+      "geometry": {
+        "type": "Polygon",
+        "coordinates": [
+          [
+            [-86.762, 34.793],
+            [-86.752, 34.793],
+            [-86.752, 34.801],
+            [-86.762, 34.801],
+            [-86.762, 34.793]
+          ]
+        ]
+      }
+    }
+  ]
+}

@@ -1,0 +1,23 @@
+{
+  "id": "madison-county-al-demo",
+  "name": "Madison County Demo",
+  "state": "AL",
+  "country": "US",
+  "timezone": "America/Chicago",
+  "default_center": [-86.75, 34.76],
+  "sources": [
+    {
+      "key": "madison_county_demo_planning_cases",
+      "name": "Madison County Demo Planning Cases",
+      "connector_type": "static_geojson",
+      "parser_key": "standard_development_geojson",
+      "source_url": "app://fixtures/madison-county-demo-planning-cases.geojson",
+      "active": true,
+      "privacy_review": "Demo fixture contains no personal applicant, owner, or address fields.",
+      "safety_review": "Fixture exists to prove second-jurisdiction onboarding shape, not to represent live county records.",
+      "config": {
+        "fixture_path": "app/fixtures/madison-county-demo-planning-cases.geojson"
+      }
+    }
+  ]
+}

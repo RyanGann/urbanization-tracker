@@ -8,6 +8,7 @@ __pycache__/
 .mypy_cache/
 .venv/
 venv/
+*.egg-info/
 
 # Node
 node_modules/
@@ -15,6 +16,8 @@ dist/
 build/
 .vite/
 coverage/
+playwright-report/
+test-results/
 
 # Environment and secrets
 .env
@@ -25,8 +28,9 @@ coverage/
 data/raw/
 data/cache/
 data/exports/
+data/processed/
+data/runs/
 tmp/
 
 # Logs
 *.log
-

@@ -1,0 +1,60 @@
+{
+  "id": "huntsville-al",
+  "name": "Huntsville",
+  "state": "AL",
+  "country": "US",
+  "timezone": "America/Chicago",
+  "default_center": [-86.5861, 34.7304],
+  "sources": [
+    {
+      "key": "huntsville_new_subdivisions",
+      "name": "Huntsville New Subdivisions",
+      "connector_type": "arcgis",
+      "parser_key": "huntsville_new_subdivisions",
+      "source_url": "https://maps.huntsvilleal.gov/server/rest/services/Housing/NewSubdivisions/MapServer/0",
+      "active": true,
+      "privacy_review": "Public subdivision polygons; avoid exposing full raw bulk payloads publicly until redistribution posture is settled.",
+      "safety_review": "Screening-level development status only; not a permit or legal determination."
+    },
+    {
+      "key": "huntsville_building_permits",
+      "name": "Huntsville Building Permits",
+      "connector_type": "arcgis",
+      "parser_key": "huntsville_building_permits",
+      "source_url": "https://maps.huntsvilleal.gov/server/rest/services/Licenses/BuildingPermits/MapServer/0",
+      "active": true,
+      "privacy_review": "Suppress personal applicant/owner fields and treat address fields carefully.",
+      "safety_review": "Permit points are context, not footprints or parcel geometry."
+    },
+    {
+      "key": "huntsville_fema_1pct_floodplain",
+      "name": "Effective FEMA 1% Annual Chance Floodplain",
+      "connector_type": "arcgis",
+      "parser_key": "environmental_overlay",
+      "source_url": "https://maps.huntsvilleal.gov/server/rest/services/Flood/FEMA2018FloodInsuranceRateMap/MapServer/7",
+      "active": true,
+      "privacy_review": "No personal fields expected.",
+      "safety_review": "Not a flood insurance, legal, or engineering determination."
+    },
+    {
+      "key": "huntsville_usfws_wetlands",
+      "name": "Mapped Wetlands",
+      "connector_type": "arcgis",
+      "parser_key": "environmental_overlay",
+      "source_url": "https://maps.huntsvilleal.gov/server/rest/services/NaturalResources/USFWSWetlands/MapServer/0",
+      "active": true,
+      "privacy_review": "No personal fields expected.",
+      "safety_review": "Not a jurisdictional wetland determination."
+    },
+    {
+      "key": "huntsville_planning_agendas",
+      "name": "Huntsville Planning Commission Agendas",
+      "connector_type": "agenda_archive",
+      "parser_key": "huntsville_planning_agenda_pdf",
+      "source_url": "https://www.huntsvilleal.gov/planningagendas/",
+      "active": true,
+      "privacy_review": "Public meeting documents; parsed records remain reviewer-gated.",
+      "safety_review": "Low-confidence geometry until reviewer matched or drew a reliable geometry."
+    }
+  ]
+}
