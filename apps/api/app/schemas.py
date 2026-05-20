@@ -1,6 +1,6 @@
 from typing import Any, Literal
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 
 GeoJSONGeometry = dict[str, Any]
 
@@ -115,11 +115,26 @@ class UserSubmission(BaseModel):
     staged_record_id: str
 
 
+class UserSubmissionReceipt(BaseModel):
+    id: str
+    title: str
+    status: ReviewStatus
+    created_at: str
+
+
 class WatchAreaCreate(BaseModel):
     name: str = Field(min_length=3, max_length=120)
     email: str = Field(min_length=3, max_length=255)
     geometry: GeoJSONGeometry
     filters: dict[str, Any] = Field(default_factory=dict)
+
+    @field_validator("email")
+    @classmethod
+    def email_must_be_deliverable_shape(cls, value: str) -> str:
+        normalized = value.strip().lower()
+        if "@" not in normalized or normalized.startswith("@") or normalized.endswith("@"):
+            raise ValueError("Email address is required for watch-area alerts.")
+        return normalized
 
 
 class WatchArea(BaseModel):
@@ -129,6 +144,14 @@ class WatchArea(BaseModel):
     email_hint: str
     geometry: GeoJSONGeometry
     filters: dict[str, Any] = Field(default_factory=dict)
+    created_at: str
+    alert_count: int = 0
+
+
+class WatchAreaReceipt(BaseModel):
+    id: str
+    name: str
+    email_hint: str
     created_at: str
     alert_count: int = 0
 

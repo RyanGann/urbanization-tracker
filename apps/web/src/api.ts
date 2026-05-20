@@ -14,24 +14,63 @@ import type {
   StagedDevelopmentRecord,
   UserSubmission,
   UserSubmissionCreate,
+  UserSubmissionReceipt,
   WatchArea,
-  WatchAreaCreate
+  WatchAreaCreate,
+  WatchAreaReceipt
 } from "./types";
 
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL ?? "http://localhost:8000";
+const REVIEWER_TOKEN_KEY = "urbanization-tracker:reviewer-token";
 
-async function request<T>(path: string, init?: RequestInit): Promise<T> {
+export class ApiError extends Error {
+  constructor(
+    readonly status: number,
+    message: string
+  ) {
+    super(message);
+    this.name = "ApiError";
+  }
+}
+
+interface ApiRequestInit extends RequestInit {
+  reviewer?: boolean;
+}
+
+export function getReviewerToken(): string {
+  if (typeof window === "undefined") return "";
+  return window.sessionStorage.getItem(REVIEWER_TOKEN_KEY) ?? "";
+}
+
+export function setReviewerToken(token: string) {
+  if (typeof window === "undefined") return;
+  const trimmed = token.trim();
+  if (trimmed) {
+    window.sessionStorage.setItem(REVIEWER_TOKEN_KEY, trimmed);
+  } else {
+    window.sessionStorage.removeItem(REVIEWER_TOKEN_KEY);
+  }
+}
+
+async function request<T>(path: string, init?: ApiRequestInit): Promise<T> {
+  const { reviewer = false, headers, ...fetchInit } = init ?? {};
+  const requestHeaders: Record<string, string> = {
+    "Content-Type": "application/json",
+    ...(headers as Record<string, string> | undefined)
+  };
+  const reviewerToken = reviewer ? getReviewerToken() : "";
+  if (reviewerToken) {
+    requestHeaders.Authorization = `Bearer ${reviewerToken}`;
+  }
+
   const response = await fetch(`${API_BASE_URL}${path}`, {
-    headers: {
-      "Content-Type": "application/json",
-      ...init?.headers
-    },
-    ...init
+    headers: requestHeaders,
+    ...fetchInit
   });
 
   if (!response.ok) {
     const detail = await response.text();
-    throw new Error(detail || `Request failed with status ${response.status}`);
+    throw new ApiError(response.status, detail || `Request failed with status ${response.status}`);
   }
 
   return response.json() as Promise<T>;
@@ -70,7 +109,9 @@ export function fetchEnvironmentalOverlays(): Promise<EnvironmentalOverlay[]> {
 }
 
 export function fetchStagedRecords(): Promise<StagedDevelopmentRecord[]> {
-  return request<StagedDevelopmentRecord[]>("/api/reviewer/staged-records");
+  return request<StagedDevelopmentRecord[]>("/api/reviewer/staged-records", {
+    reviewer: true
+  });
 }
 
 export function fetchSourceHealth(): Promise<SourceHealth> {
@@ -90,35 +131,43 @@ export function fetchSourceDocuments(): Promise<SourceDocument[]> {
 }
 
 export function fetchDuplicateCandidates(): Promise<DuplicateCandidate[]> {
-  return request<DuplicateCandidate[]>("/api/reviewer/duplicate-candidates");
+  return request<DuplicateCandidate[]>("/api/reviewer/duplicate-candidates", {
+    reviewer: true
+  });
 }
 
-export function fetchPublicSubmissions(): Promise<UserSubmission[]> {
-  return request<UserSubmission[]>("/api/public-submissions");
+export function fetchReviewerPublicSubmissions(): Promise<UserSubmission[]> {
+  return request<UserSubmission[]>("/api/reviewer/public-submissions", {
+    reviewer: true
+  });
 }
 
 export function createPublicSubmission(
   submission: UserSubmissionCreate
-): Promise<UserSubmission> {
-  return request<UserSubmission>("/api/public-submissions", {
+): Promise<UserSubmissionReceipt> {
+  return request<UserSubmissionReceipt>("/api/public-submissions", {
     method: "POST",
     body: JSON.stringify(submission)
   });
 }
 
-export function fetchWatchAreas(): Promise<WatchArea[]> {
-  return request<WatchArea[]>("/api/watch-areas");
+export function fetchReviewerWatchAreas(): Promise<WatchArea[]> {
+  return request<WatchArea[]>("/api/reviewer/watch-areas", {
+    reviewer: true
+  });
 }
 
-export function createWatchArea(watchArea: WatchAreaCreate): Promise<WatchArea> {
-  return request<WatchArea>("/api/watch-areas", {
+export function createWatchArea(watchArea: WatchAreaCreate): Promise<WatchAreaReceipt> {
+  return request<WatchAreaReceipt>("/api/watch-areas", {
     method: "POST",
     body: JSON.stringify(watchArea)
   });
 }
 
-export function fetchAlerts(): Promise<Alert[]> {
-  return request<Alert[]>("/api/alerts");
+export function fetchReviewerAlerts(): Promise<Alert[]> {
+  return request<Alert[]>("/api/reviewer/alerts", {
+    reviewer: true
+  });
 }
 
 export function fetchChangeLog(): Promise<ChangeLogEntry[]> {
@@ -130,11 +179,12 @@ export function fetchRecordVersions(publicId: string): Promise<RecordVersion[]> 
 }
 
 export function exportReviewerDecisions() {
-  return request("/api/reviewer/decisions/export");
+  return request("/api/reviewer/decisions/export", { reviewer: true });
 }
 
 export function importReviewerDecisions(decisions: unknown[]) {
   return request("/api/reviewer/decisions/import", {
+    reviewer: true,
     method: "POST",
     body: JSON.stringify({ decisions })
   });
@@ -142,6 +192,7 @@ export function importReviewerDecisions(decisions: unknown[]) {
 
 export function approveStagedRecord(id: string, notes: string): Promise<DevelopmentRecord> {
   return request<DevelopmentRecord>(`/api/reviewer/staged-records/${id}/approve`, {
+    reviewer: true,
     method: "POST",
     body: JSON.stringify({ notes })
   });
@@ -152,6 +203,7 @@ export function rejectStagedRecord(
   notes: string
 ): Promise<StagedDevelopmentRecord> {
   return request<StagedDevelopmentRecord>(`/api/reviewer/staged-records/${id}/reject`, {
+    reviewer: true,
     method: "POST",
     body: JSON.stringify({ notes })
   });
@@ -162,6 +214,7 @@ export function markStagedRecordNeedsInfo(
   notes: string
 ): Promise<StagedDevelopmentRecord> {
   return request<StagedDevelopmentRecord>(`/api/reviewer/staged-records/${id}/needs-info`, {
+    reviewer: true,
     method: "POST",
     body: JSON.stringify({ notes })
   });

@@ -1,18 +1,14 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import type { Geometry } from "geojson";
-import { Bell, ExternalLink, History, MapPinned, Send } from "lucide-react";
+import { ExternalLink, History, MapPinned, Send } from "lucide-react";
 import { FormEvent, useState } from "react";
 import { Link } from "react-router-dom";
 
 import {
   createPublicSubmission,
   createWatchArea,
-  fetchAlerts,
   fetchChangeLog,
-  fetchPublicSubmissions,
-  fetchWatchAreas
 } from "../api";
-import { StatusBadge } from "../components/StatusBadge";
 
 const DEFAULT_BOUNDS = {
   west: "-86.70",
@@ -50,18 +46,6 @@ export function ParticipatePage() {
   const [watchEmail, setWatchEmail] = useState("");
   const [bounds, setBounds] = useState(DEFAULT_BOUNDS);
 
-  const submissionsQuery = useQuery({
-    queryKey: ["public-submissions"],
-    queryFn: fetchPublicSubmissions
-  });
-  const watchAreasQuery = useQuery({
-    queryKey: ["watch-areas"],
-    queryFn: fetchWatchAreas
-  });
-  const alertsQuery = useQuery({
-    queryKey: ["alerts"],
-    queryFn: fetchAlerts
-  });
   const changeLogQuery = useQuery({
     queryKey: ["change-log"],
     queryFn: fetchChangeLog
@@ -74,16 +58,14 @@ export function ParticipatePage() {
       setSubmissionUrl("");
       setSubmissionNotes("");
       setSubmissionContact("");
-      queryClient.invalidateQueries({ queryKey: ["public-submissions"] });
-      queryClient.invalidateQueries({ queryKey: ["staged-records"] });
+      queryClient.invalidateQueries({ queryKey: ["reviewer", "staged-records"] });
     }
   });
 
   const watchMutation = useMutation({
     mutationFn: createWatchArea,
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["watch-areas"] });
-      queryClient.invalidateQueries({ queryKey: ["alerts"] });
+      setWatchEmail("");
     }
   });
 
@@ -217,93 +199,33 @@ export function ParticipatePage() {
             Save Watch
           </button>
           {watchMutation.isSuccess ? (
-            <p className="success-text">Watch area saved and alerts queued.</p>
+            <p className="success-text">
+              Watch area saved with {watchMutation.data.alert_count} queued matches.
+            </p>
           ) : null}
           {watchMutation.isError ? <p className="error-text">Watch area could not be saved.</p> : null}
         </form>
       </section>
 
-      <section className="phase3-grid">
-        <article className="panel list-panel">
-          <div className="panel-heading">
-            <span>
-              <Bell size={17} aria-hidden />
-              Alerts
-            </span>
-            <strong>{alertsQuery.data?.length ?? 0}</strong>
-          </div>
-          <div className="compact-list">
-            {alertsQuery.data?.map((alert) => (
-              <Link key={alert.id} className="compact-row" to={`/records/${alert.record_public_id}`}>
-                <span>
-                  <strong>{alert.record_title}</strong>
-                  <small>{alert.summary}</small>
-                </span>
-                <StatusBadge value={alert.status} kind="review" />
-              </Link>
-            ))}
-            {alertsQuery.data?.length === 0 ? <p className="muted">No alerts queued.</p> : null}
-          </div>
-        </article>
-
-        <article className="panel list-panel">
-          <div className="panel-heading">
-            <span>
-              <History size={17} aria-hidden />
-              Change Log
-            </span>
-          </div>
-          <div className="compact-list">
-            {changeLogQuery.data?.slice(0, 8).map((entry) => (
-              <Link key={entry.id} className="compact-row" to={`/records/${entry.public_id}`}>
-                <span>
-                  <strong>{entry.title}</strong>
-                  <small>{entry.summary}</small>
-                </span>
-                <small>{entry.changed_at}</small>
-              </Link>
-            ))}
-          </div>
-        </article>
-      </section>
-
-      <section className="phase3-grid">
-        <article className="panel list-panel">
-          <div className="panel-heading">
-            <span>Submissions</span>
-            <strong>{submissionsQuery.data?.length ?? 0}</strong>
-          </div>
-          <div className="compact-list">
-            {submissionsQuery.data?.map((submission) => (
-              <div key={submission.id} className="compact-row">
-                <span>
-                  <strong>{submission.title}</strong>
-                  <small>{submission.created_at}</small>
-                </span>
-                <StatusBadge value={submission.status} kind="review" />
-              </div>
-            ))}
-          </div>
-        </article>
-
-        <article className="panel list-panel">
-          <div className="panel-heading">
-            <span>Watch Areas</span>
-            <strong>{watchAreasQuery.data?.length ?? 0}</strong>
-          </div>
-          <div className="compact-list">
-            {watchAreasQuery.data?.map((watchArea) => (
-              <div key={watchArea.id} className="compact-row">
-                <span>
-                  <strong>{watchArea.name}</strong>
-                  <small>{watchArea.email_hint}</small>
-                </span>
-                <span className="count-pill">{watchArea.alert_count}</span>
-              </div>
-            ))}
-          </div>
-        </article>
-      </section>
+      <article className="panel list-panel">
+        <div className="panel-heading">
+          <span>
+            <History size={17} aria-hidden />
+            Change Log
+          </span>
+        </div>
+        <div className="compact-list">
+          {changeLogQuery.data?.slice(0, 8).map((entry) => (
+            <Link key={entry.id} className="compact-row" to={`/records/${entry.public_id}`}>
+              <span>
+                <strong>{entry.title}</strong>
+                <small>{entry.summary}</small>
+              </span>
+              <small>{entry.changed_at}</small>
+            </Link>
+          ))}
+        </div>
+      </article>
 
       <a className="source-card archive-link" href="https://www.huntsvilleal.gov/planningagendas/" target="_blank" rel="noreferrer">
         <span>Planning Commission agenda archive</span>

@@ -2,28 +2,36 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   Activity,
   AlertCircle,
+  Bell,
   Check,
   ExternalLink,
   FileText,
   GitMerge,
   Globe2,
   Inbox,
+  KeyRound,
+  MapPinned,
   RotateCcw,
   X
 } from "lucide-react";
-import { useState } from "react";
+import { FormEvent, useState } from "react";
 
 import {
+  ApiError,
   approveStagedRecord,
   fetchConnectorHealth,
   fetchDuplicateCandidates,
   fetchJurisdictions,
-  fetchPublicSubmissions,
+  fetchReviewerAlerts,
+  fetchReviewerPublicSubmissions,
+  fetchReviewerWatchAreas,
   fetchSourceHealth,
   fetchSourceDocuments,
   fetchStagedRecords,
+  getReviewerToken,
   markStagedRecordNeedsInfo,
-  rejectStagedRecord
+  rejectStagedRecord,
+  setReviewerToken
 } from "../api";
 import { StatusBadge } from "../components/StatusBadge";
 import type { DevelopmentRecord, StagedDevelopmentRecord } from "../types";
@@ -46,12 +54,17 @@ function sourcePayloadRows(record: StagedDevelopmentRecord) {
   ));
 }
 
+function isUnauthorized(error: unknown) {
+  return error instanceof ApiError && error.status === 401;
+}
+
 export function ReviewerPage() {
   const [notesById, setNotesById] = useState<Record<string, string>>({});
+  const [tokenInput, setTokenInput] = useState(() => getReviewerToken());
   const queryClient = useQueryClient();
 
   const stagedQuery = useQuery({
-    queryKey: ["staged-records"],
+    queryKey: ["reviewer", "staged-records"],
     queryFn: fetchStagedRecords
   });
   const sourceHealthQuery = useQuery({
@@ -63,12 +76,20 @@ export function ReviewerPage() {
     queryFn: fetchSourceDocuments
   });
   const duplicateCandidatesQuery = useQuery({
-    queryKey: ["duplicate-candidates"],
+    queryKey: ["reviewer", "duplicate-candidates"],
     queryFn: fetchDuplicateCandidates
   });
   const submissionsQuery = useQuery({
-    queryKey: ["public-submissions"],
-    queryFn: fetchPublicSubmissions
+    queryKey: ["reviewer", "public-submissions"],
+    queryFn: fetchReviewerPublicSubmissions
+  });
+  const watchAreasQuery = useQuery({
+    queryKey: ["reviewer", "watch-areas"],
+    queryFn: fetchReviewerWatchAreas
+  });
+  const alertsQuery = useQuery({
+    queryKey: ["reviewer", "alerts"],
+    queryFn: fetchReviewerAlerts
   });
   const connectorHealthQuery = useQuery({
     queryKey: ["connector-health"],
@@ -86,12 +107,32 @@ export function ReviewerPage() {
       return markStagedRecordNeedsInfo(id, notes);
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["staged-records"] });
+      queryClient.invalidateQueries({ queryKey: ["reviewer", "staged-records"] });
+      queryClient.invalidateQueries({ queryKey: ["reviewer", "public-submissions"] });
       queryClient.invalidateQueries({ queryKey: ["development-records"] });
     }
   });
 
   const records = stagedQuery.data ?? [];
+  const reviewerAccessRequired = [
+    stagedQuery,
+    duplicateCandidatesQuery,
+    submissionsQuery,
+    watchAreasQuery,
+    alertsQuery
+  ].some((query) => isUnauthorized(query.error));
+
+  const saveToken = (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    setReviewerToken(tokenInput);
+    queryClient.invalidateQueries({ queryKey: ["reviewer"] });
+  };
+
+  const clearToken = () => {
+    setTokenInput("");
+    setReviewerToken("");
+    queryClient.invalidateQueries({ queryKey: ["reviewer"] });
+  };
 
   return (
     <main className="page-shell reviewer-shell">
@@ -113,6 +154,36 @@ export function ReviewerPage() {
           Refresh
         </button>
       </section>
+
+      {reviewerAccessRequired ? (
+        <section className="panel access-panel">
+          <div className="panel-heading">
+            <span>
+              <KeyRound size={17} aria-hidden />
+              Reviewer Access
+            </span>
+          </div>
+          <form className="access-form" onSubmit={saveToken}>
+            <label className="form-field">
+              <span>Access token</span>
+              <input
+                required
+                type="password"
+                value={tokenInput}
+                onChange={(event) => setTokenInput(event.target.value)}
+              />
+            </label>
+            <div className="review-actions">
+              <button className="primary-action" type="submit">
+                Save token
+              </button>
+              <button className="secondary-action" type="button" onClick={clearToken}>
+                Clear
+              </button>
+            </div>
+          </form>
+        </section>
+      ) : null}
 
       <section className="panel health-panel">
         <div className="panel-heading">
@@ -302,8 +373,58 @@ export function ReviewerPage() {
         </article>
       </section>
 
+      <section className="phase3-grid">
+        <article className="panel list-panel">
+          <div className="panel-heading">
+            <span>
+              <Bell size={17} aria-hidden />
+              Queued Alerts
+            </span>
+            <strong>{alertsQuery.data?.length ?? 0}</strong>
+          </div>
+          <div className="compact-list">
+            {alertsQuery.data?.slice(0, 6).map((alert) => (
+              <div key={alert.id} className="compact-row">
+                <span>
+                  <strong>{alert.record_title}</strong>
+                  <small>{alert.delivery_channel} · {alert.summary}</small>
+                </span>
+                <StatusBadge value={alert.status} kind="review" />
+              </div>
+            ))}
+            {alertsQuery.data?.length === 0 ? (
+              <p className="muted">No queued alerts.</p>
+            ) : null}
+          </div>
+        </article>
+
+        <article className="panel list-panel">
+          <div className="panel-heading">
+            <span>
+              <MapPinned size={17} aria-hidden />
+              Watch Areas
+            </span>
+            <strong>{watchAreasQuery.data?.length ?? 0}</strong>
+          </div>
+          <div className="compact-list">
+            {watchAreasQuery.data?.slice(0, 6).map((watchArea) => (
+              <div key={watchArea.id} className="compact-row">
+                <span>
+                  <strong>{watchArea.name}</strong>
+                  <small>{watchArea.email_hint}</small>
+                </span>
+                <span className="count-pill">{watchArea.alert_count}</span>
+              </div>
+            ))}
+            {watchAreasQuery.data?.length === 0 ? (
+              <p className="muted">No watch areas saved.</p>
+            ) : null}
+          </div>
+        </article>
+      </section>
+
       {stagedQuery.isLoading ? <p className="muted">Loading reviewer queue...</p> : null}
-      {stagedQuery.isError ? (
+      {stagedQuery.isError && !reviewerAccessRequired ? (
         <p className="error-text">Could not load the reviewer queue from the API.</p>
       ) : null}
 

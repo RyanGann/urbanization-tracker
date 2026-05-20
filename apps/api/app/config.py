@@ -25,6 +25,13 @@ class Settings(BaseSettings):
         default="http://localhost:5173,http://127.0.0.1:5173",
         description="Comma-separated list of allowed browser origins.",
     )
+    reviewer_api_token: str | None = Field(
+        default=None,
+        description=(
+            "Optional bearer token for reviewer/admin API routes. Leave unset for local "
+            "development; set in production or protect the routes at the edge."
+        ),
+    )
 
     model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8")
 

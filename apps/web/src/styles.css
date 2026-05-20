@@ -736,6 +736,18 @@ button {
   margin: 14px 14px 0;
 }
 
+.access-panel {
+  margin-bottom: 14px;
+}
+
+.access-form {
+  padding-bottom: 14px;
+}
+
+.access-form .review-actions {
+  padding: 0 14px;
+}
+
 .success-text {
   margin: 10px 14px 0;
   color: #1d5a3e;

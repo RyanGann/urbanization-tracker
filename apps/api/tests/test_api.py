@@ -1,5 +1,6 @@
 from fastapi.testclient import TestClient
 
+from app.config import get_settings
 from app.main import app
 from app.seed_store import reset_seed_state
 
@@ -103,13 +104,19 @@ def test_public_submission_creates_reviewer_gated_staged_record() -> None:
     assert submission_response.status_code == 200
     submission = submission_response.json()
     assert submission["status"] == "pending"
+    assert "submitter_contact_hash" not in submission
 
     staged_response = client.get("/api/reviewer/staged-records")
     assert staged_response.status_code == 200
-    assert any(record["id"] == submission["staged_record_id"] for record in staged_response.json())
+    staged_records = staged_response.json()
+    staged = next(
+        record
+        for record in staged_records
+        if record["source_payload"].get("submission_id") == submission["id"]
+    )
 
     approve_response = client.post(
-        f"/api/reviewer/staged-records/{submission['staged_record_id']}/approve",
+        f"/api/reviewer/staged-records/{staged['id']}/approve",
         json={"notes": "Source reviewed."},
     )
 
@@ -147,8 +154,10 @@ def test_watch_area_queues_matching_email_alerts() -> None:
     assert response.status_code == 200
     watch_area = response.json()
     assert watch_area["alert_count"] >= 1
+    assert "email_hash" not in watch_area
+    assert "geometry" not in watch_area
 
-    alerts_response = client.get("/api/alerts")
+    alerts_response = client.get("/api/reviewer/alerts")
     assert alerts_response.status_code == 200
     alerts = alerts_response.json()
     assert any(alert["watch_area_id"] == watch_area["id"] for alert in alerts)
@@ -163,3 +172,20 @@ def test_record_versions_and_change_log_are_available() -> None:
     change_log_response = client.get("/api/change-log")
     assert change_log_response.status_code == 200
     assert change_log_response.json()
+
+
+def test_reviewer_api_requires_bearer_token_when_configured(monkeypatch) -> None:
+    monkeypatch.setenv("REVIEWER_API_TOKEN", "test-reviewer-token")
+    get_settings.cache_clear()
+    try:
+        blocked_response = client.get("/api/reviewer/staged-records")
+        assert blocked_response.status_code == 401
+
+        authorized_response = client.get(
+            "/api/reviewer/staged-records",
+            headers={"Authorization": "Bearer test-reviewer-token"},
+        )
+        assert authorized_response.status_code == 200
+    finally:
+        monkeypatch.delenv("REVIEWER_API_TOKEN", raising=False)
+        get_settings.cache_clear()

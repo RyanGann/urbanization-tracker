@@ -139,6 +139,13 @@ export interface UserSubmission {
   staged_record_id: string;
 }
 
+export interface UserSubmissionReceipt {
+  id: string;
+  title: string;
+  status: ReviewStatus;
+  created_at: string;
+}
+
 export interface WatchAreaCreate {
   name: string;
   email: string;
@@ -153,6 +160,14 @@ export interface WatchArea {
   email_hint: string;
   geometry: Geometry;
   filters: Record<string, unknown>;
+  created_at: string;
+  alert_count: number;
+}
+
+export interface WatchAreaReceipt {
+  id: string;
+  name: string;
+  email_hint: string;
   created_at: string;
   alert_count: number;
 }

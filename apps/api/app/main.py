@@ -1,8 +1,9 @@
 from typing import Annotated
 
-from fastapi import FastAPI, HTTPException, Query
+from fastapi import APIRouter, Depends, FastAPI, HTTPException, Query
 from fastapi.middleware.cors import CORSMiddleware
 
+from app.auth import require_reviewer_access
 from app.config import get_settings
 from app.jurisdictions import connector_health, list_jurisdictions
 from app.phase3_store import (
@@ -36,8 +37,10 @@ from app.schemas import (
     StagedDevelopmentRecord,
     UserSubmission,
     UserSubmissionCreate,
+    UserSubmissionReceipt,
     WatchArea,
     WatchAreaCreate,
+    WatchAreaReceipt,
 )
 from app.seed_store import (
     approve_staged_record,
@@ -53,6 +56,10 @@ from app.seed_store import (
 )
 
 settings = get_settings()
+reviewer_router = APIRouter(
+    prefix="/api/reviewer",
+    dependencies=[Depends(require_reviewer_access)],
+)
 
 app = FastAPI(title=settings.app_name, version="0.1.0")
 app.add_middleware(
@@ -160,7 +167,7 @@ def get_change_log(limit: int = 50) -> list[ChangeLogEntry]:
     return [ChangeLogEntry.model_validate(entry) for entry in change_log_for(records, limit=limit)]
 
 
-@app.get("/api/reviewer/duplicate-candidates", response_model=list[DuplicateCandidate])
+@reviewer_router.get("/duplicate-candidates", response_model=list[DuplicateCandidate])
 def get_duplicate_candidates() -> list[DuplicateCandidate]:
     return [
         DuplicateCandidate.model_validate(candidate)
@@ -168,46 +175,46 @@ def get_duplicate_candidates() -> list[DuplicateCandidate]:
     ]
 
 
-@app.get("/api/public-submissions", response_model=list[UserSubmission])
-def get_public_submissions() -> list[UserSubmission]:
+@reviewer_router.get("/public-submissions", response_model=list[UserSubmission])
+def get_reviewer_public_submissions() -> list[UserSubmission]:
     return [
         UserSubmission.model_validate(submission)
         for submission in list_public_submissions()
     ]
 
 
-@app.post("/api/public-submissions", response_model=UserSubmission)
-def post_public_submission(submission: UserSubmissionCreate) -> UserSubmission:
+@app.post("/api/public-submissions", response_model=UserSubmissionReceipt)
+def post_public_submission(submission: UserSubmissionCreate) -> UserSubmissionReceipt:
     created = create_public_submission(
         submission.model_dump(),
         published_records=list_development_records(),
     )
-    return UserSubmission.model_validate(created)
+    return UserSubmissionReceipt.model_validate(created)
 
 
-@app.get("/api/watch-areas", response_model=list[WatchArea])
-def get_watch_areas() -> list[WatchArea]:
+@reviewer_router.get("/watch-areas", response_model=list[WatchArea])
+def get_reviewer_watch_areas() -> list[WatchArea]:
     return [WatchArea.model_validate(watch_area) for watch_area in list_watch_areas()]
 
 
-@app.post("/api/watch-areas", response_model=WatchArea)
-def post_watch_area(watch_area: WatchAreaCreate) -> WatchArea:
+@app.post("/api/watch-areas", response_model=WatchAreaReceipt)
+def post_watch_area(watch_area: WatchAreaCreate) -> WatchAreaReceipt:
     created = create_watch_area(watch_area.model_dump(), list_development_records())
-    return WatchArea.model_validate(created)
+    return WatchAreaReceipt.model_validate(created)
 
 
-@app.get("/api/alerts", response_model=list[Alert])
-def get_alerts() -> list[Alert]:
+@reviewer_router.get("/alerts", response_model=list[Alert])
+def get_reviewer_alerts() -> list[Alert]:
     return [Alert.model_validate(alert) for alert in list_alerts()]
 
 
-@app.get("/api/reviewer/staged-records", response_model=list[StagedDevelopmentRecord])
+@reviewer_router.get("/staged-records", response_model=list[StagedDevelopmentRecord])
 def get_reviewer_queue() -> list[StagedDevelopmentRecord]:
     return list_staged_records()
 
 
-@app.get(
-    "/api/reviewer/decisions/export",
+@reviewer_router.get(
+    "/decisions/export",
     response_model=list[ReviewerDecisionSnapshot],
 )
 def export_reviewer_decision_snapshot() -> list[ReviewerDecisionSnapshot]:
@@ -217,8 +224,8 @@ def export_reviewer_decision_snapshot() -> list[ReviewerDecisionSnapshot]:
     ]
 
 
-@app.post(
-    "/api/reviewer/decisions/import",
+@reviewer_router.post(
+    "/decisions/import",
     response_model=ReviewerDecisionImportResult,
 )
 def import_reviewer_decision_snapshot(
@@ -230,7 +237,7 @@ def import_reviewer_decision_snapshot(
     return ReviewerDecisionImportResult.model_validate(result)
 
 
-@app.post("/api/reviewer/staged-records/{staged_id}/approve", response_model=DevelopmentRecord)
+@reviewer_router.post("/staged-records/{staged_id}/approve", response_model=DevelopmentRecord)
 def approve_reviewer_record(staged_id: str, decision: ReviewDecision) -> DevelopmentRecord:
     record = approve_staged_record(staged_id, notes=decision.notes)
     if record is None:
@@ -238,7 +245,7 @@ def approve_reviewer_record(staged_id: str, decision: ReviewDecision) -> Develop
     return record
 
 
-@app.post("/api/reviewer/staged-records/{staged_id}/reject", response_model=StagedDevelopmentRecord)
+@reviewer_router.post("/staged-records/{staged_id}/reject", response_model=StagedDevelopmentRecord)
 def reject_reviewer_record(staged_id: str, decision: ReviewDecision) -> StagedDevelopmentRecord:
     staged = set_staged_review_status(staged_id, "rejected", notes=decision.notes)
     if staged is None:
@@ -246,8 +253,8 @@ def reject_reviewer_record(staged_id: str, decision: ReviewDecision) -> StagedDe
     return staged
 
 
-@app.post(
-    "/api/reviewer/staged-records/{staged_id}/needs-info",
+@reviewer_router.post(
+    "/staged-records/{staged_id}/needs-info",
     response_model=StagedDevelopmentRecord,
 )
 def mark_reviewer_record_needs_info(
@@ -259,7 +266,7 @@ def mark_reviewer_record_needs_info(
     return staged
 
 
-@app.get("/api/reviewer/submissions", response_model=list[UserSubmission])
+@reviewer_router.get("/submissions", response_model=list[UserSubmission])
 def get_reviewer_submissions() -> list[UserSubmission]:
     return [
         UserSubmission.model_validate(submission)
@@ -267,7 +274,7 @@ def get_reviewer_submissions() -> list[UserSubmission]:
     ]
 
 
-@app.post("/api/reviewer/submissions/{submission_id}/approve", response_model=UserSubmission)
+@reviewer_router.post("/submissions/{submission_id}/approve", response_model=UserSubmission)
 def approve_public_submission(
     submission_id: str, decision: ReviewDecision
 ) -> UserSubmission:
@@ -277,7 +284,7 @@ def approve_public_submission(
     return UserSubmission.model_validate(submission)
 
 
-@app.post("/api/reviewer/submissions/{submission_id}/reject", response_model=UserSubmission)
+@reviewer_router.post("/submissions/{submission_id}/reject", response_model=UserSubmission)
 def reject_public_submission(
     submission_id: str, decision: ReviewDecision
 ) -> UserSubmission:
@@ -287,7 +294,7 @@ def reject_public_submission(
     return UserSubmission.model_validate(submission)
 
 
-@app.post("/api/reviewer/submissions/{submission_id}/needs-info", response_model=UserSubmission)
+@reviewer_router.post("/submissions/{submission_id}/needs-info", response_model=UserSubmission)
 def mark_public_submission_needs_info(
     submission_id: str, decision: ReviewDecision
 ) -> UserSubmission:
@@ -295,3 +302,6 @@ def mark_public_submission_needs_info(
     if submission is None:
         raise HTTPException(status_code=404, detail="Submission not found")
     return UserSubmission.model_validate(submission)
+
+
+app.include_router(reviewer_router)

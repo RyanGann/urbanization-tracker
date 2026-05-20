@@ -51,19 +51,24 @@ site and extracted with PyMuPDF.
 - `GET /api/source-documents`
 - `GET /api/reviewer/staged-records`
 - `GET /api/reviewer/duplicate-candidates`
+- `GET /api/reviewer/public-submissions`
+- `GET /api/reviewer/watch-areas`
+- `GET /api/reviewer/alerts`
 - `POST /api/public-submissions`
-- `GET /api/public-submissions`
-- `GET /api/watch-areas`
 - `POST /api/watch-areas`
-- `GET /api/alerts`
 - `GET /api/change-log`
 - `GET /api/development-records/{public_id}/versions`
+
+Reviewer routes accept unauthenticated local development traffic unless `REVIEWER_API_TOKEN` is
+configured. In production, set that token and put `/review` plus `/api/reviewer/*` behind an edge
+access policy such as Cloudflare Access.
 
 ## Alert Scope
 
 Alerts are queued as email-channel records when a saved watch area intersects a matching published
-record. SMTP delivery is intentionally not configured in this local MVP; the queue is the durable
-handoff point for a later mail worker.
+record. Email is only used as an alert contact, not as a user account or login identifier. SMTP
+delivery is intentionally not configured in this local MVP; the queue is the durable handoff point
+for a later mail worker.
 
 ## Review Rules
 

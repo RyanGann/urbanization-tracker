@@ -119,6 +119,8 @@ curl http://localhost:8000/api/connector-health
 - Agenda geometries default to low-confidence review points until a reviewer draws or matches a reliable geometry.
 - Public submissions are low-confidence staged records until a reviewer validates the source and duplicate risk.
 - Watch-area alerts are queued as email-channel records; SMTP delivery is a later operational integration.
+- Set `REVIEWER_API_TOKEN` to require a bearer token for `/api/reviewer/*`; when it is unset,
+  reviewer routes stay open for local development.
 
 ## Phase 4 Expansion Boundaries
 
