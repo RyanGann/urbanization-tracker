@@ -32,7 +32,8 @@ API service:
 
 - Dockerfile path: `apps/api/Dockerfile`.
 - Docker context: `apps/api`.
-- Start command: `alembic upgrade head && uvicorn app.main:app --host 0.0.0.0 --port $PORT`.
+- Start command: use the Dockerfile default. It runs migrations and starts Uvicorn on
+  `${PORT:-8000}`.
 - Required environment variables:
   - `DATABASE_URL`: Render Postgres internal connection URL, using the SQLAlchemy driver prefix if
     needed.
