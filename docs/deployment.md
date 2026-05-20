@@ -29,6 +29,17 @@ This keeps infrastructure small while avoiding a user-auth buildout.
 
 ## Render Setup Notes
 
+The repository includes a starter [render.yaml](../render.yaml) Blueprint with:
+
+- Docker API service.
+- Static Vite frontend.
+- Managed Render Postgres database.
+- Cron job for bounded alert delivery.
+
+Render prompts for `sync: false` values during initial Blueprint creation. Set `VITE_API_BASE_URL`
+to the deployed API origin and `PUBLIC_BASE_URL` to the public web origin or an origin that routes
+`/api/*` to the API.
+
 API service:
 
 - Dockerfile path: `apps/api/Dockerfile`.
@@ -95,6 +106,14 @@ Auth now would add an account model before the product needs one.
 - Decide whether the first public alpha uses seed/demo data, a manually uploaded artifact snapshot,
   or a short database-persistence pass for ingestion output.
 - Configure database backups and PostGIS.
+- For manual database backups, run:
+
+  ```bash
+  DATABASE_URL=... make backup-db
+  ```
+
+  Store resulting `backups/postgres/*.dump` files outside the repo, preferably in encrypted object
+  storage. Render-managed Postgres backups should remain enabled as the primary restore path.
 - Configure production `CORS_ORIGINS`.
 - Add uptime/error monitoring and a basic source-health check.
 - Keep SMTP disabled until provider credentials are ready. Unsubscribe links and per-run rate limits

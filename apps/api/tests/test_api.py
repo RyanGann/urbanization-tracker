@@ -1,7 +1,7 @@
 from fastapi.testclient import TestClient
 
 from app.alert_delivery import send_queued_email_alerts
-from app.config import get_settings
+from app.config import Settings, get_settings
 from app.main import app
 from app.phase3_store import list_alerts, list_watch_areas
 from app.seed_store import reset_seed_state
@@ -18,6 +18,12 @@ def test_health_check() -> None:
 
     assert response.status_code == 200
     assert response.json()["status"] == "ok"
+
+
+def test_render_postgres_url_uses_psycopg_driver() -> None:
+    settings = Settings(database_url="postgresql://user:pass@host:5432/db")
+
+    assert settings.sqlalchemy_database_url == "postgresql+psycopg://user:pass@host:5432/db"
 
 
 def test_lists_seed_development_records() -> None:
