@@ -8,11 +8,26 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any, cast
 
+from sqlalchemy import delete, select
+
 from app.config import get_settings
 
 HUNTSVILLE_CENTER: tuple[float, float] = (-86.5861, 34.7304)
 PUBLIC_SUBMISSION_SOURCE = "public-submission://local"
 DUPLICATE_TOKEN_FANOUT_LIMIT = 100
+PHASE3_COLLECTIONS = (
+    "source_documents",
+    "agenda_staged_records",
+    "submission_staged_records",
+    "development_records",
+    "public_submissions",
+    "watch_areas",
+    "alerts",
+    "duplicate_candidates",
+    "record_versions",
+    "change_log",
+    "agenda_health",
+)
 
 _memory_only = False
 _memory_collections: dict[str, list[dict[str, Any]]] = {}
@@ -314,6 +329,25 @@ def agenda_health() -> dict[str, Any] | None:
     return health_records[0]
 
 
+def migrate_artifact_collections_to_postgres(
+    collection_names: tuple[str, ...] = PHASE3_COLLECTIONS,
+) -> dict[str, int]:
+    migrated: dict[str, int] = {}
+    for name in collection_names:
+        path = _collection_path(name)
+        if not path.exists():
+            migrated[name] = 0
+            continue
+        payload = json.loads(path.read_text(encoding="utf-8"))
+        if not isinstance(payload, list):
+            migrated[name] = 0
+            continue
+        items = [item for item in payload if isinstance(item, dict)]
+        _write_postgres_collection(name, items)
+        migrated[name] = len(items)
+    return migrated
+
+
 def build_duplicate_candidates(
     staged_records: list[dict[str, Any]],
     published_records: list[Any],
@@ -506,6 +540,8 @@ def _alerts_for_watch_area(
 def _read_collection(name: str) -> list[dict[str, Any]]:
     if _memory_only:
         return copy.deepcopy(_memory_collections.get(name, []))
+    if _use_postgres_store():
+        return _read_postgres_collection(name)
     path = _collection_path(name)
     if not path.exists():
         return copy.deepcopy(_memory_collections.get(name, []))
@@ -519,6 +555,9 @@ def _write_collection(name: str, items: list[dict[str, Any]]) -> None:
     if _memory_only:
         _memory_collections[name] = copy.deepcopy(items)
         return
+    if _use_postgres_store():
+        _write_postgres_collection(name, items)
+        return
     path = _collection_path(name)
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(json.dumps(items, indent=2, sort_keys=True) + "\n", encoding="utf-8")
@@ -526,6 +565,50 @@ def _write_collection(name: str, items: list[dict[str, Any]]) -> None:
 
 def _collection_path(name: str) -> Path:
     return get_settings().ingestion_data_dir / "processed" / f"phase3_{name}.json"
+
+
+def _use_postgres_store() -> bool:
+    return get_settings().phase3_store_backend.lower() == "postgres"
+
+
+def _read_postgres_collection(name: str) -> list[dict[str, Any]]:
+    from app.db import SessionLocal
+    from app.models import Phase3CollectionItem
+
+    with SessionLocal() as db:
+        rows = db.scalars(
+            select(Phase3CollectionItem)
+            .where(Phase3CollectionItem.collection_name == name)
+            .order_by(Phase3CollectionItem.sort_order, Phase3CollectionItem.id)
+        ).all()
+        return [copy.deepcopy(row.payload_json) for row in rows]
+
+
+def _write_postgres_collection(name: str, items: list[dict[str, Any]]) -> None:
+    from app.db import SessionLocal
+    from app.models import Phase3CollectionItem
+
+    with SessionLocal.begin() as db:
+        db.execute(
+            delete(Phase3CollectionItem).where(Phase3CollectionItem.collection_name == name)
+        )
+        db.add_all(
+            Phase3CollectionItem(
+                collection_name=name,
+                item_id=_collection_item_id(name, index, item),
+                sort_order=index,
+                payload_json=copy.deepcopy(item),
+            )
+            for index, item in enumerate(items)
+        )
+
+
+def _collection_item_id(name: str, index: int, item: dict[str, Any]) -> str:
+    for key in ("id", "public_id", "run_id"):
+        value = item.get(key)
+        if value:
+            return str(value)[:255]
+    return f"{name}-{index}"
 
 
 def _record_to_dict(record: Any) -> dict[str, Any]:

@@ -99,6 +99,23 @@ curl http://localhost:8000/api/jurisdictions
 curl http://localhost:8000/api/connector-health
 ```
 
+Move Phase 3 operational artifacts into Postgres when preparing a durable environment:
+
+```bash
+make db-migrate
+make migrate-phase3-postgres
+```
+
+If you are using the Docker Compose database and API service, run:
+
+```bash
+docker compose exec api alembic upgrade head
+make docker-migrate-phase3-postgres
+```
+
+Set `PHASE3_STORE_BACKEND=postgres` for the API and ingestion jobs after migration. Leave it as
+`artifact` for local JSON-file development.
+
 ## Phase 1 Data Boundaries
 
 - Seed development records are representative demo records, not live Huntsville source records.
@@ -119,6 +136,9 @@ curl http://localhost:8000/api/connector-health
 - Agenda geometries default to low-confidence review points until a reviewer draws or matches a reliable geometry.
 - Public submissions are low-confidence staged records until a reviewer validates the source and duplicate risk.
 - Watch-area alerts are queued as email-channel records; SMTP delivery is a later operational integration.
+- `PHASE3_STORE_BACKEND=postgres` stores source documents, staged agenda/submission records,
+  published reviewer records, watch areas, alerts, record versions, and change-log entries in
+  Postgres instead of `data/processed/phase3_*.json`.
 - Set `REVIEWER_API_TOKEN` to require a bearer token for `/api/reviewer/*`; when it is unset,
   reviewer routes stay open for local development.
 

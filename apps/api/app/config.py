@@ -32,6 +32,10 @@ class Settings(BaseSettings):
             "development; set in production or protect the routes at the edge."
         ),
     )
+    phase3_store_backend: str = Field(
+        default="artifact",
+        description="Phase 3 store backend: 'artifact' for JSON files or 'postgres' for DB rows.",
+    )
 
     model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8")
 

@@ -63,6 +63,11 @@ Reviewer routes accept unauthenticated local development traffic unless `REVIEWE
 configured. In production, set that token and put `/review` plus `/api/reviewer/*` behind an edge
 access policy such as Cloudflare Access.
 
+By default, Phase 3 collections are stored as `data/processed/phase3_*.json` artifacts. Set
+`PHASE3_STORE_BACKEND=postgres` to store the same operational collections in Postgres via
+`phase3_collection_items`. Use `make migrate-phase3-postgres` to copy existing local JSON artifacts
+into the database before switching a persistent environment.
+
 ## Alert Scope
 
 Alerts are queued as email-channel records when a saved watch area intersects a matching published

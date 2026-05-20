@@ -7,6 +7,7 @@ from pathlib import Path
 from app.config import get_settings
 from app.ingestion.agenda_pipeline import ingest_huntsville_agendas
 from app.ingestion.pipeline import ingest_huntsville
+from app.phase3_store import migrate_artifact_collections_to_postgres
 
 
 def main() -> None:
@@ -51,6 +52,10 @@ def main() -> None:
         default=3,
         help="Maximum agenda PDFs to fetch from the archive page.",
     )
+    subparsers.add_parser(
+        "migrate-phase3-artifacts-to-postgres",
+        help="Copy existing Phase 3 JSON collection artifacts into the Postgres store.",
+    )
 
     args = parser.parse_args()
     if args.command == "ingest-huntsville":
@@ -65,6 +70,9 @@ def main() -> None:
             data_dir=args.data_dir,
             document_limit=args.document_limit,
         )
+        print(json.dumps(result, indent=2, sort_keys=True))
+    elif args.command == "migrate-phase3-artifacts-to-postgres":
+        result = migrate_artifact_collections_to_postgres()
         print(json.dumps(result, indent=2, sort_keys=True))
 
 

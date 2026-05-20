@@ -40,6 +40,7 @@ API service:
   - `INGESTION_DATA_DIR`: `/app/data`.
   - `CORS_ORIGINS`: production web origin.
   - `REVIEWER_API_TOKEN`: generated secret shared only with reviewers.
+  - `PHASE3_STORE_BACKEND`: `postgres`.
 
 Web static site:
 
@@ -54,8 +55,12 @@ Data persistence:
 - The current API can read processed ingestion artifacts from `INGESTION_DATA_DIR`.
 - Render service filesystems are ephemeral unless a persistent disk is attached.
 - A disk can be attached to the API service at `/app/data`, but it cannot be shared with a Render
-  cron job. The durable next step is moving ingestion outputs into Postgres or object storage before
-  automated hosted ingestion is considered complete.
+  cron job.
+- Phase 3 operational collections can run from Postgres with `PHASE3_STORE_BACKEND=postgres`.
+  Before switching an existing environment, run `make db-migrate` and
+  `make migrate-phase3-postgres` from an environment that can reach the deployed database.
+- Bulk raw source artifacts, source PDFs, and generated map artifacts should still move to object
+  storage before hosted automated ingestion is considered complete.
 
 ## Option Matrix
 
