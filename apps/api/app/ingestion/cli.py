@@ -7,7 +7,7 @@ from pathlib import Path
 from app.alert_delivery import send_queued_email_alerts
 from app.config import get_settings
 from app.ingestion.agenda_pipeline import ingest_huntsville_agendas
-from app.ingestion.pipeline import ingest_huntsville
+from app.ingestion.pipeline import ingest_huntsville, ingest_madison_county
 from app.phase3_store import migrate_artifact_collections_to_postgres
 
 
@@ -53,6 +53,22 @@ def main() -> None:
         default=3,
         help="Maximum agenda PDFs to fetch from the archive page.",
     )
+    madison_county = subparsers.add_parser(
+        "ingest-madison-county",
+        help="Fetch Madison County recorded subdivision polygons.",
+    )
+    madison_county.add_argument(
+        "--data-dir",
+        type=Path,
+        default=get_settings().ingestion_data_dir,
+        help="Directory for raw, processed, and run health artifacts.",
+    )
+    madison_county.add_argument(
+        "--record-limit",
+        type=int,
+        default=500,
+        help="Maximum subdivision polygons to fetch.",
+    )
     subparsers.add_parser(
         "migrate-phase3-artifacts-to-postgres",
         help="Copy existing Phase 3 JSON collection artifacts into the Postgres store.",
@@ -80,6 +96,12 @@ def main() -> None:
         result = ingest_huntsville_agendas(
             data_dir=args.data_dir,
             document_limit=args.document_limit,
+        )
+        print(json.dumps(result, indent=2, sort_keys=True))
+    elif args.command == "ingest-madison-county":
+        result = ingest_madison_county(
+            data_dir=args.data_dir,
+            record_limit=args.record_limit,
         )
         print(json.dumps(result, indent=2, sort_keys=True))
     elif args.command == "migrate-phase3-artifacts-to-postgres":

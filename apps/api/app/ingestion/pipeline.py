@@ -14,6 +14,9 @@ from app.ingestion.sources.huntsville import (
     DEVELOPMENT_SOURCES,
     ENVIRONMENTAL_CONTEXT_SOURCES,
 )
+from app.ingestion.sources.madison_county import (
+    DEVELOPMENT_SOURCES as MADISON_COUNTY_DEVELOPMENT_SOURCES,
+)
 
 
 def ingest_huntsville(
@@ -58,28 +61,70 @@ def ingest_huntsville(
 
         staged_records = _dedupe_records(staged_records, key="id")
         published_records = _dedupe_records(published_records, key="public_id")
-        proximity_count = compute_proximity_flags(published_records, environmental_collections)
+        compute_proximity_flags(published_records, environmental_collections)
         overlays = _environmental_overlays(environmental_collections)
 
-        processed_dir = data_dir / "processed"
-        write_json(processed_dir / "raw_records.json", raw_records)
-        write_json(processed_dir / "staged_development_records.json", staged_records)
-        write_json(processed_dir / "development_records.json", published_records)
-        write_json(processed_dir / "environmental_overlays.json", overlays)
+        health = _write_processed_state(
+            data_dir=data_dir,
+            run_id=run_id,
+            checked_at=checked_at,
+            source_health=source_health,
+            raw_records=raw_records,
+            staged_records=staged_records,
+            published_records=published_records,
+            overlays=overlays,
+        )
+        write_json(data_dir / "runs" / f"{run_id}.json", health)
+        return health
+    finally:
+        if owned_connector:
+            connector.close()
 
-        health = {
-            "run_id": run_id,
-            "checked_at": checked_at,
-            "status": _aggregate_status(source_health),
-            "sources": source_health,
-            "records": {
-                "raw": len(raw_records),
-                "staged": len(staged_records),
-                "published": len(published_records),
-                "proximity_flags": proximity_count,
-            },
-        }
-        write_json(processed_dir / "source_health.json", health)
+
+def ingest_madison_county(
+    *,
+    data_dir: Path,
+    record_limit: int = 500,
+    connector: ArcGISRestConnector | None = None,
+) -> dict[str, Any]:
+    ensure_data_dirs(data_dir)
+    checked_at = iso_now()
+    run_id = checked_at.replace(":", "").replace("+", "Z")
+    owned_connector = connector is None
+    connector = connector or ArcGISRestConnector()
+    source_health: list[dict[str, Any]] = []
+    staged_records: list[dict[str, Any]] = []
+    published_records: list[dict[str, Any]] = []
+    raw_records: list[dict[str, Any]] = []
+
+    try:
+        for source in MADISON_COUNTY_DEVELOPMENT_SOURCES:
+            source_config = _with_record_limit(source, record_limit)
+            source_result = _fetch_source(connector, source_config, data_dir, run_id, checked_at)
+            source_health.append(source_result["health"])
+            raw_records.extend(source_result["raw_records"])
+            for feature in source_result["collection"]["features"]:
+                staged, published, validation_errors = normalize_development_feature(
+                    feature, source.key, checked_at
+                )
+                if validation_errors:
+                    source_result["health"]["error_count"] += len(validation_errors)
+                    source_result["health"]["validation_errors"].extend(validation_errors)
+                staged_records.append(staged)
+                published_records.append(published)
+
+        staged_records = _dedupe_records(staged_records, key="id")
+        published_records = _dedupe_records(published_records, key="public_id")
+
+        health = _write_processed_state(
+            data_dir=data_dir,
+            run_id=run_id,
+            checked_at=checked_at,
+            source_health=source_health,
+            raw_records=raw_records,
+            staged_records=staged_records,
+            published_records=published_records,
+        )
         write_json(data_dir / "runs" / f"{run_id}.json", health)
         return health
     finally:
@@ -212,8 +257,123 @@ def _with_runtime_limits(config: ArcGISLayerConfig, *, permit_limit: int) -> Arc
     return ArcGISLayerConfig(**{**config.__dict__, "max_records": permit_limit})
 
 
+def _with_record_limit(config: ArcGISLayerConfig, record_limit: int) -> ArcGISLayerConfig:
+    return ArcGISLayerConfig(**{**config.__dict__, "max_records": record_limit})
+
+
 def _with_context_limit(config: ArcGISLayerConfig, context_limit: int) -> ArcGISLayerConfig:
     return ArcGISLayerConfig(**{**config.__dict__, "max_records": context_limit})
+
+
+def _write_processed_state(
+    *,
+    data_dir: Path,
+    run_id: str,
+    checked_at: str,
+    source_health: list[dict[str, Any]],
+    raw_records: list[dict[str, Any]],
+    staged_records: list[dict[str, Any]],
+    published_records: list[dict[str, Any]],
+    overlays: list[dict[str, Any]] | None = None,
+) -> dict[str, Any]:
+    processed_dir = data_dir / "processed"
+    raw_source_keys = {
+        str(record["data_source_key"]) for record in raw_records if record.get("data_source_key")
+    }
+    source_urls = {
+        str(record["source_url"])
+        for record in [*staged_records, *published_records]
+        if record.get("source_url")
+    }
+
+    combined_raw_records = _dedupe_raw_records(
+        [
+            *(
+                record
+                for record in _read_processed_list(processed_dir / "raw_records.json")
+                if record.get("data_source_key") not in raw_source_keys
+            ),
+            *raw_records,
+        ]
+    )
+    combined_staged_records = _dedupe_records(
+        [
+            *(
+                record
+                for record in _read_processed_list(
+                    processed_dir / "staged_development_records.json"
+                )
+                if record.get("source_url") not in source_urls
+            ),
+            *staged_records,
+        ],
+        key="id",
+    )
+    combined_published_records = _dedupe_records(
+        [
+            *(
+                record
+                for record in _read_processed_list(processed_dir / "development_records.json")
+                if record.get("source_url") not in source_urls
+            ),
+            *published_records,
+        ],
+        key="public_id",
+    )
+
+    write_json(processed_dir / "raw_records.json", combined_raw_records)
+    write_json(processed_dir / "staged_development_records.json", combined_staged_records)
+    write_json(processed_dir / "development_records.json", combined_published_records)
+    if overlays is not None:
+        write_json(processed_dir / "environmental_overlays.json", overlays)
+
+    merged_sources = _merge_source_health(processed_dir, source_health)
+    health = {
+        "run_id": run_id,
+        "checked_at": checked_at,
+        "status": _aggregate_status(merged_sources),
+        "sources": merged_sources,
+        "records": {
+            "raw": len(combined_raw_records),
+            "staged": len(combined_staged_records),
+            "published": len(combined_published_records),
+            "proximity_flags": sum(
+                len(record.get("proximity_flags", [])) for record in combined_published_records
+            ),
+        },
+    }
+    write_json(processed_dir / "source_health.json", health)
+    return health
+
+
+def _read_processed_list(path: Path) -> list[dict[str, Any]]:
+    payload = read_json(path, [])
+    if not isinstance(payload, list):
+        return []
+    return [item for item in payload if isinstance(item, dict)]
+
+
+def _dedupe_raw_records(records: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    deduped: dict[str, dict[str, Any]] = {}
+    for record in records:
+        key = f"{record.get('data_source_key')}:{record.get('source_record_id')}"
+        deduped.setdefault(key, record)
+    return list(deduped.values())
+
+
+def _merge_source_health(
+    processed_dir: Path, source_health: list[dict[str, Any]]
+) -> list[dict[str, Any]]:
+    existing = read_json(processed_dir / "source_health.json", {})
+    merged: dict[str, dict[str, Any]] = {}
+    if isinstance(existing, dict) and isinstance(existing.get("sources"), list):
+        for source in existing["sources"]:
+            if isinstance(source, dict) and source.get("key"):
+                merged[str(source["key"])] = source
+    for source in source_health:
+        if source.get("key"):
+            merged[str(source["key"])] = source
+    return list(merged.values())
 
 
 def _aggregate_status(source_health: list[dict[str, Any]]) -> str:

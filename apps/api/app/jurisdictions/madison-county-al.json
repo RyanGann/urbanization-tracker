@@ -1,0 +1,20 @@
+{
+  "id": "madison-county-al",
+  "name": "Madison County",
+  "state": "AL",
+  "country": "US",
+  "timezone": "America/Chicago",
+  "default_center": [-86.7483, 34.7633],
+  "sources": [
+    {
+      "key": "madison_county_subdivisions",
+      "name": "Madison County Subdivisions",
+      "connector_type": "arcgis",
+      "parser_key": "madison_county_subdivisions",
+      "source_url": "https://maps.huntsvilleal.gov/server/rest/services/Housing/SubdivisionsInMadisonCounty/MapServer/0",
+      "active": true,
+      "privacy_review": "Public recorded subdivision polygons with no expected personal contact fields; do not expose public bulk mirrors until redistribution posture is settled.",
+      "safety_review": "Historical subdivision context only; not a current permit, title, engineering, or legal determination."
+    }
+  ]
+}

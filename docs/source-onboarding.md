@@ -33,8 +33,8 @@ Supported connector types:
 - `agenda_archive`
 - `static_geojson`
 
-The `madison-county-al-demo.json` config shows the intended second-pilot shape. It adds a source
-mostly through config and points to a simple `static_geojson` fixture.
+The live Madison County config, `madison-county-al.json`, is the first real second-jurisdiction
+source. The inactive `madison-county-al-demo.json` fixture remains as a parser/onboarding example.
 
 ## 2. Choose Or Add A Parser
 
@@ -42,6 +42,7 @@ Prefer existing parsers before adding new code:
 
 - Huntsville New Subdivisions: `huntsville_new_subdivisions`
 - Huntsville Building Permits: `huntsville_building_permits`
+- Madison County Subdivisions: `madison_county_subdivisions`
 - Planning agenda PDF: `huntsville_planning_agenda_pdf`
 - Standard static GeoJSON: `standard_development_geojson`
 

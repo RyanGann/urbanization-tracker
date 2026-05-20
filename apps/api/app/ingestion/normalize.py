@@ -7,6 +7,7 @@ from typing import Any
 
 from app.ingestion.geometry import approx_area_sq_m, centroid, validate_geometry
 from app.ingestion.sources.huntsville import BUILDING_PERMITS, NEW_SUBDIVISIONS
+from app.ingestion.sources.madison_county import MADISON_COUNTY_SUBDIVISIONS
 
 SOURCE_CAVEAT = (
     "Public-source screening record. Verify source agency materials before making legal, "
@@ -21,6 +22,8 @@ def normalize_development_feature(
         return normalize_new_subdivision(feature, checked_at)
     if source_key == BUILDING_PERMITS.key:
         return normalize_building_permit(feature, checked_at)
+    if source_key == MADISON_COUNTY_SUBDIVISIONS.key:
+        return normalize_madison_county_subdivision(feature, checked_at)
     raise ValueError(f"No normalizer configured for {source_key}")
 
 
@@ -170,6 +173,77 @@ def normalize_building_permit(
     return staged, published, validation_errors
 
 
+def normalize_madison_county_subdivision(
+    feature: dict[str, Any], checked_at: str
+) -> tuple[dict[str, Any], dict[str, Any], list[str]]:
+    properties = _properties(feature)
+    geometry = feature.get("geometry") or {}
+    validation_errors = validate_geometry(geometry, {"Polygon", "MultiPolygon"})
+    subdivision = _string(properties.get("Subd_Name")) or "Unnamed subdivision"
+    source_status = _madison_subdivision_status(properties)
+    public_id = _public_id(
+        "madison-county-subdivision",
+        properties.get("Subd_ID"),
+        properties.get("OBJECTID"),
+        subdivision,
+    )
+    record_centroid = centroid(geometry)
+    description = _madison_subdivision_description(properties)
+    approval_date = _text_date(properties.get("DateFiled"))
+
+    staged = {
+        "id": f"stage-{public_id}",
+        "raw_record_id": _source_record_id(properties, fallback=public_id),
+        "title": subdivision,
+        "description": description,
+        "development_type": "subdivision",
+        "source_status": source_status,
+        "normalized_status": "completed",
+        "source_url": MADISON_COUNTY_SUBDIVISIONS.layer_url,
+        "source_agency": MADISON_COUNTY_SUBDIVISIONS.source_agency,
+        "date_discovered": checked_at[:10],
+        "review_status": "approved",
+        "record_confidence": "high" if not validation_errors else "medium",
+        "geometry_source": "Madison County Subdivisions ArcGIS polygon",
+        "geometry_confidence": "high",
+        "geometry": geometry,
+        "source_payload": properties,
+        "normalization_notes": (
+            "Auto-published from a public recorded-subdivision polygon layer. Treat the "
+            "record as subdivision context, not as current construction, title, or permit status."
+        ),
+        "validation_errors": validation_errors,
+    }
+
+    published = {
+        "public_id": public_id,
+        "title": subdivision,
+        "description": description,
+        "development_type": "subdivision",
+        "status": "completed",
+        "source_status": source_status,
+        "source_url": MADISON_COUNTY_SUBDIVISIONS.layer_url,
+        "source_agency": MADISON_COUNTY_SUBDIVISIONS.source_agency,
+        "date_discovered": checked_at[:10],
+        "date_last_checked": checked_at[:10],
+        "application_date": None,
+        "approval_date": approval_date,
+        "permit_issue_date": None,
+        "review_status": "published",
+        "confidence_level": staged["record_confidence"],
+        "geometry_source": staged["geometry_source"],
+        "geometry_confidence": staged["geometry_confidence"],
+        "geometry": geometry,
+        "centroid": record_centroid,
+        "area_sq_m": approx_area_sq_m(geometry),
+        "address": None,
+        "parcel_ids": [],
+        "source_fields": _public_source_fields(properties),
+        "proximity_flags": [],
+    }
+    return staged, published, validation_errors
+
+
 def _subdivision_status(source_status: str) -> str:
     normalized = source_status.strip().lower()
     if normalized == "layout":
@@ -190,6 +264,24 @@ def _subdivision_description(properties: dict[str, Any]) -> str:
     return f"{status} subdivision record from the Huntsville New Subdivisions layer."
 
 
+def _madison_subdivision_status(properties: dict[str, Any]) -> str:
+    filed = _text_date(properties.get("DateFiled")) or _string(properties.get("YearFiled"))
+    if filed:
+        return f"Filed subdivision ({filed})"
+    return "Recorded subdivision"
+
+
+def _madison_subdivision_description(properties: dict[str, Any]) -> str:
+    bits = ["Recorded Madison County subdivision polygon."]
+    parcels = _string(properties.get("Parcels"))
+    if parcels:
+        bits.append(f"Source parcel count: {parcels}.")
+    filed = _text_date(properties.get("DateFiled")) or _string(properties.get("YearFiled"))
+    if filed:
+        bits.append(f"Filed: {filed}.")
+    return " ".join(bits)
+
+
 def _properties(feature: dict[str, Any]) -> dict[str, Any]:
     properties = feature.get("properties") or {}
     if not isinstance(properties, dict):
@@ -205,7 +297,7 @@ def _string(value: Any) -> str | None:
 
 
 def _source_record_id(properties: dict[str, Any], fallback: str) -> str:
-    for key in ("SubdID", "PermitID", "OBJECTID", "ObjectId", "FID"):
+    for key in ("SubdID", "Subd_ID", "PermitID", "OBJECTID", "ObjectId", "FID"):
         value = _string(properties.get(key))
         if value:
             return value
@@ -252,4 +344,18 @@ def _arcgis_date(value: Any) -> str | None:
     if isinstance(value, int | float):
         timestamp = value / 1000 if value > 10_000_000_000 else value
         return datetime.fromtimestamp(timestamp, UTC).date().isoformat()
+    return None
+
+
+def _text_date(value: Any) -> str | None:
+    text = _string(value)
+    if text is None:
+        return None
+    if re.match(r"^\d{4}-\d{2}-\d{2}$", text):
+        return text
+    for date_format in ("%m/%d/%Y", "%m-%d-%Y"):
+        try:
+            return datetime.strptime(text, date_format).date().isoformat()
+        except ValueError:
+            continue
     return None

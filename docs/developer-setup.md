@@ -88,6 +88,7 @@ Run Huntsville ingestion:
 ```bash
 make ingest-huntsville
 make ingest-huntsville-agendas
+make ingest-madison-county
 ```
 
 After ingestion, the API serves processed artifacts from `data/processed/`, source health from `/api/source-health`, agenda source documents from `/api/source-documents`, and reviewer-gated candidates from `/api/reviewer/staged-records`.

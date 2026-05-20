@@ -21,9 +21,13 @@ def test_jurisdiction_configs_include_second_pilot_source() -> None:
 
     assert {jurisdiction.id for jurisdiction in jurisdictions} >= {
         "huntsville-al",
+        "madison-county-al",
         "madison-county-al-demo",
     }
-    assert any(source.key == "madison_county_demo_planning_cases" for _, source in active_sources())
+    assert any(source.key == "madison_county_subdivisions" for _, source in active_sources())
+    assert not any(
+        source.key == "madison_county_demo_planning_cases" for _, source in active_sources()
+    )
 
 
 def test_connector_health_lists_configured_sources_even_before_runs() -> None:
@@ -33,9 +37,9 @@ def test_connector_health_lists_configured_sources_even_before_runs() -> None:
     rows = response.json()
     keys = {row["key"] for row in rows}
     assert "huntsville_new_subdivisions" in keys
-    assert "madison_county_demo_planning_cases" in keys
-    demo = next(row for row in rows if row["key"] == "madison_county_demo_planning_cases")
-    assert demo["status"] in {"not_run", "healthy", "degraded", "failing"}
+    assert "madison_county_subdivisions" in keys
+    madison = next(row for row in rows if row["key"] == "madison_county_subdivisions")
+    assert madison["status"] in {"not_run", "healthy", "degraded", "failing"}
 
 
 def test_reviewer_decision_export_import_roundtrip() -> None:

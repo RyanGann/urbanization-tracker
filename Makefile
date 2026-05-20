@@ -3,7 +3,7 @@ SHELL := /bin/bash
 API_DIR := apps/api
 WEB_DIR := apps/web
 
-.PHONY: install install-api install-web dev dev-api dev-web docker-up docker-down db-migrate backup-db ingest-huntsville ingest-huntsville-agendas migrate-phase3-postgres docker-migrate-phase3-postgres send-alerts lint typecheck test test-api test-web test-performance e2e build clean
+.PHONY: install install-api install-web dev dev-api dev-web docker-up docker-down db-migrate backup-db ingest-huntsville ingest-huntsville-agendas ingest-madison-county migrate-phase3-postgres docker-migrate-phase3-postgres send-alerts lint typecheck test test-api test-web test-performance e2e build clean
 
 install: install-api install-web
 
@@ -38,6 +38,9 @@ ingest-huntsville:
 
 ingest-huntsville-agendas:
 	cd $(API_DIR) && . .venv/bin/activate && python -m app.ingestion.cli ingest-huntsville-agendas --data-dir ../../data
+
+ingest-madison-county:
+	cd $(API_DIR) && . .venv/bin/activate && python -m app.ingestion.cli ingest-madison-county --data-dir ../../data
 
 migrate-phase3-postgres:
 	cd $(API_DIR) && . .venv/bin/activate && PHASE3_STORE_BACKEND=postgres python -m app.ingestion.cli migrate-phase3-artifacts-to-postgres
