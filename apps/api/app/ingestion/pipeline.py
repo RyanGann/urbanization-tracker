@@ -5,7 +5,13 @@ import json
 from pathlib import Path
 from typing import Any
 
-from app.ingestion.artifacts import ensure_data_dirs, iso_now, read_json, write_json
+from app.ingestion.artifacts import (
+    ensure_data_dirs,
+    iso_now,
+    read_json,
+    record_artifact,
+    write_json,
+)
 from app.ingestion.connectors.arcgis import ArcGISLayerConfig, ArcGISRestConnector
 from app.ingestion.normalize import normalize_development_feature
 from app.ingestion.proximity import compute_proximity_flags
@@ -170,7 +176,18 @@ def _fetch_source(
         health["records_seen"] = len(features)
         health["records_created"] = len(features)
         raw_path = _write_raw_collection(data_dir, config.key, run_id, collection)
-        health["raw_artifact"] = str(raw_path)
+        raw_artifact = record_artifact(
+            data_dir=data_dir,
+            path=raw_path,
+            artifact_type="raw_geojson",
+            source_key=config.key,
+            run_id=run_id,
+            source_url=config.layer_url,
+            content_type="application/geo+json",
+        )
+        health["raw_artifact"] = raw_artifact["storage_uri"]
+        health["raw_artifact_sha256"] = raw_artifact["sha256"]
+        health["raw_artifact_bytes"] = raw_artifact["byte_size"]
         return {
             "health": health,
             "collection": collection,

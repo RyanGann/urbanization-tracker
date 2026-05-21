@@ -18,7 +18,13 @@ from app.ingestion.agenda import (
     extract_pdf_text,
     parse_agenda_items,
 )
-from app.ingestion.artifacts import ensure_data_dirs, iso_now, read_json, write_json
+from app.ingestion.artifacts import (
+    ensure_data_dirs,
+    iso_now,
+    read_json,
+    record_artifact,
+    write_json,
+)
 from app.ingestion.connectors.agenda import discover_agenda_links
 from app.phase3_store import build_duplicate_candidates, replace_agenda_artifacts
 
@@ -70,14 +76,24 @@ def ingest_huntsville_agendas(
 
     try:
         archive_html, discovery_method = _fetch_archive_html(client)
+        archive_path = data_dir / "raw" / "planning_agendas" / "archive-page.json"
         write_json(
-            data_dir / "raw" / "planning_agendas" / "archive-page.json",
+            archive_path,
             {
                 "url": PLANNING_ARCHIVE_URL,
                 "fetched_at": checked_at,
                 "html": archive_html,
                 "discovery_method": discovery_method,
             },
+        )
+        record_artifact(
+            data_dir=data_dir,
+            path=archive_path,
+            artifact_type="archive_page",
+            source_key="huntsville_planning_agendas",
+            run_id=checked_at.replace(":", "").replace("+", "Z"),
+            source_url=PLANNING_ARCHIVE_URL,
+            content_type="application/json",
         )
         if archive_html:
             links = discover_agenda_links(
@@ -150,14 +166,34 @@ def _fetch_and_parse_document(
     pdf_bytes, content_type = _fetch_pdf_bytes(client, url)
     digest = hashlib.sha256(pdf_bytes).hexdigest()
     document_id = f"agenda-{digest[:12]}"
+    run_id = checked_at.replace(":", "").replace("+", "Z")
     raw_path = data_dir / "raw" / "planning_agendas" / f"{document_id}.pdf"
     raw_path.parent.mkdir(parents=True, exist_ok=True)
     raw_path.write_bytes(pdf_bytes)
+    raw_artifact = record_artifact(
+        data_dir=data_dir,
+        path=raw_path,
+        artifact_type="source_pdf",
+        source_key="huntsville_planning_agendas",
+        run_id=run_id,
+        source_url=url,
+        content_type=content_type,
+    )
 
     extracted_text, extraction_status = extract_pdf_text(pdf_bytes)
     text_path = data_dir / "processed" / "source_documents" / f"{document_id}.txt"
     text_path.parent.mkdir(parents=True, exist_ok=True)
     text_path.write_text(extracted_text, encoding="utf-8")
+    text_artifact = record_artifact(
+        data_dir=data_dir,
+        path=text_path,
+        artifact_type="extracted_text",
+        source_key="huntsville_planning_agendas",
+        run_id=run_id,
+        source_url=url,
+        content_type="text/plain; charset=utf-8",
+        metadata={"source_document_id": document_id},
+    )
 
     source_document = {
         "id": document_id,
@@ -167,8 +203,8 @@ def _fetch_and_parse_document(
         "fetched_at": checked_at,
         "sha256": digest,
         "content_type": content_type,
-        "storage_uri": str(raw_path),
-        "extracted_text_uri": str(text_path),
+        "storage_uri": raw_artifact["storage_uri"],
+        "extracted_text_uri": text_artifact["storage_uri"],
         "extraction_status": extraction_status,
         "parsed_item_count": 0,
         "text_excerpt": _excerpt(extracted_text),

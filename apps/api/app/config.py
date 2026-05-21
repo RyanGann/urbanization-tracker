@@ -21,6 +21,13 @@ class Settings(BaseSettings):
         default_factory=_default_data_dir,
         description="Directory for raw, processed, and health ingestion artifacts.",
     )
+    artifact_storage_base_uri: str | None = Field(
+        default=None,
+        description=(
+            "Optional URI prefix for raw/source artifact references when files are mirrored "
+            "to object storage."
+        ),
+    )
     cors_origins: str = Field(
         default="http://localhost:5173,http://127.0.0.1:5173",
         description="Comma-separated list of allowed browser origins.",

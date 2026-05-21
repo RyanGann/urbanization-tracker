@@ -91,7 +91,7 @@ make ingest-huntsville-agendas
 make ingest-madison-county
 ```
 
-After ingestion, the API serves processed artifacts from `data/processed/`, source health from `/api/source-health`, agenda source documents from `/api/source-documents`, and reviewer-gated candidates from `/api/reviewer/staged-records`.
+After ingestion, the API serves processed artifacts from `data/processed/`, source health from `/api/source-health`, agenda source documents from `/api/source-documents`, and reviewer-gated candidates from `/api/reviewer/staged-records`. Raw GeoJSON, agenda PDFs, extracted text, and archive-page captures are indexed in `data/processed/artifact_manifest.json`.
 
 Inspect configured jurisdictions and connector health:
 
@@ -127,6 +127,8 @@ Set `PHASE3_STORE_BACKEND=postgres` for the API and ingestion jobs after migrati
 ## Phase 2 Data Boundaries
 
 - `data/` contains live fetched source artifacts and is ignored by git.
+- `data/processed/artifact_manifest.json` tracks raw artifact size, hash, source key, local path,
+  and storage URI. Set `ARTIFACT_STORAGE_BASE_URI` to test object-storage-style URI prefixes.
 - New Subdivisions polygons are treated as publishable public records with source attribution.
 - Building Permits are point context with low geometry confidence, not footprints.
 - Proximity flags are screening-level context and should not be treated as legal or environmental determinations.
