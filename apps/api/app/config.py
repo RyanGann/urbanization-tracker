@@ -21,6 +21,10 @@ class Settings(BaseSettings):
         default_factory=_default_data_dir,
         description="Directory for raw, processed, and health ingestion artifacts.",
     )
+    source_health_max_age_hours: int = Field(
+        default=48,
+        description="Maximum age for active source-health checks before monitor endpoints fail.",
+    )
     cors_origins: str = Field(
         default="http://localhost:5173,http://127.0.0.1:5173",
         description="Comma-separated list of allowed browser origins.",

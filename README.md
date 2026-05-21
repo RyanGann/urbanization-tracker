@@ -31,6 +31,7 @@ This repository is now through Phase 4: a Huntsville alpha with live ArcGIS inge
 - [Follow-Up Codex Prompts](docs/follow-up-prompts.md)
 - [Developer Setup](docs/developer-setup.md)
 - [Deployment Plan](docs/deployment.md)
+- [Operations Monitoring](docs/operations-monitoring.md)
 - [Phase 2 Ingestion](docs/phase-2-ingestion.md)
 - [Phase 3 Monitoring](docs/phase-3-monitoring.md)
 - [Phase 4 Expansion Hardening](docs/phase-4-expansion-hardening.md)
