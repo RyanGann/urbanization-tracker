@@ -26,6 +26,7 @@ This repository is now through Phase 4: a Huntsville alpha with live ArcGIS inge
 
 - [v0.1-alpha Release Note](docs/releases/v0.1-alpha.md)
 - [Architecture](docs/architecture.md)
+- [Next Steps](docs/next-steps.md)
 - [Huntsville Data Sources](docs/data-sources/huntsville-al.md)
 - [Implementation Checklist](docs/implementation-checklist.md)
 - [Follow-Up Codex Prompts](docs/follow-up-prompts.md)

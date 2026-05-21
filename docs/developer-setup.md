@@ -105,6 +105,7 @@ Move Phase 3 operational artifacts into Postgres when preparing a durable enviro
 ```bash
 make db-migrate
 make migrate-phase3-postgres
+make phase3-store-status
 ```
 
 If you are using the Docker Compose database and API service, run:
@@ -115,7 +116,9 @@ make docker-migrate-phase3-postgres
 ```
 
 Set `PHASE3_STORE_BACKEND=postgres` for the API and ingestion jobs after migration. Leave it as
-`artifact` for local JSON-file development.
+`artifact` for local JSON-file development. Hosted environments should treat Postgres as the
+operational store for reviewer-facing Phase 3 data; raw PDFs, raw GeoJSON payloads, and extracted
+text remain file artifacts until object storage is configured.
 
 ## Phase 1 Data Boundaries
 
@@ -145,12 +148,15 @@ Set `PHASE3_STORE_BACKEND=postgres` for the API and ingestion jobs after migrati
 - `PHASE3_STORE_BACKEND=postgres` stores source documents, staged agenda/submission records,
   published reviewer records, watch areas, alerts, record versions, and change-log entries in
   Postgres instead of `data/processed/phase3_*.json`.
+- `GET /api/reviewer/phase3-store` and `make phase3-store-status` report which Phase 3 collections
+  are in artifacts, Postgres, or local test memory.
 - Set `REVIEWER_API_TOKEN` to require a bearer token for `/api/reviewer/*`; when it is unset,
   reviewer routes stay open for local development.
 
 ## Phase 4 Expansion Boundaries
 
 - Jurisdiction/source configs live in `apps/api/app/jurisdictions/`.
-- The Madison County config is a demo second-pilot fixture, not a live public data source.
+- The Madison County config includes a live recorded-subdivision source; the inactive demo fixture
+  is retained only as an onboarding example.
 - New sources must complete `docs/privacy-safety-checklist.md` before public display.
 - Reviewer decision import/export is a local operational handoff, not a replacement for database audit tables.

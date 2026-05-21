@@ -1,5 +1,6 @@
 from functools import lru_cache
 from pathlib import Path
+from typing import Literal
 
 from pydantic import Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
@@ -32,7 +33,7 @@ class Settings(BaseSettings):
             "development; set in production or protect the routes at the edge."
         ),
     )
-    phase3_store_backend: str = Field(
+    phase3_store_backend: Literal["artifact", "postgres"] = Field(
         default="artifact",
         description="Phase 3 store backend: 'artifact' for JSON files or 'postgres' for DB rows.",
     )

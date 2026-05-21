@@ -9,7 +9,7 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any, cast
 
-from sqlalchemy import delete, select
+from sqlalchemy import delete, func, select
 
 from app.config import get_settings
 
@@ -389,6 +389,46 @@ def migrate_artifact_collections_to_postgres(
     return migrated
 
 
+def phase3_store_status() -> dict[str, Any]:
+    settings = get_settings()
+    configured_backend = settings.phase3_store_backend.lower()
+    backend = "memory" if _memory_only else configured_backend
+    database_counts: dict[str, int] = {}
+    database_error: str | None = None
+
+    if configured_backend == "postgres" and not _memory_only:
+        database_counts, database_error = _postgres_collection_counts()
+
+    collections = []
+    for name in PHASE3_COLLECTIONS:
+        artifact_count = _artifact_collection_count(name)
+        database_count = database_counts.get(name, 0)
+        memory_count = len(_memory_collections.get(name, [])) if _memory_only else 0
+        collections.append(
+            {
+                "name": name,
+                "database_count": database_count,
+                "artifact_count": artifact_count,
+                "memory_count": memory_count,
+                "artifact_path": str(_collection_path(name)),
+                "requires_migration": (
+                    configured_backend == "postgres"
+                    and not _memory_only
+                    and artifact_count > 0
+                    and database_count == 0
+                ),
+            }
+        )
+
+    return {
+        "backend": backend,
+        "database_first": configured_backend == "postgres" and not _memory_only,
+        "database_error": database_error,
+        "raw_artifact_root": str(settings.ingestion_data_dir / "raw"),
+        "collections": collections,
+    }
+
+
 def build_duplicate_candidates(
     staged_records: list[dict[str, Any]],
     published_records: list[Any],
@@ -645,6 +685,33 @@ def _write_postgres_collection(name: str, items: list[dict[str, Any]]) -> None:
             )
             for index, item in enumerate(items)
         )
+
+
+def _postgres_collection_counts() -> tuple[dict[str, int], str | None]:
+    from app.db import SessionLocal
+    from app.models import Phase3CollectionItem
+
+    try:
+        with SessionLocal() as db:
+            rows = db.execute(
+                select(
+                    Phase3CollectionItem.collection_name,
+                    func.count(Phase3CollectionItem.id),
+                ).group_by(Phase3CollectionItem.collection_name)
+            ).all()
+            return {str(name): int(count) for name, count in rows}, None
+    except Exception as exc:  # pragma: no cover - exact database errors vary by environment
+        return {}, str(exc)
+
+
+def _artifact_collection_count(name: str) -> int:
+    path = _collection_path(name)
+    if not path.exists():
+        return 0
+    payload = json.loads(path.read_text(encoding="utf-8"))
+    if not isinstance(payload, list):
+        return 0
+    return sum(1 for item in payload if isinstance(item, dict))
 
 
 def _collection_item_id(name: str, index: int, item: dict[str, Any]) -> str:
