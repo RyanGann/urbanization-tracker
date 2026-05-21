@@ -79,6 +79,20 @@ Data persistence:
 - Bulk raw source artifacts, source PDFs, and generated map artifacts should still move to object
   storage before hosted automated ingestion is considered complete.
 
+Preflight:
+
+- Before launch, run the production configuration check from an environment with the same secrets
+  and database network access as the API:
+
+  ```bash
+  make deployment-preflight
+  ```
+
+- The command validates reviewer token protection, Phase 3 Postgres mode, deployed HTTPS CORS and
+  public URL settings, alert delivery settings, PostgreSQL connectivity, and the PostGIS extension.
+  Use `python -m app.ingestion.cli deployment-preflight --skip-database` only for config-only dry
+  runs where the database is intentionally unreachable.
+
 ## Option Matrix
 
 Render is the recommendation for the alpha because it gives managed services, Docker support, static
@@ -101,6 +115,8 @@ Auth now would add an account model before the product needs one.
 
 ## Deployment Blockers Before Public Launch
 
+- Run `make deployment-preflight` against production-equivalent environment variables and resolve
+  any failing checks.
 - Set `REVIEWER_API_TOKEN` and verify private reviewer API routes return `401` without it.
 - Put `/review` and `/api/reviewer/*` behind an edge access policy.
 - Decide whether the first public alpha uses seed/demo data, a manually uploaded artifact snapshot,

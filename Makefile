@@ -3,7 +3,7 @@ SHELL := /bin/bash
 API_DIR := apps/api
 WEB_DIR := apps/web
 
-.PHONY: install install-api install-web dev dev-api dev-web docker-up docker-down db-migrate backup-db ingest-huntsville ingest-huntsville-agendas ingest-madison-county migrate-phase3-postgres docker-migrate-phase3-postgres send-alerts lint typecheck test test-api test-web test-performance e2e build clean
+.PHONY: install install-api install-web dev dev-api dev-web docker-up docker-down db-migrate backup-db ingest-huntsville ingest-huntsville-agendas ingest-madison-county migrate-phase3-postgres docker-migrate-phase3-postgres send-alerts deployment-preflight lint typecheck test test-api test-web test-performance e2e build clean
 
 install: install-api install-web
 
@@ -50,6 +50,9 @@ docker-migrate-phase3-postgres:
 
 send-alerts:
 	cd $(API_DIR) && . .venv/bin/activate && python -m app.ingestion.cli send-alerts
+
+deployment-preflight:
+	cd $(API_DIR) && . .venv/bin/activate && python -m app.ingestion.cli deployment-preflight
 
 lint:
 	cd $(API_DIR) && . .venv/bin/activate && ruff check .
