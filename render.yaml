@@ -17,6 +17,8 @@ services:
         generateValue: true
       - key: PHASE3_STORE_BACKEND
         value: postgres
+      - key: PROCESSED_STORE_BACKEND
+        value: postgres
       - key: PUBLIC_BASE_URL
         sync: false
       - key: ALERT_DELIVERY_ENABLED
