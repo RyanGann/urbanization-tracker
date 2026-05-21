@@ -53,15 +53,71 @@ services:
 
   - type: cron
     runtime: docker
-    name: urbanization-tracker-alert-delivery
+    name: urbanization-tracker-huntsville-ingestion
     rootDir: apps/api
-    schedule: "*/15 * * * *"
-    dockerCommand: python -m app.ingestion.cli send-alerts
+    schedule: "17 8 * * *"
+    dockerCommand: sh -c "alembic upgrade head && python -m app.ingestion.cli ingest-huntsville --data-dir /app/data"
     envVars:
       - key: DATABASE_URL
         fromDatabase:
           name: urbanization-tracker-db
           property: connectionString
+      - key: INGESTION_DATA_DIR
+        value: /app/data
+      - key: PROCESSED_STORE_BACKEND
+        value: postgres
+      - key: PHASE3_STORE_BACKEND
+        value: postgres
+
+  - type: cron
+    runtime: docker
+    name: urbanization-tracker-agenda-ingestion
+    rootDir: apps/api
+    schedule: "43 9 * * 1-5"
+    dockerCommand: sh -c "alembic upgrade head && python -m app.ingestion.cli ingest-huntsville-agendas --data-dir /app/data --document-limit 3"
+    envVars:
+      - key: DATABASE_URL
+        fromDatabase:
+          name: urbanization-tracker-db
+          property: connectionString
+      - key: INGESTION_DATA_DIR
+        value: /app/data
+      - key: PROCESSED_STORE_BACKEND
+        value: postgres
+      - key: PHASE3_STORE_BACKEND
+        value: postgres
+
+  - type: cron
+    runtime: docker
+    name: urbanization-tracker-madison-county-ingestion
+    rootDir: apps/api
+    schedule: "29 11 * * 1"
+    dockerCommand: sh -c "alembic upgrade head && python -m app.ingestion.cli ingest-madison-county --data-dir /app/data"
+    envVars:
+      - key: DATABASE_URL
+        fromDatabase:
+          name: urbanization-tracker-db
+          property: connectionString
+      - key: INGESTION_DATA_DIR
+        value: /app/data
+      - key: PROCESSED_STORE_BACKEND
+        value: postgres
+      - key: PHASE3_STORE_BACKEND
+        value: postgres
+
+  - type: cron
+    runtime: docker
+    name: urbanization-tracker-alert-delivery
+    rootDir: apps/api
+    schedule: "*/15 * * * *"
+    dockerCommand: sh -c "alembic upgrade head && python -m app.ingestion.cli send-alerts"
+    envVars:
+      - key: DATABASE_URL
+        fromDatabase:
+          name: urbanization-tracker-db
+          property: connectionString
+      - key: PROCESSED_STORE_BACKEND
+        value: postgres
       - key: PHASE3_STORE_BACKEND
         value: postgres
       - key: PUBLIC_BASE_URL
