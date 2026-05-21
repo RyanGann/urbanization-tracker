@@ -4,6 +4,7 @@ import {
   AlertCircle,
   Bell,
   Check,
+  Download,
   ExternalLink,
   FileText,
   GitMerge,
@@ -12,13 +13,16 @@ import {
   KeyRound,
   MapPinned,
   RotateCcw,
+  Send,
+  Upload,
   X
 } from "lucide-react";
-import { FormEvent, useState } from "react";
+import { ChangeEvent, FormEvent, useState } from "react";
 
 import {
   ApiError,
   approveStagedRecord,
+  exportReviewerDecisions,
   fetchConnectorHealth,
   fetchDuplicateCandidates,
   fetchJurisdictions,
@@ -29,12 +33,14 @@ import {
   fetchSourceDocuments,
   fetchStagedRecords,
   getReviewerToken,
+  importReviewerDecisions,
   markStagedRecordNeedsInfo,
   rejectStagedRecord,
+  sendQueuedAlerts,
   setReviewerToken
 } from "../api";
 import { StatusBadge } from "../components/StatusBadge";
-import type { DevelopmentRecord, StagedDevelopmentRecord } from "../types";
+import type { AlertDeliveryResult, DevelopmentRecord, StagedDevelopmentRecord } from "../types";
 import { developmentTypeLabel, statusLabel } from "../utils/records";
 
 type ReviewAction = "approve" | "reject" | "needs_info";
@@ -58,9 +64,16 @@ function isUnauthorized(error: unknown) {
   return error instanceof ApiError && error.status === 401;
 }
 
+function alertDeliverySummary(result: AlertDeliveryResult) {
+  if (!result.configured) return "Delivery is not configured.";
+  return `${result.sent} sent, ${result.suppressed} suppressed, ${result.failed} failed.`;
+}
+
 export function ReviewerPage() {
   const [notesById, setNotesById] = useState<Record<string, string>>({});
   const [tokenInput, setTokenInput] = useState(() => getReviewerToken());
+  const [handoffMessage, setHandoffMessage] = useState<string | null>(null);
+  const [alertLimit, setAlertLimit] = useState("25");
   const queryClient = useQueryClient();
 
   const stagedQuery = useQuery({
@@ -113,6 +126,53 @@ export function ReviewerPage() {
     }
   });
 
+  const exportMutation = useMutation({
+    mutationFn: exportReviewerDecisions,
+    onSuccess: (decisions) => {
+      const blob = new Blob([JSON.stringify(decisions, null, 2)], {
+        type: "application/json"
+      });
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement("a");
+      link.href = url;
+      link.download = `reviewer-decisions-${new Date().toISOString().slice(0, 10)}.json`;
+      link.click();
+      URL.revokeObjectURL(url);
+      setHandoffMessage(`Exported ${decisions.length} reviewer decisions.`);
+    },
+    onError: (error) => {
+      setHandoffMessage(error.message);
+    }
+  });
+
+  const importMutation = useMutation({
+    mutationFn: importReviewerDecisions,
+    onSuccess: (result) => {
+      setHandoffMessage(
+        `Imported ${result.applied} decisions${
+          result.missing.length ? `; ${result.missing.length} missing` : ""
+        }.`
+      );
+      queryClient.invalidateQueries({ queryKey: ["reviewer", "staged-records"] });
+      queryClient.invalidateQueries({ queryKey: ["reviewer", "public-submissions"] });
+      queryClient.invalidateQueries({ queryKey: ["development-records"] });
+    },
+    onError: (error) => {
+      setHandoffMessage(error.message);
+    }
+  });
+
+  const alertDeliveryMutation = useMutation({
+    mutationFn: sendQueuedAlerts,
+    onSuccess: (result) => {
+      setHandoffMessage(alertDeliverySummary(result));
+      queryClient.invalidateQueries({ queryKey: ["reviewer", "alerts"] });
+    },
+    onError: (error) => {
+      setHandoffMessage(error.message);
+    }
+  });
+
   const records = stagedQuery.data ?? [];
   const reviewerAccessRequired = [
     stagedQuery,
@@ -132,6 +192,27 @@ export function ReviewerPage() {
     setTokenInput("");
     setReviewerToken("");
     queryClient.invalidateQueries({ queryKey: ["reviewer"] });
+  };
+
+  const importDecisionFile = async (event: ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    event.target.value = "";
+    if (!file) return;
+    try {
+      const parsed = JSON.parse(await file.text());
+      const decisions = Array.isArray(parsed) ? parsed : parsed.decisions;
+      if (!Array.isArray(decisions)) {
+        throw new Error("Decision import file must contain an array or a decisions array.");
+      }
+      importMutation.mutate(decisions);
+    } catch (error) {
+      setHandoffMessage(error instanceof Error ? error.message : "Could not import decisions.");
+    }
+  };
+
+  const deliverAlerts = () => {
+    const parsedLimit = Number.parseInt(alertLimit, 10);
+    alertDeliveryMutation.mutate(Number.isFinite(parsedLimit) ? parsedLimit : undefined);
   };
 
   return (
@@ -421,6 +502,62 @@ export function ReviewerPage() {
             ) : null}
           </div>
         </article>
+      </section>
+
+      <section className="panel operations-panel">
+        <div className="panel-heading">
+          <span>
+            <GitMerge size={17} aria-hidden />
+            Operations
+          </span>
+        </div>
+        <div className="operations-grid">
+          <div className="operation-group">
+            <div className="button-row">
+              <button
+                className="secondary-action"
+                type="button"
+                disabled={exportMutation.isPending}
+                onClick={() => exportMutation.mutate()}
+              >
+                <Download size={16} aria-hidden />
+                Export decisions
+              </button>
+              <label className="secondary-action file-action">
+                <Upload size={16} aria-hidden />
+                Import decisions
+                <input
+                  type="file"
+                  accept="application/json,.json"
+                  onChange={importDecisionFile}
+                  disabled={importMutation.isPending}
+                />
+              </label>
+            </div>
+          </div>
+          <div className="operation-group alert-delivery-control">
+            <label className="inline-field">
+              <span>Limit</span>
+              <input
+                min="1"
+                max="500"
+                type="number"
+                value={alertLimit}
+                onChange={(event) => setAlertLimit(event.target.value)}
+              />
+            </label>
+            <button
+              className="primary-action"
+              type="button"
+              disabled={alertDeliveryMutation.isPending}
+              onClick={deliverAlerts}
+            >
+              <Send size={16} aria-hidden />
+              Send alerts
+            </button>
+          </div>
+        </div>
+        {handoffMessage ? <p className="success-text">{handoffMessage}</p> : null}
       </section>
 
       {stagedQuery.isLoading ? <p className="muted">Loading reviewer queue...</p> : null}
