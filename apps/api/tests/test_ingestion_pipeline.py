@@ -68,14 +68,28 @@ def test_madison_county_ingestion_preserves_other_processed_sources(tmp_path: Pa
         )
 
     records = json.loads((processed_dir / "development_records.json").read_text())
+    artifact_manifest = json.loads((processed_dir / "artifact_manifest.json").read_text())
     keys = {record["public_id"] for record in records}
     health_keys = {source["key"] for source in health["sources"]}
+    madison_health = next(
+        source for source in health["sources"] if source["key"] == "madison_county_subdivisions"
+    )
+    madison_artifacts = [
+        artifact
+        for artifact in artifact_manifest
+        if artifact["source_key"] == "madison_county_subdivisions"
+    ]
 
     assert "existing-huntsville-record" in keys
     assert "madison-county-subdivision-95-7-abernathy-estates" in keys
     assert health["records"]["published"] == 2
     assert health["records"]["proximity_flags"] == 1
     assert {"huntsville_new_subdivisions", "madison_county_subdivisions"} <= health_keys
+    assert len(madison_artifacts) == 1
+    assert madison_artifacts[0]["artifact_type"] == "raw_geojson"
+    assert madison_artifacts[0]["local_path"].startswith("raw/madison_county_subdivisions/")
+    assert madison_artifacts[0]["byte_size"] > 0
+    assert madison_artifacts[0]["sha256"] == madison_health["raw_artifact_sha256"]
 
 
 def _madison_arcgis_handler(request: httpx.Request) -> httpx.Response:

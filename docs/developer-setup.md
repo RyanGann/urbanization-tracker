@@ -96,6 +96,8 @@ After ingestion, the API serves canonical processed records, source health from
 candidates from `/api/reviewer/staged-records`. Local development stores canonical processed output
 under `data/processed/`; hosted environments can store the canonical processed collections in
 Postgres with `PROCESSED_STORE_BACKEND=postgres`.
+Raw GeoJSON, agenda PDFs, extracted text, and archive-page captures are indexed in
+`data/processed/artifact_manifest.json`.
 
 Inspect configured jurisdictions and connector health:
 
@@ -139,6 +141,8 @@ configured.
 ## Phase 2 Data Boundaries
 
 - `data/` contains live fetched source artifacts and is ignored by git.
+- `data/processed/artifact_manifest.json` tracks raw artifact size, hash, source key, local path,
+  and storage URI. Set `ARTIFACT_STORAGE_BASE_URI` to test object-storage-style URI prefixes.
 - `PROCESSED_STORE_BACKEND=postgres` stores canonical processed development records, staged
   records, environmental overlays, and source health in Postgres instead of
   `data/processed/*.json`.

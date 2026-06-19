@@ -51,6 +51,8 @@ API service:
   - `DATABASE_URL`: Render Postgres internal connection URL, using the SQLAlchemy driver prefix if
     needed.
   - `INGESTION_DATA_DIR`: `/app/data`.
+  - `ARTIFACT_STORAGE_BASE_URI`: optional object-storage URI prefix used in artifact manifest
+    entries when raw files are mirrored outside the API filesystem.
   - `CORS_ORIGINS`: production web origin.
   - `REVIEWER_API_TOKEN`: generated secret shared only with reviewers.
   - `PROCESSED_STORE_BACKEND`: `postgres`.
@@ -85,8 +87,11 @@ Data persistence:
 - Verify the active Phase 3 store with `make phase3-store-status` or
   `GET /api/reviewer/phase3-store`. Any collection with `requires_migration=true` still has JSON
   artifacts that have not been copied into Postgres.
-- Bulk raw source artifacts, source PDFs, and generated map artifacts should still move to object
-  storage before hosted automated ingestion is considered complete.
+- Ingestion writes `data/processed/artifact_manifest.json` with hashes, sizes, source keys, and
+  storage URIs for raw GeoJSON, agenda PDFs, extracted text, and archive-page captures.
+- Bulk raw source artifacts, source PDFs, and generated map artifacts should still be mirrored to
+  object storage before hosted automated ingestion is considered complete. Set
+  `ARTIFACT_STORAGE_BASE_URI` to the object-storage prefix used for those mirrored paths.
 
 Preflight:
 

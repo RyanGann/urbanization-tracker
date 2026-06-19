@@ -18,6 +18,7 @@ The command writes auditable local artifacts under `data/`, which is ignored by 
 - `data/processed/development_records.json`
 - `data/processed/environmental_overlays.json`
 - `data/processed/source_health.json`
+- `data/processed/artifact_manifest.json`
 - `data/runs/<run-id>.json`
 
 ## Run Ingestion
@@ -74,6 +75,10 @@ and source health are read from Postgres. Raw source payload files remain local/
 artifacts for audit and review.
 
 If no processed output exists, the API falls back to Phase 1 seed/demo data.
+
+`artifact_manifest.json` tracks raw GeoJSON files by source key, run id, byte size, SHA-256, local
+path, and storage URI. Set `ARTIFACT_STORAGE_BASE_URI` when those raw files are mirrored to object
+storage so manifests point at the durable object prefix instead of only the local filesystem path.
 
 ## Current Method Limits
 

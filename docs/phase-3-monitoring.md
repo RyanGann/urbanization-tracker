@@ -36,6 +36,7 @@ Artifacts are written under:
 - `data/processed/phase3_agenda_staged_records.json`
 - `data/processed/phase3_duplicate_candidates.json`
 - `data/processed/phase3_agenda_health.json`
+- `data/processed/artifact_manifest.json`
 
 The current Huntsville archive page is:
 
@@ -45,6 +46,11 @@ The City site can reject plain Python archive-page requests. The connector first
 page, then falls back to `curl` archive fetching, then to a short curated list of official current
 agenda PDF URLs documented during source review. Direct agenda PDFs are still fetched from the City
 site and extracted with PyMuPDF.
+
+The artifact manifest records agenda PDFs, extracted text files, and archive-page captures with
+byte sizes, SHA-256 hashes, source keys, local paths, and storage URIs. Set
+`ARTIFACT_STORAGE_BASE_URI` when those files are mirrored to object storage so source-document
+records point at the durable object prefix.
 
 The Render Blueprint includes a starter weekday cron job named
 `urbanization-tracker-agenda-ingestion`:
