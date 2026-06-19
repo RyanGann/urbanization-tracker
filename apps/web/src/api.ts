@@ -1,5 +1,6 @@
 import type {
   Alert,
+  AlertDeliveryResult,
   ChangeLogEntry,
   ConnectorHealth,
   DevelopmentRecord,
@@ -9,6 +10,9 @@ import type {
   Jurisdiction,
   RecordFilters,
   RecordVersion,
+  ReviewerDecisionImportItem,
+  ReviewerDecisionImportResult,
+  ReviewerDecisionSnapshot,
   SourceDocument,
   SourceHealth,
   StagedDevelopmentRecord,
@@ -170,6 +174,14 @@ export function fetchReviewerAlerts(): Promise<Alert[]> {
   });
 }
 
+export function sendQueuedAlerts(limit?: number): Promise<AlertDeliveryResult> {
+  const query = typeof limit === "number" && Number.isFinite(limit) ? `?limit=${limit}` : "";
+  return request<AlertDeliveryResult>(`/api/reviewer/alerts/send${query}`, {
+    reviewer: true,
+    method: "POST"
+  });
+}
+
 export function fetchChangeLog(): Promise<ChangeLogEntry[]> {
   return request<ChangeLogEntry[]>("/api/change-log");
 }
@@ -178,12 +190,16 @@ export function fetchRecordVersions(publicId: string): Promise<RecordVersion[]> 
   return request<RecordVersion[]>(`/api/development-records/${publicId}/versions`);
 }
 
-export function exportReviewerDecisions() {
-  return request("/api/reviewer/decisions/export", { reviewer: true });
+export function exportReviewerDecisions(): Promise<ReviewerDecisionSnapshot[]> {
+  return request<ReviewerDecisionSnapshot[]>("/api/reviewer/decisions/export", {
+    reviewer: true
+  });
 }
 
-export function importReviewerDecisions(decisions: unknown[]) {
-  return request("/api/reviewer/decisions/import", {
+export function importReviewerDecisions(
+  decisions: ReviewerDecisionImportItem[]
+): Promise<ReviewerDecisionImportResult> {
+  return request<ReviewerDecisionImportResult>("/api/reviewer/decisions/import", {
     reviewer: true,
     method: "POST",
     body: JSON.stringify({ decisions })

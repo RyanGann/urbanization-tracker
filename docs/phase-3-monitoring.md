@@ -69,6 +69,9 @@ disk or object storage is configured.
 - `GET /api/reviewer/public-submissions`
 - `GET /api/reviewer/watch-areas`
 - `GET /api/reviewer/alerts`
+- `POST /api/reviewer/alerts/send`
+- `GET /api/reviewer/decisions/export`
+- `POST /api/reviewer/decisions/import`
 - `GET /api/reviewer/phase3-store`
 - `POST /api/public-submissions`
 - `POST /api/watch-areas`
@@ -108,7 +111,8 @@ Run a delivery pass with:
 make send-alerts
 ```
 
-Delivery is rate-limited by `ALERT_DELIVERY_RATE_LIMIT` per run. Unsubscribe links call
+Delivery is rate-limited by `ALERT_DELIVERY_RATE_LIMIT` per run, or by the reviewer-supplied
+`limit` when using the reviewer UI/API. Unsubscribe links call
 `GET /api/watch-areas/unsubscribe/{token}` and suppress future queued deliveries for that watch.
 
 ## Review Rules
@@ -116,3 +120,6 @@ Delivery is rate-limited by `ALERT_DELIVERY_RATE_LIMIT` per run. Unsubscribe lin
 PDF-derived and public-submitted records stay pending until a reviewer approves them. A reviewer
 should confirm the source document, parse confidence, development status, duplicate candidates, and
 geometry before publishing.
+
+The reviewer UI exposes decision export/import for small handoffs and backups. Imported decisions
+apply to staged record IDs and report any missing IDs so reviewers can spot stale handoff files.
