@@ -9,7 +9,7 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any, cast
 
-from sqlalchemy import delete, select
+from sqlalchemy import delete, func, select
 
 from app.config import get_settings
 
@@ -389,6 +389,53 @@ def migrate_artifact_collections_to_postgres(
     return migrated
 
 
+def phase3_store_status() -> dict[str, Any]:
+    settings = get_settings()
+    configured_backend = settings.phase3_store_backend.lower()
+    backend = "memory" if _memory_only else configured_backend
+    database_counts: dict[str, int] = {}
+    database_error: str | None = None
+
+    if not _memory_only:
+        database_counts, database_error = _postgres_collection_counts()
+
+    collections = []
+    for name in PHASE3_COLLECTIONS:
+        artifact_count, artifact_error = _artifact_collection_count(name)
+        database_count = database_counts.get(name, 0)
+        memory_count = len(_memory_collections.get(name, [])) if _memory_only else 0
+        collections.append(
+            {
+                "name": name,
+                "database_count": database_count,
+                "artifact_count": artifact_count,
+                "memory_count": memory_count,
+                "artifact_path": _relative_to_data_dir(
+                    _collection_path(name),
+                    settings.ingestion_data_dir,
+                ),
+                "artifact_error": artifact_error,
+                "requires_migration": (
+                    not _memory_only
+                    and database_error is None
+                    and artifact_error is None
+                    and artifact_count > database_count
+                ),
+            }
+        )
+
+    return {
+        "backend": backend,
+        "database_first": configured_backend == "postgres" and not _memory_only,
+        "database_error": database_error,
+        "raw_artifact_root": _relative_to_data_dir(
+            settings.ingestion_data_dir / "raw",
+            settings.ingestion_data_dir,
+        ),
+        "collections": collections,
+    }
+
+
 def build_duplicate_candidates(
     staged_records: list[dict[str, Any]],
     published_records: list[Any],
@@ -645,6 +692,43 @@ def _write_postgres_collection(name: str, items: list[dict[str, Any]]) -> None:
             )
             for index, item in enumerate(items)
         )
+
+
+def _postgres_collection_counts() -> tuple[dict[str, int], str | None]:
+    from app.db import SessionLocal
+    from app.models import Phase3CollectionItem
+
+    try:
+        with SessionLocal() as db:
+            rows = db.execute(
+                select(
+                    Phase3CollectionItem.collection_name,
+                    func.count(Phase3CollectionItem.id),
+                ).group_by(Phase3CollectionItem.collection_name)
+            ).all()
+            return {str(name): int(count) for name, count in rows}, None
+    except Exception as exc:  # pragma: no cover - exact database errors vary by environment
+        return {}, str(exc)
+
+
+def _artifact_collection_count(name: str) -> tuple[int, str | None]:
+    path = _collection_path(name)
+    if not path.exists():
+        return 0, None
+    try:
+        payload = json.loads(path.read_text(encoding="utf-8"))
+    except json.JSONDecodeError as exc:
+        return 0, f"Invalid JSON: {exc.msg}"
+    if not isinstance(payload, list):
+        return 0, "Artifact payload must be a list."
+    return sum(1 for item in payload if isinstance(item, dict)), None
+
+
+def _relative_to_data_dir(path: Path, data_dir: Path) -> str:
+    try:
+        return path.resolve().relative_to(data_dir.resolve()).as_posix()
+    except ValueError:
+        return path.name
 
 
 def _collection_item_id(name: str, index: int, item: dict[str, Any]) -> str:
