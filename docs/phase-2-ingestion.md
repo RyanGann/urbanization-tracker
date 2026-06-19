@@ -43,9 +43,22 @@ python -m app.ingestion.cli ingest-huntsville \
   --context-limit 2000
 ```
 
+## Hosted Schedule
+
+The Render Blueprint includes a starter cron job named
+`urbanization-tracker-huntsville-ingestion`:
+
+```bash
+python -m app.ingestion.cli ingest-huntsville --data-dir /app/data
+```
+
+It runs with `PROCESSED_STORE_BACKEND=postgres` so canonical development records, staged records,
+environmental overlays, and source health survive ephemeral cron containers. Raw ArcGIS payloads
+under `/app/data/raw/` are still temporary until persistent disk or object storage is configured.
+
 ## API Behavior
 
-When processed ingestion artifacts exist, the API serves them from:
+When processed ingestion output exists, the API serves it from:
 
 - `GET /api/development-records`
 - `GET /api/map/development-records.geojson`
@@ -54,7 +67,13 @@ When processed ingestion artifacts exist, the API serves them from:
 - `GET /api/reviewer/staged-records`
 - `GET /api/source-health`
 
-If no artifacts exist, the API falls back to Phase 1 seed/demo data.
+Local development reads canonical processed output from `data/processed/*.json`. Hosted
+environments can set `PROCESSED_STORE_BACKEND=postgres` and migrate those artifacts with
+`make migrate-processed-postgres` so development records, staged records, environmental overlays,
+and source health are read from Postgres. Raw source payload files remain local/object-storage
+artifacts for audit and review.
+
+If no processed output exists, the API falls back to Phase 1 seed/demo data.
 
 ## Current Method Limits
 

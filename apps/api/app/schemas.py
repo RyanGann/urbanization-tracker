@@ -185,6 +185,24 @@ class AlertDeliveryResult(BaseModel):
     errors: list[str] = Field(default_factory=list)
 
 
+class Phase3StoreCollectionStatus(BaseModel):
+    name: str
+    database_count: int
+    artifact_count: int
+    memory_count: int
+    artifact_path: str
+    artifact_error: str | None = None
+    requires_migration: bool
+
+
+class Phase3StoreStatus(BaseModel):
+    backend: str
+    database_first: bool
+    database_error: str | None = None
+    raw_artifact_root: str
+    collections: list[Phase3StoreCollectionStatus]
+
+
 class RecordVersion(BaseModel):
     id: str
     public_id: str
