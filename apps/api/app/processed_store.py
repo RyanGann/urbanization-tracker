@@ -26,8 +26,7 @@ def read_processed_list(
 ) -> list[dict[str, Any]] | None:
     _require_collection(name, LIST_COLLECTIONS)
     if _use_postgres_store():
-        items = _read_postgres_items(name)
-        return items or None
+        return _read_postgres_items(name)
     path = _collection_path(data_dir or get_settings().ingestion_data_dir, name)
     if not path.exists():
         return None
@@ -94,11 +93,15 @@ def migrate_processed_artifacts_to_postgres(
     for name in collection_names:
         if name in LIST_COLLECTIONS:
             items = _read_artifact_list(root, name)
+            if items is None:
+                continue
             _write_postgres_items(name, items)
             migrated[name] = len(items)
         elif name in SINGLETON_COLLECTIONS:
             payload = _read_artifact_payload(root, name)
-            items = [payload] if payload is not None else []
+            if payload is None:
+                continue
+            items = [payload]
             _write_postgres_items(name, items)
             migrated[name] = len(items)
         else:
@@ -158,13 +161,16 @@ def _collection_path(data_dir: Path, name: str) -> Path:
     return data_dir / "processed" / f"{name}.json"
 
 
-def _read_artifact_list(data_dir: Path, name: str) -> list[dict[str, Any]]:
+def _read_artifact_list(data_dir: Path, name: str) -> list[dict[str, Any]] | None:
     path = _collection_path(data_dir, name)
     if not path.exists():
-        return []
-    payload = json.loads(path.read_text(encoding="utf-8"))
+        return None
+    try:
+        payload = json.loads(path.read_text(encoding="utf-8"))
+    except json.JSONDecodeError:
+        return None
     if not isinstance(payload, list):
-        return []
+        return None
     return [copy.deepcopy(item) for item in payload if isinstance(item, dict)]
 
 
@@ -172,7 +178,10 @@ def _read_artifact_payload(data_dir: Path, name: str) -> dict[str, Any] | None:
     path = _collection_path(data_dir, name)
     if not path.exists():
         return None
-    payload = json.loads(path.read_text(encoding="utf-8"))
+    try:
+        payload = json.loads(path.read_text(encoding="utf-8"))
+    except json.JSONDecodeError:
+        return None
     if not isinstance(payload, dict):
         return None
     return copy.deepcopy(payload)
@@ -180,7 +189,7 @@ def _read_artifact_payload(data_dir: Path, name: str) -> dict[str, Any] | None:
 
 def _artifact_count(data_dir: Path, name: str) -> int:
     if name in LIST_COLLECTIONS or name in RAW_ARTIFACT_COLLECTIONS:
-        return len(_read_artifact_list(data_dir, name))
+        return len(_read_artifact_list(data_dir, name) or [])
     return 1 if _read_artifact_payload(data_dir, name) is not None else 0
 
 

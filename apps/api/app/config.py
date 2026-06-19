@@ -65,9 +65,9 @@ class Settings(BaseSettings):
 
     model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8")
 
-    @field_validator("phase3_store_backend", mode="before")
+    @field_validator("phase3_store_backend", "processed_store_backend", mode="before")
     @classmethod
-    def normalize_phase3_store_backend(cls, value: object) -> object:
+    def normalize_store_backend(cls, value: object) -> object:
         if isinstance(value, str):
             return value.strip().lower()
         return value

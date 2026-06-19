@@ -4,6 +4,7 @@ from typing import Any
 from app.config import get_settings
 from app.ingestion import pipeline
 from app.processed_store import (
+    migrate_processed_artifacts_to_postgres,
     processed_store_status,
     read_processed_list,
     read_processed_payload,
@@ -14,6 +15,56 @@ from app.processed_store import (
 
 def teardown_function() -> None:
     get_settings.cache_clear()
+
+
+def test_postgres_processed_list_preserves_empty_collections(monkeypatch, tmp_path) -> None:
+    monkeypatch.setenv("INGESTION_DATA_DIR", str(tmp_path))
+    monkeypatch.setenv("PROCESSED_STORE_BACKEND", "postgres")
+    get_settings.cache_clear()
+
+    monkeypatch.setattr("app.processed_store._read_postgres_items", lambda name: [])
+
+    assert read_processed_list("staged_development_records") == []
+
+
+def test_migration_skips_missing_and_invalid_artifacts(monkeypatch, tmp_path) -> None:
+    monkeypatch.setenv("INGESTION_DATA_DIR", str(tmp_path))
+    get_settings.cache_clear()
+    processed_dir = tmp_path / "processed"
+    processed_dir.mkdir()
+    (processed_dir / "development_records.json").write_text("[]", encoding="utf-8")
+    (processed_dir / "staged_development_records.json").write_text("not-json", encoding="utf-8")
+
+    writes: list[tuple[str, list[dict[str, Any]]]] = []
+
+    def write_items(name: str, items: list[dict[str, Any]]) -> None:
+        writes.append((name, items))
+
+    monkeypatch.setattr("app.processed_store._write_postgres_items", write_items)
+
+    migrated = migrate_processed_artifacts_to_postgres(
+        data_dir=tmp_path,
+        collection_names=(
+            "development_records",
+            "staged_development_records",
+            "environmental_overlays",
+            "source_health",
+        ),
+    )
+
+    assert migrated == {"development_records": 0}
+    assert writes == [("development_records", [])]
+
+
+def test_store_backend_settings_are_case_insensitive(monkeypatch) -> None:
+    monkeypatch.setenv("PHASE3_STORE_BACKEND", "POSTGRES")
+    monkeypatch.setenv("PROCESSED_STORE_BACKEND", "Postgres")
+    get_settings.cache_clear()
+
+    settings = get_settings()
+
+    assert settings.phase3_store_backend == "postgres"
+    assert settings.processed_store_backend == "postgres"
 
 
 def test_processed_store_reads_and_writes_artifact_lists(monkeypatch, tmp_path) -> None:
