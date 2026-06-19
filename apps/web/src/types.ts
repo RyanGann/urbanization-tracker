@@ -203,6 +203,12 @@ export interface ReviewerDecisionSnapshot {
   exported_at: string;
 }
 
+export interface ReviewerDecisionImportItem {
+  staged_id: string;
+  review_status: ReviewStatus;
+  notes: string | null;
+}
+
 export interface ReviewerDecisionImportResult {
   applied: number;
   missing: string[];

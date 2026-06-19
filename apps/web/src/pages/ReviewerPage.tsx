@@ -40,10 +40,27 @@ import {
   setReviewerToken
 } from "../api";
 import { StatusBadge } from "../components/StatusBadge";
-import type { AlertDeliveryResult, DevelopmentRecord, StagedDevelopmentRecord } from "../types";
+import type {
+  AlertDeliveryResult,
+  DevelopmentRecord,
+  ReviewerDecisionImportItem,
+  ReviewStatus,
+  StagedDevelopmentRecord
+} from "../types";
 import { developmentTypeLabel, statusLabel } from "../utils/records";
 
 type ReviewAction = "approve" | "reject" | "needs_info";
+type HandoffMessage = { kind: "success" | "error"; text: string };
+
+const ALERT_LIMIT_MIN = 1;
+const ALERT_LIMIT_MAX = 500;
+const REVIEW_STATUSES = new Set<ReviewStatus>([
+  "pending",
+  "needs_info",
+  "rejected",
+  "approved",
+  "published"
+]);
 
 interface MutationInput {
   id: string;
@@ -65,14 +82,42 @@ function isUnauthorized(error: unknown) {
 }
 
 function alertDeliverySummary(result: AlertDeliveryResult) {
-  if (!result.configured) return "Delivery is not configured.";
-  return `${result.sent} sent, ${result.suppressed} suppressed, ${result.failed} failed.`;
+  const summary = result.configured
+    ? `${result.sent} sent, ${result.suppressed} suppressed, ${result.failed} failed.`
+    : "Delivery is not configured.";
+  return result.errors.length ? `${summary} Errors: ${result.errors.join("; ")}` : summary;
+}
+
+function reviewerDecisionImportItem(decision: unknown): ReviewerDecisionImportItem {
+  if (!decision || typeof decision !== "object") {
+    throw new Error("Each decision import item must be an object.");
+  }
+  const item = decision as Record<string, unknown>;
+  const stagedId = item.staged_id;
+  const reviewStatus = item.review_status;
+  if (typeof stagedId !== "string" || !stagedId.trim()) {
+    throw new Error("Each decision import item must include a staged_id.");
+  }
+  if (typeof reviewStatus !== "string" || !REVIEW_STATUSES.has(reviewStatus as ReviewStatus)) {
+    throw new Error(`Decision ${stagedId} has an unsupported review_status.`);
+  }
+  const notes = item.review_notes ?? item.notes ?? null;
+  return {
+    staged_id: stagedId,
+    review_status: reviewStatus as ReviewStatus,
+    notes: typeof notes === "string" ? notes : null
+  };
+}
+
+function importResultMessage(result: { applied: number; missing: string[] }) {
+  if (!result.missing.length) return `Imported ${result.applied} decisions.`;
+  return `Imported ${result.applied} decisions; missing IDs: ${result.missing.join(", ")}.`;
 }
 
 export function ReviewerPage() {
   const [notesById, setNotesById] = useState<Record<string, string>>({});
   const [tokenInput, setTokenInput] = useState(() => getReviewerToken());
-  const [handoffMessage, setHandoffMessage] = useState<string | null>(null);
+  const [handoffMessage, setHandoffMessage] = useState<HandoffMessage | null>(null);
   const [alertLimit, setAlertLimit] = useState("25");
   const queryClient = useQueryClient();
 
@@ -138,38 +183,40 @@ export function ReviewerPage() {
       link.download = `reviewer-decisions-${new Date().toISOString().slice(0, 10)}.json`;
       link.click();
       URL.revokeObjectURL(url);
-      setHandoffMessage(`Exported ${decisions.length} reviewer decisions.`);
+      setHandoffMessage({
+        kind: "success",
+        text: `Exported ${decisions.length} reviewer decisions.`
+      });
     },
     onError: (error) => {
-      setHandoffMessage(error.message);
+      setHandoffMessage({ kind: "error", text: error.message });
     }
   });
 
   const importMutation = useMutation({
     mutationFn: importReviewerDecisions,
     onSuccess: (result) => {
-      setHandoffMessage(
-        `Imported ${result.applied} decisions${
-          result.missing.length ? `; ${result.missing.length} missing` : ""
-        }.`
-      );
+      setHandoffMessage({ kind: "success", text: importResultMessage(result) });
       queryClient.invalidateQueries({ queryKey: ["reviewer", "staged-records"] });
       queryClient.invalidateQueries({ queryKey: ["reviewer", "public-submissions"] });
       queryClient.invalidateQueries({ queryKey: ["development-records"] });
     },
     onError: (error) => {
-      setHandoffMessage(error.message);
+      setHandoffMessage({ kind: "error", text: error.message });
     }
   });
 
   const alertDeliveryMutation = useMutation({
     mutationFn: sendQueuedAlerts,
     onSuccess: (result) => {
-      setHandoffMessage(alertDeliverySummary(result));
+      setHandoffMessage({
+        kind: result.failed > 0 || !result.configured ? "error" : "success",
+        text: alertDeliverySummary(result)
+      });
       queryClient.invalidateQueries({ queryKey: ["reviewer", "alerts"] });
     },
     onError: (error) => {
-      setHandoffMessage(error.message);
+      setHandoffMessage({ kind: "error", text: error.message });
     }
   });
 
@@ -204,15 +251,29 @@ export function ReviewerPage() {
       if (!Array.isArray(decisions)) {
         throw new Error("Decision import file must contain an array or a decisions array.");
       }
-      importMutation.mutate(decisions);
+      importMutation.mutate(decisions.map(reviewerDecisionImportItem));
     } catch (error) {
-      setHandoffMessage(error instanceof Error ? error.message : "Could not import decisions.");
+      setHandoffMessage({
+        kind: "error",
+        text: error instanceof Error ? error.message : "Could not import decisions."
+      });
     }
   };
 
   const deliverAlerts = () => {
-    const parsedLimit = Number.parseInt(alertLimit, 10);
-    alertDeliveryMutation.mutate(Number.isFinite(parsedLimit) ? parsedLimit : undefined);
+    const parsedLimit = Number(alertLimit);
+    if (
+      !Number.isInteger(parsedLimit) ||
+      parsedLimit < ALERT_LIMIT_MIN ||
+      parsedLimit > ALERT_LIMIT_MAX
+    ) {
+      setHandoffMessage({
+        kind: "error",
+        text: `Alert limit must be between ${ALERT_LIMIT_MIN} and ${ALERT_LIMIT_MAX}.`
+      });
+      return;
+    }
+    alertDeliveryMutation.mutate(parsedLimit);
   };
 
   return (
@@ -557,7 +618,11 @@ export function ReviewerPage() {
             </button>
           </div>
         </div>
-        {handoffMessage ? <p className="success-text">{handoffMessage}</p> : null}
+        {handoffMessage ? (
+          <p className={handoffMessage.kind === "success" ? "success-text" : "error-text"}>
+            {handoffMessage.text}
+          </p>
+        ) : null}
       </section>
 
       {stagedQuery.isLoading ? <p className="muted">Loading reviewer queue...</p> : null}

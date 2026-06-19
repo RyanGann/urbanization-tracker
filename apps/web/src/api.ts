@@ -10,6 +10,7 @@ import type {
   Jurisdiction,
   RecordFilters,
   RecordVersion,
+  ReviewerDecisionImportItem,
   ReviewerDecisionImportResult,
   ReviewerDecisionSnapshot,
   SourceDocument,
@@ -196,7 +197,7 @@ export function exportReviewerDecisions(): Promise<ReviewerDecisionSnapshot[]> {
 }
 
 export function importReviewerDecisions(
-  decisions: ReviewerDecisionSnapshot[]
+  decisions: ReviewerDecisionImportItem[]
 ): Promise<ReviewerDecisionImportResult> {
   return request<ReviewerDecisionImportResult>("/api/reviewer/decisions/import", {
     reviewer: true,
