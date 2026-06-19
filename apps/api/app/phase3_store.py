@@ -396,12 +396,12 @@ def phase3_store_status() -> dict[str, Any]:
     database_counts: dict[str, int] = {}
     database_error: str | None = None
 
-    if configured_backend == "postgres" and not _memory_only:
+    if not _memory_only:
         database_counts, database_error = _postgres_collection_counts()
 
     collections = []
     for name in PHASE3_COLLECTIONS:
-        artifact_count = _artifact_collection_count(name)
+        artifact_count, artifact_error = _artifact_collection_count(name)
         database_count = database_counts.get(name, 0)
         memory_count = len(_memory_collections.get(name, [])) if _memory_only else 0
         collections.append(
@@ -410,12 +410,16 @@ def phase3_store_status() -> dict[str, Any]:
                 "database_count": database_count,
                 "artifact_count": artifact_count,
                 "memory_count": memory_count,
-                "artifact_path": str(_collection_path(name)),
+                "artifact_path": _relative_to_data_dir(
+                    _collection_path(name),
+                    settings.ingestion_data_dir,
+                ),
+                "artifact_error": artifact_error,
                 "requires_migration": (
-                    configured_backend == "postgres"
-                    and not _memory_only
-                    and artifact_count > 0
-                    and database_count == 0
+                    not _memory_only
+                    and database_error is None
+                    and artifact_error is None
+                    and artifact_count > database_count
                 ),
             }
         )
@@ -424,7 +428,10 @@ def phase3_store_status() -> dict[str, Any]:
         "backend": backend,
         "database_first": configured_backend == "postgres" and not _memory_only,
         "database_error": database_error,
-        "raw_artifact_root": str(settings.ingestion_data_dir / "raw"),
+        "raw_artifact_root": _relative_to_data_dir(
+            settings.ingestion_data_dir / "raw",
+            settings.ingestion_data_dir,
+        ),
         "collections": collections,
     }
 
@@ -704,14 +711,24 @@ def _postgres_collection_counts() -> tuple[dict[str, int], str | None]:
         return {}, str(exc)
 
 
-def _artifact_collection_count(name: str) -> int:
+def _artifact_collection_count(name: str) -> tuple[int, str | None]:
     path = _collection_path(name)
     if not path.exists():
-        return 0
-    payload = json.loads(path.read_text(encoding="utf-8"))
+        return 0, None
+    try:
+        payload = json.loads(path.read_text(encoding="utf-8"))
+    except json.JSONDecodeError as exc:
+        return 0, f"Invalid JSON: {exc.msg}"
     if not isinstance(payload, list):
-        return 0
-    return sum(1 for item in payload if isinstance(item, dict))
+        return 0, "Artifact payload must be a list."
+    return sum(1 for item in payload if isinstance(item, dict)), None
+
+
+def _relative_to_data_dir(path: Path, data_dir: Path) -> str:
+    try:
+        return path.resolve().relative_to(data_dir.resolve()).as_posix()
+    except ValueError:
+        return path.name
 
 
 def _collection_item_id(name: str, index: int, item: dict[str, Any]) -> str:

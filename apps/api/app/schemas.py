@@ -191,6 +191,7 @@ class Phase3StoreCollectionStatus(BaseModel):
     artifact_count: int
     memory_count: int
     artifact_path: str
+    artifact_error: str | None = None
     requires_migration: bool
 
 
