@@ -34,7 +34,8 @@ The repository includes a starter [render.yaml](../render.yaml) Blueprint with:
 - Docker API service.
 - Static Vite frontend.
 - Managed Render Postgres database.
-- Cron job for bounded alert delivery.
+- Cron jobs for Huntsville ArcGIS ingestion, Huntsville agenda PDF ingestion, Madison County
+  ingestion, and bounded alert delivery.
 
 Render prompts for `sync: false` values during initial Blueprint creation. Set `VITE_API_BASE_URL`
 to the deployed API origin and `PUBLIC_BASE_URL` to the public web origin or an origin that routes
@@ -54,6 +55,7 @@ API service:
     entries when raw files are mirrored outside the API filesystem.
   - `CORS_ORIGINS`: production web origin.
   - `REVIEWER_API_TOKEN`: generated secret shared only with reviewers.
+  - `PROCESSED_STORE_BACKEND`: `postgres`.
   - `PHASE3_STORE_BACKEND`: `postgres`.
   - `PUBLIC_BASE_URL`: production origin used in record and unsubscribe links.
   - `ALERT_DELIVERY_ENABLED`: `true` only after SMTP credentials are configured.
@@ -71,18 +73,54 @@ Web static site:
 
 Data persistence:
 
-- The current API can read processed ingestion artifacts from `INGESTION_DATA_DIR`.
+- The current API can read canonical processed ingestion collections from Postgres with
+  `PROCESSED_STORE_BACKEND=postgres`; local artifact mode still reads `INGESTION_DATA_DIR`.
 - Render service filesystems are ephemeral unless a persistent disk is attached.
 - A disk can be attached to the API service at `/app/data`, but it cannot be shared with a Render
   cron job.
+- Canonical processed collections can run from Postgres with `PROCESSED_STORE_BACKEND=postgres`.
+  Before switching an existing environment, run `make db-migrate` and
+  `make migrate-processed-postgres` from an environment that can reach the deployed database.
 - Phase 3 operational collections can run from Postgres with `PHASE3_STORE_BACKEND=postgres`.
   Before switching an existing environment, run `make db-migrate` and
   `make migrate-phase3-postgres` from an environment that can reach the deployed database.
+- Verify the active Phase 3 store with `make phase3-store-status` or
+  `GET /api/reviewer/phase3-store`. Any collection with `requires_migration=true` still has JSON
+  artifacts that have not been copied into Postgres.
 - Ingestion writes `data/processed/artifact_manifest.json` with hashes, sizes, source keys, and
   storage URIs for raw GeoJSON, agenda PDFs, extracted text, and archive-page captures.
 - Bulk raw source artifacts, source PDFs, and generated map artifacts should still be mirrored to
   object storage before hosted automated ingestion is considered complete. Set
   `ARTIFACT_STORAGE_BASE_URI` to the object-storage prefix used for those mirrored paths.
+
+Preflight:
+
+- Before launch, run the production configuration check from an environment with the same secrets
+  and database network access as the API:
+
+  ```bash
+  make deployment-preflight
+  ```
+
+- The command validates reviewer token protection, Phase 3 Postgres mode, deployed HTTPS CORS and
+  public URL settings, alert delivery settings, PostgreSQL connectivity, and the PostGIS extension.
+  Use `python -m app.ingestion.cli deployment-preflight --skip-database` only for config-only dry
+  runs where the database is intentionally unreachable.
+
+Hosted ingestion jobs:
+
+| Job | Starter schedule | Command | Durable store |
+| --- | --- | --- | --- |
+| `urbanization-tracker-huntsville-ingestion` | `17 8 * * *` | `sh -c "alembic upgrade head && python -m app.ingestion.cli ingest-huntsville --data-dir /app/data"` | `processed_collection_items` |
+| `urbanization-tracker-agenda-ingestion` | `43 9 * * 1-5` | `sh -c "alembic upgrade head && python -m app.ingestion.cli ingest-huntsville-agendas --data-dir /app/data --document-limit 3"` | `phase3_collection_items` |
+| `urbanization-tracker-madison-county-ingestion` | `29 11 * * 1` | `sh -c "alembic upgrade head && python -m app.ingestion.cli ingest-madison-county --data-dir /app/data"` | `processed_collection_items` |
+| `urbanization-tracker-alert-delivery` | `*/15 * * * *` | `sh -c "alembic upgrade head && python -m app.ingestion.cli send-alerts"` | `phase3_collection_items` |
+
+These schedules are starter values intended to avoid top-of-hour bursts. Keep
+`PROCESSED_STORE_BACKEND=postgres` and `PHASE3_STORE_BACKEND=postgres` on cron jobs so the useful
+published/staged state survives across ephemeral cron containers. The raw PDFs, raw ArcGIS payloads,
+and extracted text written under `/app/data` are still temporary unless a persistent disk or object
+storage sink is added.
 
 ## Option Matrix
 
@@ -106,10 +144,14 @@ Auth now would add an account model before the product needs one.
 
 ## Deployment Blockers Before Public Launch
 
+- Run `make deployment-preflight` against production-equivalent environment variables and resolve
+  any failing checks.
 - Set `REVIEWER_API_TOKEN` and verify private reviewer API routes return `401` without it.
 - Put `/review` and `/api/reviewer/*` behind an edge access policy.
-- Decide whether the first public alpha uses seed/demo data, a manually uploaded artifact snapshot,
-  or a short database-persistence pass for ingestion output.
+- Run `make migrate-processed-postgres` and `make migrate-phase3-postgres` before enabling hosted
+  cron jobs against an existing artifact-backed environment.
+- Decide whether the first public alpha enables scheduled ingestion immediately or starts from a
+  manually reviewed database snapshot.
 - Configure database backups and PostGIS.
 - For manual database backups, run:
 

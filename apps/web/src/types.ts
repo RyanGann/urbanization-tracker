@@ -185,6 +185,35 @@ export interface Alert {
   summary: string;
 }
 
+export interface AlertDeliveryResult {
+  configured: boolean;
+  attempted: number;
+  sent: number;
+  suppressed: number;
+  failed: number;
+  errors: string[];
+}
+
+export interface ReviewerDecisionSnapshot {
+  staged_id: string;
+  title: string;
+  source_url: string;
+  review_status: ReviewStatus;
+  review_notes: string | null;
+  exported_at: string;
+}
+
+export interface ReviewerDecisionImportItem {
+  staged_id: string;
+  review_status: ReviewStatus;
+  notes: string | null;
+}
+
+export interface ReviewerDecisionImportResult {
+  applied: number;
+  missing: string[];
+}
+
 export interface RecordVersion {
   id: string;
   public_id: string;

@@ -44,9 +44,22 @@ python -m app.ingestion.cli ingest-huntsville \
   --context-limit 2000
 ```
 
+## Hosted Schedule
+
+The Render Blueprint includes a starter cron job named
+`urbanization-tracker-huntsville-ingestion`:
+
+```bash
+python -m app.ingestion.cli ingest-huntsville --data-dir /app/data
+```
+
+It runs with `PROCESSED_STORE_BACKEND=postgres` so canonical development records, staged records,
+environmental overlays, and source health survive ephemeral cron containers. Raw ArcGIS payloads
+under `/app/data/raw/` are still temporary until persistent disk or object storage is configured.
+
 ## API Behavior
 
-When processed ingestion artifacts exist, the API serves them from:
+When processed ingestion output exists, the API serves it from:
 
 - `GET /api/development-records`
 - `GET /api/map/development-records.geojson`
@@ -55,7 +68,13 @@ When processed ingestion artifacts exist, the API serves them from:
 - `GET /api/reviewer/staged-records`
 - `GET /api/source-health`
 
-If no artifacts exist, the API falls back to Phase 1 seed/demo data.
+Local development reads canonical processed output from `data/processed/*.json`. Hosted
+environments can set `PROCESSED_STORE_BACKEND=postgres` and migrate those artifacts with
+`make migrate-processed-postgres` so development records, staged records, environmental overlays,
+and source health are read from Postgres. Raw source payload files remain local/object-storage
+artifacts for audit and review.
+
+If no processed output exists, the API falls back to Phase 1 seed/demo data.
 
 `artifact_manifest.json` tracks raw GeoJSON files by source key, run id, byte size, SHA-256, local
 path, and storage URI. Set `ARTIFACT_STORAGE_BASE_URI` when those raw files are mirrored to object
@@ -65,6 +84,9 @@ storage so manifests point at the durable object prefix instead of only the loca
 
 - New Subdivisions polygons are auto-published with high geometry confidence because the source provides polygons.
 - Building Permits are auto-published as issued/current context with low geometry confidence because the source provides points, not footprints.
-- Proximity flags use conservative bounding-box distance/intersection approximations in EPSG:4326. This is testable and useful for MVP screening, but should be replaced with PostGIS geometry/geography calculations in a later hardening pass.
+- Proximity flags use GeoJSON geometry intersection and local projected-meter distance checks, with
+  bounding boxes retained only as a candidate prefilter. This is still screening-level context; a
+  later normalized-table pass should move the same relationships into PostGIS
+  `ST_Intersects`/`ST_Distance` queries.
 - Wetlands are capped by `--context-limit`; the default stores only the first 2,000 features from the 18,195-record source.
 - Raw source payloads are stored locally for audit/review, not exposed as public bulk downloads.

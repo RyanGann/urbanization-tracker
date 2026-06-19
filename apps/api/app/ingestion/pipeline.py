@@ -23,6 +23,12 @@ from app.ingestion.sources.huntsville import (
 from app.ingestion.sources.madison_county import (
     DEVELOPMENT_SOURCES as MADISON_COUNTY_DEVELOPMENT_SOURCES,
 )
+from app.processed_store import (
+    read_processed_list,
+    read_processed_payload,
+    write_processed_list,
+    write_processed_payload,
+)
 
 
 def ingest_huntsville(
@@ -317,9 +323,7 @@ def _write_processed_state(
         [
             *(
                 record
-                for record in _read_processed_list(
-                    processed_dir / "staged_development_records.json"
-                )
+                for record in _read_processed_collection("staged_development_records", data_dir)
                 if record.get("source_url") not in source_urls
             ),
             *staged_records,
@@ -330,7 +334,7 @@ def _write_processed_state(
         [
             *(
                 record
-                for record in _read_processed_list(processed_dir / "development_records.json")
+                for record in _read_processed_collection("development_records", data_dir)
                 if record.get("source_url") not in source_urls
             ),
             *published_records,
@@ -339,12 +343,20 @@ def _write_processed_state(
     )
 
     write_json(processed_dir / "raw_records.json", combined_raw_records)
-    write_json(processed_dir / "staged_development_records.json", combined_staged_records)
-    write_json(processed_dir / "development_records.json", combined_published_records)
+    write_processed_list(
+        "staged_development_records",
+        combined_staged_records,
+        data_dir=data_dir,
+    )
+    write_processed_list(
+        "development_records",
+        combined_published_records,
+        data_dir=data_dir,
+    )
     if overlays is not None:
-        write_json(processed_dir / "environmental_overlays.json", overlays)
+        write_processed_list("environmental_overlays", overlays, data_dir=data_dir)
 
-    merged_sources = _merge_source_health(processed_dir, source_health)
+    merged_sources = _merge_source_health(data_dir, source_health)
     health = {
         "run_id": run_id,
         "checked_at": checked_at,
@@ -359,7 +371,7 @@ def _write_processed_state(
             ),
         },
     }
-    write_json(processed_dir / "source_health.json", health)
+    write_processed_payload("source_health", health, data_dir=data_dir)
     return health
 
 
@@ -368,6 +380,10 @@ def _read_processed_list(path: Path) -> list[dict[str, Any]]:
     if not isinstance(payload, list):
         return []
     return [item for item in payload if isinstance(item, dict)]
+
+
+def _read_processed_collection(name: str, data_dir: Path) -> list[dict[str, Any]]:
+    return read_processed_list(name, data_dir=data_dir) or []
 
 
 def _dedupe_raw_records(records: list[dict[str, Any]]) -> list[dict[str, Any]]:
@@ -379,9 +395,10 @@ def _dedupe_raw_records(records: list[dict[str, Any]]) -> list[dict[str, Any]]:
 
 
 def _merge_source_health(
-    processed_dir: Path, source_health: list[dict[str, Any]]
+    data_dir: Path,
+    source_health: list[dict[str, Any]],
 ) -> list[dict[str, Any]]:
-    existing = read_json(processed_dir / "source_health.json", {})
+    existing = read_processed_payload("source_health", data_dir=data_dir, default={})
     merged: dict[str, dict[str, Any]] = {}
     if isinstance(existing, dict) and isinstance(existing.get("sources"), list):
         for source in existing["sources"]:
@@ -407,9 +424,10 @@ def _sha256(payload: dict[str, Any]) -> str:
 
 
 def latest_health(data_dir: Path) -> dict[str, Any]:
-    payload = read_json(
-        data_dir / "processed" / "source_health.json",
-        {"status": "unknown", "sources": [], "records": {}},
+    payload = read_processed_payload(
+        "source_health",
+        data_dir=data_dir,
+        default={"status": "unknown", "sources": [], "records": {}},
     )
     if not isinstance(payload, dict):
         return {"status": "unknown", "sources": [], "records": {}}

@@ -16,6 +16,7 @@ from app.phase3_store import (
     list_public_submissions,
     list_source_documents,
     list_watch_areas,
+    phase3_store_status,
     record_versions_for,
     set_public_submission_status,
 )
@@ -30,6 +31,7 @@ from app.schemas import (
     EnvironmentalOverlay,
     FeatureCollection,
     Jurisdiction,
+    Phase3StoreStatus,
     RecordVersion,
     ReviewDecision,
     ReviewerDecisionImport,
@@ -219,6 +221,11 @@ def get_unsubscribe_watch_area(token: str) -> UnsubscribeReceipt:
 @reviewer_router.get("/alerts", response_model=list[Alert])
 def get_reviewer_alerts() -> list[Alert]:
     return [Alert.model_validate(alert) for alert in list_alerts()]
+
+
+@reviewer_router.get("/phase3-store", response_model=Phase3StoreStatus)
+def get_reviewer_phase3_store_status() -> Phase3StoreStatus:
+    return Phase3StoreStatus.model_validate(phase3_store_status())
 
 
 @reviewer_router.post("/alerts/send", response_model=AlertDeliveryResult)

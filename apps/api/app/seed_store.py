@@ -6,7 +6,7 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
-from app.config import get_settings
+from app.processed_store import read_processed_list, read_processed_payload
 from app.schemas import DevelopmentRecord, EnvironmentalOverlay, StagedDevelopmentRecord
 
 SEED_PATH = Path(__file__).parent / "seed" / "seed_data.json"
@@ -42,50 +42,25 @@ def _ensure_loaded() -> None:
         reset_seed_state(force_seed=False)
 
 
-def _processed_path(name: str) -> Path:
-    return get_settings().ingestion_data_dir / "processed" / name
-
-
 def _load_processed_records() -> list[dict[str, Any]] | None:
-    path = _processed_path("development_records.json")
-    if not path.exists():
-        return None
-    records = json.loads(path.read_text(encoding="utf-8"))
-    if not isinstance(records, list):
-        return None
-    return records
+    return read_processed_list("development_records")
 
 
 def _load_processed_staged_records() -> list[dict[str, Any]] | None:
-    path = _processed_path("staged_development_records.json")
-    if not path.exists():
-        return None
-    records = json.loads(path.read_text(encoding="utf-8"))
-    if not isinstance(records, list):
-        return None
-    return records
+    return read_processed_list("staged_development_records")
 
 
 def _load_processed_overlays() -> list[dict[str, Any]] | None:
-    path = _processed_path("environmental_overlays.json")
-    if not path.exists():
-        return None
-    overlays = json.loads(path.read_text(encoding="utf-8"))
-    if not isinstance(overlays, list):
-        return None
-    return overlays
+    return read_processed_list("environmental_overlays")
 
 
 def load_source_health() -> dict[str, Any]:
-    path = _processed_path("source_health.json")
-    if not path.exists():
-        payload: dict[str, Any] = {"status": "unknown", "sources": [], "records": {}}
-    else:
-        raw_payload = json.loads(path.read_text(encoding="utf-8"))
-        if not isinstance(raw_payload, dict):
-            payload = {"status": "unknown", "sources": [], "records": {}}
-        else:
-            payload = raw_payload
+    payload = read_processed_payload(
+        "source_health",
+        default={"status": "unknown", "sources": [], "records": {}},
+    )
+    if payload is None:
+        payload = {"status": "unknown", "sources": [], "records": {}}
 
     from app.phase3_store import agenda_health
 
