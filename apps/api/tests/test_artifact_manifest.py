@@ -32,3 +32,22 @@ def test_record_artifact_tracks_storage_metadata(tmp_path: Path, monkeypatch) ->
     assert entry["byte_size"] > 0
     assert len(entry["sha256"]) == 64
     assert manifest == [entry]
+
+
+def test_list_artifact_manifest_tolerates_invalid_json(tmp_path: Path) -> None:
+    manifest_path = tmp_path / "processed" / "artifact_manifest.json"
+    manifest_path.parent.mkdir(parents=True)
+    manifest_path.write_text('{"truncated":', encoding="utf-8")
+
+    artifact_path = tmp_path / "raw" / "source" / "sample.geojson"
+    artifact_path.parent.mkdir(parents=True)
+    artifact_path.write_text('{"type":"FeatureCollection","features":[]}', encoding="utf-8")
+
+    entry = record_artifact(
+        data_dir=tmp_path,
+        path=artifact_path,
+        artifact_type="raw_geojson",
+        source_key="sample_source",
+    )
+
+    assert list_artifact_manifest(tmp_path) == [entry]

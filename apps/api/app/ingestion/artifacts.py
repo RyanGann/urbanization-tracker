@@ -42,7 +42,10 @@ def append_jsonl(path: Path, payloads: list[dict[str, Any]]) -> None:
 
 
 def list_artifact_manifest(data_dir: Path) -> list[dict[str, Any]]:
-    payload = read_json(_artifact_manifest_path(data_dir), [])
+    try:
+        payload = read_json(_artifact_manifest_path(data_dir), [])
+    except json.JSONDecodeError:
+        return []
     if not isinstance(payload, list):
         return []
     return [entry for entry in payload if isinstance(entry, dict)]
