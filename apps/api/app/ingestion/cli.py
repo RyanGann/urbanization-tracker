@@ -8,7 +8,7 @@ from app.alert_delivery import send_queued_email_alerts
 from app.config import get_settings
 from app.ingestion.agenda_pipeline import ingest_huntsville_agendas
 from app.ingestion.pipeline import ingest_huntsville, ingest_madison_county
-from app.phase3_store import migrate_artifact_collections_to_postgres
+from app.phase3_store import migrate_artifact_collections_to_postgres, phase3_store_status
 
 
 def main() -> None:
@@ -73,6 +73,10 @@ def main() -> None:
         "migrate-phase3-artifacts-to-postgres",
         help="Copy existing Phase 3 JSON collection artifacts into the Postgres store.",
     )
+    subparsers.add_parser(
+        "phase3-store-status",
+        help="Report Phase 3 operational collection counts for artifact and Postgres stores.",
+    )
     send_alerts = subparsers.add_parser(
         "send-alerts",
         help="Deliver queued email alerts through the configured SMTP provider.",
@@ -106,6 +110,9 @@ def main() -> None:
         print(json.dumps(result, indent=2, sort_keys=True))
     elif args.command == "migrate-phase3-artifacts-to-postgres":
         result = migrate_artifact_collections_to_postgres()
+        print(json.dumps(result, indent=2, sort_keys=True))
+    elif args.command == "phase3-store-status":
+        result = phase3_store_status()
         print(json.dumps(result, indent=2, sort_keys=True))
     elif args.command == "send-alerts":
         result = send_queued_email_alerts(limit=args.limit)

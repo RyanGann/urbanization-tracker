@@ -76,6 +76,9 @@ Data persistence:
 - Phase 3 operational collections can run from Postgres with `PHASE3_STORE_BACKEND=postgres`.
   Before switching an existing environment, run `make db-migrate` and
   `make migrate-phase3-postgres` from an environment that can reach the deployed database.
+- Verify the active Phase 3 store with `make phase3-store-status` or
+  `GET /api/reviewer/phase3-store`. Any collection with `requires_migration=true` still has JSON
+  artifacts that have not been copied into Postgres.
 - Bulk raw source artifacts, source PDFs, and generated map artifacts should still move to object
   storage before hosted automated ingestion is considered complete.
 

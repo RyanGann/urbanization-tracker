@@ -1,7 +1,8 @@
 from functools import lru_cache
 from pathlib import Path
+from typing import Literal
 
-from pydantic import Field
+from pydantic import Field, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -32,7 +33,7 @@ class Settings(BaseSettings):
             "development; set in production or protect the routes at the edge."
         ),
     )
-    phase3_store_backend: str = Field(
+    phase3_store_backend: Literal["artifact", "postgres"] = Field(
         default="artifact",
         description="Phase 3 store backend: 'artifact' for JSON files or 'postgres' for DB rows.",
     )
@@ -56,6 +57,13 @@ class Settings(BaseSettings):
     smtp_use_tls: bool = True
 
     model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8")
+
+    @field_validator("phase3_store_backend", mode="before")
+    @classmethod
+    def normalize_phase3_store_backend(cls, value: object) -> object:
+        if isinstance(value, str):
+            return value.strip().lower()
+        return value
 
     @property
     def cors_origin_list(self) -> list[str]:
