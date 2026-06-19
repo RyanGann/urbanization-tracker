@@ -58,7 +58,10 @@ make ingest-huntsville
 make ingest-huntsville-agendas
 ```
 
-The API will serve processed ingestion artifacts from `data/processed/` when they exist, and otherwise falls back to seed/demo data.
+The API will serve processed ingestion output when it exists, and otherwise falls back to seed/demo
+data. Local development uses `data/processed/`; hosted environments can use
+`PROCESSED_STORE_BACKEND=postgres` for canonical processed collections while raw payloads remain
+artifacts.
 
 ## Important Caveat
 

@@ -37,6 +37,13 @@ class Settings(BaseSettings):
         default="artifact",
         description="Phase 3 store backend: 'artifact' for JSON files or 'postgres' for DB rows.",
     )
+    processed_store_backend: Literal["artifact", "postgres"] = Field(
+        default="artifact",
+        description=(
+            "Canonical processed-ingestion store backend: 'artifact' for JSON files or "
+            "'postgres' for DB rows."
+        ),
+    )
     public_base_url: str = Field(
         default="http://localhost:5173",
         description="Public web origin used for absolute links in outbound alerts.",
@@ -58,9 +65,9 @@ class Settings(BaseSettings):
 
     model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8")
 
-    @field_validator("phase3_store_backend", mode="before")
+    @field_validator("phase3_store_backend", "processed_store_backend", mode="before")
     @classmethod
-    def normalize_phase3_store_backend(cls, value: object) -> object:
+    def normalize_store_backend(cls, value: object) -> object:
         if isinstance(value, str):
             return value.strip().lower()
         return value

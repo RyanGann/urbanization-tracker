@@ -52,6 +52,7 @@ API service:
   - `INGESTION_DATA_DIR`: `/app/data`.
   - `CORS_ORIGINS`: production web origin.
   - `REVIEWER_API_TOKEN`: generated secret shared only with reviewers.
+  - `PROCESSED_STORE_BACKEND`: `postgres`.
   - `PHASE3_STORE_BACKEND`: `postgres`.
   - `PUBLIC_BASE_URL`: production origin used in record and unsubscribe links.
   - `ALERT_DELIVERY_ENABLED`: `true` only after SMTP credentials are configured.
@@ -69,10 +70,14 @@ Web static site:
 
 Data persistence:
 
-- The current API can read processed ingestion artifacts from `INGESTION_DATA_DIR`.
+- The current API can read canonical processed ingestion collections from Postgres with
+  `PROCESSED_STORE_BACKEND=postgres`; local artifact mode still reads `INGESTION_DATA_DIR`.
 - Render service filesystems are ephemeral unless a persistent disk is attached.
 - A disk can be attached to the API service at `/app/data`, but it cannot be shared with a Render
   cron job.
+- Canonical processed collections can run from Postgres with `PROCESSED_STORE_BACKEND=postgres`.
+  Before switching an existing environment, run `make db-migrate` and
+  `make migrate-processed-postgres` from an environment that can reach the deployed database.
 - Phase 3 operational collections can run from Postgres with `PHASE3_STORE_BACKEND=postgres`.
   Before switching an existing environment, run `make db-migrate` and
   `make migrate-phase3-postgres` from an environment that can reach the deployed database.

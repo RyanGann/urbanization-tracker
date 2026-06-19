@@ -91,7 +91,11 @@ make ingest-huntsville-agendas
 make ingest-madison-county
 ```
 
-After ingestion, the API serves processed artifacts from `data/processed/`, source health from `/api/source-health`, agenda source documents from `/api/source-documents`, and reviewer-gated candidates from `/api/reviewer/staged-records`.
+After ingestion, the API serves canonical processed records, source health from
+`/api/source-health`, agenda source documents from `/api/source-documents`, and reviewer-gated
+candidates from `/api/reviewer/staged-records`. Local development stores canonical processed output
+under `data/processed/`; hosted environments can store the canonical processed collections in
+Postgres with `PROCESSED_STORE_BACKEND=postgres`.
 
 Inspect configured jurisdictions and connector health:
 
@@ -100,11 +104,14 @@ curl http://localhost:8000/api/jurisdictions
 curl http://localhost:8000/api/connector-health
 ```
 
-Move Phase 3 operational artifacts into Postgres when preparing a durable environment:
+Move processed and Phase 3 operational artifacts into Postgres when preparing a durable
+environment:
 
 ```bash
 make db-migrate
+make migrate-processed-postgres
 make migrate-phase3-postgres
+make processed-store-status
 make phase3-store-status
 ```
 
@@ -112,13 +119,15 @@ If you are using the Docker Compose database and API service, run:
 
 ```bash
 docker compose exec api alembic upgrade head
+make docker-migrate-processed-postgres
 make docker-migrate-phase3-postgres
 ```
 
-Set `PHASE3_STORE_BACKEND=postgres` for the API and ingestion jobs after migration. Leave it as
-`artifact` for local JSON-file development. Hosted environments should treat Postgres as the
-operational store for reviewer-facing Phase 3 data; raw PDFs, raw GeoJSON payloads, and extracted
-text remain file artifacts until object storage is configured.
+Set `PROCESSED_STORE_BACKEND=postgres` and `PHASE3_STORE_BACKEND=postgres` for the API and
+ingestion jobs after migration. Leave them as `artifact` for local JSON-file development. Hosted
+environments should treat Postgres as the operational store for reviewer-facing Phase 3 data; raw
+PDFs, raw GeoJSON payloads, and extracted text remain file artifacts until object storage is
+configured.
 
 ## Phase 1 Data Boundaries
 
@@ -130,6 +139,9 @@ text remain file artifacts until object storage is configured.
 ## Phase 2 Data Boundaries
 
 - `data/` contains live fetched source artifacts and is ignored by git.
+- `PROCESSED_STORE_BACKEND=postgres` stores canonical processed development records, staged
+  records, environmental overlays, and source health in Postgres instead of
+  `data/processed/*.json`.
 - New Subdivisions polygons are treated as publishable public records with source attribution.
 - Building Permits are point context with low geometry confidence, not footprints.
 - Proximity flags are screening-level context and should not be treated as legal or environmental determinations.
