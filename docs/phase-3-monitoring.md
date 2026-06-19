@@ -46,6 +46,21 @@ page, then falls back to `curl` archive fetching, then to a short curated list o
 agenda PDF URLs documented during source review. Direct agenda PDFs are still fetched from the City
 site and extracted with PyMuPDF.
 
+The Render Blueprint includes a starter weekday cron job named
+`urbanization-tracker-agenda-ingestion`:
+
+```bash
+python -m app.ingestion.cli ingest-huntsville-agendas --data-dir /app/data --document-limit 3
+```
+
+It runs with `PHASE3_STORE_BACKEND=postgres` so reviewer-facing source documents, staged agenda
+records, and agenda health survive ephemeral cron containers. Duplicate-candidate generation still
+reads published records from `data_dir/processed/development_records.json`; when
+`PROCESSED_STORE_BACKEND=postgres` is used without that artifact file, hosted agenda cron runs may
+produce empty or incomplete duplicate candidates until the duplicate lookup is moved to the durable
+processed store. Raw PDFs and extracted text under `/app/data/` remain temporary until persistent
+disk or object storage is configured.
+
 ## API Surface
 
 - `GET /api/source-documents`
@@ -57,6 +72,7 @@ site and extracted with PyMuPDF.
 - `POST /api/reviewer/alerts/send`
 - `GET /api/reviewer/decisions/export`
 - `POST /api/reviewer/decisions/import`
+- `GET /api/reviewer/phase3-store`
 - `POST /api/public-submissions`
 - `POST /api/watch-areas`
 - `GET /api/change-log`
@@ -70,6 +86,16 @@ By default, Phase 3 collections are stored as `data/processed/phase3_*.json` art
 `PHASE3_STORE_BACKEND=postgres` to store the same operational collections in Postgres via
 `phase3_collection_items`. Use `make migrate-phase3-postgres` to copy existing local JSON artifacts
 into the database before switching a persistent environment.
+
+Inspect the active backend and per-collection migration status with:
+
+```bash
+make phase3-store-status
+```
+
+In hosted environments, `PHASE3_STORE_BACKEND=postgres` should be treated as the operational default.
+Raw agenda PDFs, extracted text, and raw source payloads remain file artifacts for now; database rows
+store the reviewer-facing records and links back to those artifacts.
 
 ## Alert Scope
 

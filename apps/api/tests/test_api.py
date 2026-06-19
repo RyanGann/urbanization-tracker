@@ -261,6 +261,16 @@ def test_record_versions_and_change_log_are_available() -> None:
     assert change_log_response.json()
 
 
+def test_reviewer_phase3_store_status_reports_memory_backend() -> None:
+    response = client.get("/api/reviewer/phase3-store")
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["backend"] == "memory"
+    assert body["database_first"] is False
+    assert any(collection["name"] == "public_submissions" for collection in body["collections"])
+
+
 def test_reviewer_api_requires_bearer_token_when_configured(monkeypatch) -> None:
     monkeypatch.setenv("REVIEWER_API_TOKEN", "test-reviewer-token")
     get_settings.cache_clear()
