@@ -6,8 +6,12 @@ from typing import Any, Literal
 from urllib.parse import urlparse
 
 from sqlalchemy import create_engine, text
+from sqlalchemy.engine import Engine
 
 from app.config import Settings, get_settings
+
+DATABASE_PROBE_CONNECT_TIMEOUT_SECONDS = 5
+DATABASE_PROBE_STATEMENT_TIMEOUT_MS = 5_000
 
 PreflightStatus = Literal["pass", "warn", "fail", "skip"]
 
@@ -132,9 +136,9 @@ def _check_cors_origins(settings: Settings) -> PreflightCheck:
             summary="CORS_ORIGINS must not allow every origin in production.",
         )
     local_origins = [origin for origin in origins if _is_local_url(origin)]
-    insecure_origins = [origin for origin in origins if not _is_https_url(origin)]
-    if local_origins or insecure_origins:
-        detail = ", ".join(sorted(set(local_origins + insecure_origins)))
+    invalid_origins = [origin for origin in origins if not _is_https_origin(origin)]
+    if local_origins or invalid_origins:
+        detail = ", ".join(sorted(set(local_origins + invalid_origins)))
         return PreflightCheck(
             key="cors_origins",
             status="fail",
@@ -149,8 +153,8 @@ def _check_cors_origins(settings: Settings) -> PreflightCheck:
 
 
 def _check_public_base_url(settings: Settings) -> PreflightCheck:
-    public_base_url = settings.public_base_url.rstrip("/")
-    if not _is_https_url(public_base_url) or _is_local_url(public_base_url):
+    public_base_url = settings.public_base_url
+    if not _is_https_origin(public_base_url) or _is_local_url(public_base_url):
         return PreflightCheck(
             key="public_base_url",
             status="fail",
@@ -267,7 +271,7 @@ def _check_database(
 
 
 def probe_database(settings: Settings) -> DatabaseProbeResult:
-    engine = create_engine(settings.sqlalchemy_database_url, pool_pre_ping=True)
+    engine = _create_database_probe_engine(settings)
     try:
         with engine.connect() as connection:
             row = connection.execute(
@@ -296,6 +300,17 @@ def probe_database(settings: Settings) -> DatabaseProbeResult:
         engine.dispose()
 
 
+def _create_database_probe_engine(settings: Settings) -> Engine:
+    return create_engine(
+        settings.sqlalchemy_database_url,
+        pool_pre_ping=True,
+        connect_args={
+            "connect_timeout": DATABASE_PROBE_CONNECT_TIMEOUT_SECONDS,
+            "options": f"-c statement_timeout={DATABASE_PROBE_STATEMENT_TIMEOUT_MS}",
+        },
+    )
+
+
 def _aggregate_status(checks: list[PreflightCheck]) -> PreflightStatus:
     if any(check.status == "fail" for check in checks):
         return "fail"
@@ -304,9 +319,16 @@ def _aggregate_status(checks: list[PreflightCheck]) -> PreflightStatus:
     return "pass"
 
 
-def _is_https_url(value: str) -> bool:
+def _is_https_origin(value: str) -> bool:
     parsed = urlparse(value)
-    return parsed.scheme == "https" and bool(parsed.netloc)
+    return (
+        parsed.scheme == "https"
+        and bool(parsed.netloc)
+        and parsed.path == ""
+        and not parsed.params
+        and not parsed.query
+        and not parsed.fragment
+    )
 
 
 def _is_local_url(value: str) -> bool:

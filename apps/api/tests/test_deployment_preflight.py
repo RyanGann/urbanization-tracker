@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from app import deployment_preflight
 from app.config import Settings
 from app.deployment_preflight import DatabaseProbeResult, run_deployment_preflight
 
@@ -76,6 +77,72 @@ def test_deployment_preflight_fails_without_postgis() -> None:
     database_check = _check_for(result, "database_probe")
     assert database_check["status"] == "fail"
     assert "PostGIS" in database_check["summary"]
+
+
+def test_deployment_preflight_rejects_non_origin_cors_entries() -> None:
+    result = run_deployment_preflight(
+        settings=production_settings(
+            cors_origins=(
+                "https://tracker.example.test,"
+                "https://tracker.example.test/,"
+                "https://tracker.example.test/app,"
+                "https://tracker.example.test?preview=1"
+            )
+        ),
+        check_database=False,
+    )
+
+    cors_check = _check_for(result, "cors_origins")
+    assert cors_check["status"] == "fail"
+    assert "https://tracker.example.test/" in cors_check["detail"]
+    assert "https://tracker.example.test/app" in cors_check["detail"]
+    assert "https://tracker.example.test?preview=1" in cors_check["detail"]
+
+
+def test_deployment_preflight_rejects_non_origin_public_base_url() -> None:
+    result = run_deployment_preflight(
+        settings=production_settings(public_base_url="https://tracker.example.test/app?preview=1"),
+        check_database=False,
+    )
+
+    public_base_url_check = _check_for(result, "public_base_url")
+    assert public_base_url_check["status"] == "fail"
+    assert "https://tracker.example.test/app?preview=1" in public_base_url_check["detail"]
+
+
+def test_probe_database_uses_bounded_timeouts(monkeypatch) -> None:
+    calls: list[dict[str, object]] = []
+
+    def fake_create_engine(url: str, **kwargs: object) -> object:
+        calls.append({"url": url, **kwargs})
+
+        class FakeEngine:
+            def connect(self) -> object:
+                raise RuntimeError("stop before network")
+
+            def dispose(self) -> None:
+                pass
+
+        return FakeEngine()
+
+    monkeypatch.setattr(deployment_preflight, "create_engine", fake_create_engine)
+
+    result = deployment_preflight.probe_database(production_settings())
+
+    assert result.reachable is False
+    assert calls == [
+        {
+            "url": production_settings().sqlalchemy_database_url,
+            "pool_pre_ping": True,
+            "connect_args": {
+                "connect_timeout": deployment_preflight.DATABASE_PROBE_CONNECT_TIMEOUT_SECONDS,
+                "options": (
+                    "-c statement_timeout="
+                    f"{deployment_preflight.DATABASE_PROBE_STATEMENT_TIMEOUT_MS}"
+                ),
+            },
+        }
+    ]
 
 
 def _status_for(result: dict[str, object], key: str) -> object:
