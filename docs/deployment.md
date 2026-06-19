@@ -89,10 +89,10 @@ Hosted ingestion jobs:
 
 | Job | Starter schedule | Command | Durable store |
 | --- | --- | --- | --- |
-| `urbanization-tracker-huntsville-ingestion` | `17 8 * * *` | `ingest-huntsville --data-dir /app/data` | `processed_collection_items` |
-| `urbanization-tracker-agenda-ingestion` | `43 9 * * 1-5` | `ingest-huntsville-agendas --data-dir /app/data --document-limit 3` | `phase3_collection_items` |
-| `urbanization-tracker-madison-county-ingestion` | `29 11 * * 1` | `ingest-madison-county --data-dir /app/data` | `processed_collection_items` |
-| `urbanization-tracker-alert-delivery` | `*/15 * * * *` | `send-alerts` | `phase3_collection_items` |
+| `urbanization-tracker-huntsville-ingestion` | `17 8 * * *` | `sh -c "alembic upgrade head && python -m app.ingestion.cli ingest-huntsville --data-dir /app/data"` | `processed_collection_items` |
+| `urbanization-tracker-agenda-ingestion` | `43 9 * * 1-5` | `sh -c "alembic upgrade head && python -m app.ingestion.cli ingest-huntsville-agendas --data-dir /app/data --document-limit 3"` | `phase3_collection_items` |
+| `urbanization-tracker-madison-county-ingestion` | `29 11 * * 1` | `sh -c "alembic upgrade head && python -m app.ingestion.cli ingest-madison-county --data-dir /app/data"` | `processed_collection_items` |
+| `urbanization-tracker-alert-delivery` | `*/15 * * * *` | `sh -c "alembic upgrade head && python -m app.ingestion.cli send-alerts"` | `phase3_collection_items` |
 
 These schedules are starter values intended to avoid top-of-hour bursts. Keep
 `PROCESSED_STORE_BACKEND=postgres` and `PHASE3_STORE_BACKEND=postgres` on cron jobs so the useful

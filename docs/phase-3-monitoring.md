@@ -54,9 +54,12 @@ python -m app.ingestion.cli ingest-huntsville-agendas --data-dir /app/data --doc
 ```
 
 It runs with `PHASE3_STORE_BACKEND=postgres` so reviewer-facing source documents, staged agenda
-records, duplicate signals, and agenda health survive ephemeral cron containers. Raw PDFs and
-extracted text under `/app/data/` remain temporary until persistent disk or object storage is
-configured.
+records, and agenda health survive ephemeral cron containers. Duplicate-candidate generation still
+reads published records from `data_dir/processed/development_records.json`; when
+`PROCESSED_STORE_BACKEND=postgres` is used without that artifact file, hosted agenda cron runs may
+produce empty or incomplete duplicate candidates until the duplicate lookup is moved to the durable
+processed store. Raw PDFs and extracted text under `/app/data/` remain temporary until persistent
+disk or object storage is configured.
 
 ## API Surface
 
