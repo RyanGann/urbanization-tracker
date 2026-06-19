@@ -241,30 +241,35 @@ def _projected_geometries_intersect(
 
 
 def _projected_geometry_distance(left: _ProjectedGeometry, right: _ProjectedGeometry) -> float:
-    distances: list[float] = []
-    distances.extend(
-        _point_distance(left_point, right_point)
-        for left_point in left.points
-        for right_point in right.points
-    )
-    distances.extend(
-        _point_segment_distance(point, segment)
-        for point in left.points
-        for segment in right.segments
-    )
-    distances.extend(
-        _point_segment_distance(point, segment)
-        for point in right.points
-        for segment in left.segments
-    )
-    distances.extend(
-        _segment_distance(left_segment, right_segment)
-        for left_segment in left.segments
-        for right_segment in right.segments
-    )
-    if not distances:
-        return math.inf
-    return min(distances)
+    minimum_distance = math.inf
+
+    def track(distance: float) -> bool:
+        nonlocal minimum_distance
+        if distance < minimum_distance:
+            minimum_distance = distance
+        return minimum_distance <= EPSILON
+
+    for left_point in left.points:
+        for right_point in right.points:
+            if track(_point_distance(left_point, right_point)):
+                return 0.0
+
+    for point in left.points:
+        for segment in right.segments:
+            if track(_point_segment_distance(point, segment)):
+                return 0.0
+
+    for point in right.points:
+        for segment in left.segments:
+            if track(_point_segment_distance(point, segment)):
+                return 0.0
+
+    for left_segment in left.segments:
+        for right_segment in right.segments:
+            if track(_segment_distance(left_segment, right_segment)):
+                return 0.0
+
+    return minimum_distance
 
 
 def _segments_intersect(left: Segment, right: Segment) -> bool:
