@@ -1,6 +1,6 @@
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, FastAPI, HTTPException, Query
+from fastapi import APIRouter, Depends, FastAPI, HTTPException, Query, Response
 from fastapi.middleware.cors import CORSMiddleware
 
 from app.alert_delivery import send_queued_email_alerts
@@ -59,6 +59,7 @@ from app.seed_store import (
     load_source_health,
     set_staged_review_status,
 )
+from app.source_monitoring import build_source_health_monitor
 
 settings = get_settings()
 reviewer_router = APIRouter(
@@ -79,6 +80,17 @@ app.add_middleware(
 @app.get("/health")
 def health() -> dict[str, str]:
     return {"status": "ok", "service": "urbanization-tracker-api"}
+
+
+@app.get("/health/source-health")
+def source_health_monitor(
+    response: Response,
+    max_age_hours: Annotated[int | None, Query(ge=1, le=720)] = None,
+) -> dict[str, object]:
+    payload = build_source_health_monitor(max_age_hours=max_age_hours)
+    if payload["status"] != "healthy":
+        response.status_code = 503
+    return payload
 
 
 @app.get("/api/development-records", response_model=DevelopmentRecordCollection)
