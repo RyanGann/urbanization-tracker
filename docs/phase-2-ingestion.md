@@ -79,6 +79,9 @@ If no processed output exists, the API falls back to Phase 1 seed/demo data.
 
 - New Subdivisions polygons are auto-published with high geometry confidence because the source provides polygons.
 - Building Permits are auto-published as issued/current context with low geometry confidence because the source provides points, not footprints.
-- Proximity flags use conservative bounding-box distance/intersection approximations in EPSG:4326. This is testable and useful for MVP screening, but should be replaced with PostGIS geometry/geography calculations in a later hardening pass.
+- Proximity flags use GeoJSON geometry intersection and local projected-meter distance checks, with
+  bounding boxes retained only as a candidate prefilter. This is still screening-level context; a
+  later normalized-table pass should move the same relationships into PostGIS
+  `ST_Intersects`/`ST_Distance` queries.
 - Wetlands are capped by `--context-limit`; the default stores only the first 2,000 features from the 18,195-record source.
 - Raw source payloads are stored locally for audit/review, not exposed as public bulk downloads.
