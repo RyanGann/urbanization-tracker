@@ -6,6 +6,7 @@ from pathlib import Path
 
 from app.alert_delivery import send_queued_email_alerts
 from app.config import get_settings
+from app.deployment_preflight import run_deployment_preflight
 from app.ingestion.agenda_pipeline import ingest_huntsville_agendas
 from app.ingestion.pipeline import ingest_huntsville, ingest_madison_county
 from app.phase3_store import migrate_artifact_collections_to_postgres, phase3_store_status
@@ -99,6 +100,15 @@ def main() -> None:
         default=None,
         help="Maximum queued alerts to send in this run.",
     )
+    deployment_preflight = subparsers.add_parser(
+        "deployment-preflight",
+        help="Validate production launch configuration and PostGIS readiness.",
+    )
+    deployment_preflight.add_argument(
+        "--skip-database",
+        action="store_true",
+        help="Skip live database connectivity and PostGIS checks.",
+    )
 
     args = parser.parse_args()
     if args.command == "ingest-huntsville":
@@ -135,6 +145,11 @@ def main() -> None:
     elif args.command == "send-alerts":
         result = send_queued_email_alerts(limit=args.limit)
         print(json.dumps(result, indent=2, sort_keys=True))
+    elif args.command == "deployment-preflight":
+        result = run_deployment_preflight(check_database=not args.skip_database)
+        print(json.dumps(result, indent=2, sort_keys=True))
+        if result["status"] == "fail":
+            raise SystemExit(1)
 
 
 if __name__ == "__main__":
