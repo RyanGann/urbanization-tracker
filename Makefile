@@ -3,7 +3,7 @@ SHELL := /bin/bash
 API_DIR := apps/api
 WEB_DIR := apps/web
 
-.PHONY: install install-api install-web dev dev-api dev-web docker-up docker-down db-migrate backup-db ingest-huntsville ingest-huntsville-agendas ingest-madison-county migrate-phase3-postgres docker-migrate-phase3-postgres migrate-processed-postgres docker-migrate-processed-postgres processed-store-status send-alerts lint typecheck test test-api test-web test-performance e2e build clean
+.PHONY: install install-api install-web dev dev-api dev-web docker-up docker-down db-migrate backup-db ingest-huntsville ingest-huntsville-agendas ingest-madison-county migrate-phase3-postgres docker-migrate-phase3-postgres phase3-store-status migrate-processed-postgres docker-migrate-processed-postgres processed-store-status send-alerts lint typecheck test test-api test-web test-performance e2e build clean
 
 install: install-api install-web
 
@@ -56,6 +56,9 @@ docker-migrate-processed-postgres:
 
 processed-store-status:
 	cd $(API_DIR) && . .venv/bin/activate && python -m app.ingestion.cli processed-store-status
+
+phase3-store-status:
+	cd $(API_DIR) && . .venv/bin/activate && python -m app.ingestion.cli phase3-store-status
 
 send-alerts:
 	cd $(API_DIR) && . .venv/bin/activate && python -m app.ingestion.cli send-alerts
