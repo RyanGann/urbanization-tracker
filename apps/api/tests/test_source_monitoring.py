@@ -52,6 +52,25 @@ def test_source_health_monitor_marks_stale_sources_degraded() -> None:
     assert "stale:49.0h" in payload["sources"][0]["issues"]
 
 
+def test_source_health_monitor_preserves_zero_hour_override() -> None:
+    now = datetime(2026, 5, 21, 12, 0, tzinfo=UTC)
+    payload = build_source_health_monitor(
+        health_rows=[
+            _health_row(
+                key="huntsville_new_subdivisions",
+                status="healthy",
+                last_checked_at=(now - timedelta(minutes=1)).isoformat(),
+            )
+        ],
+        max_age_hours=0,
+        now=now,
+    )
+
+    assert payload["max_age_hours"] == 0
+    assert payload["status"] == "degraded"
+    assert "stale:0.02h" in payload["sources"][0]["issues"]
+
+
 def test_source_health_monitor_marks_errors_degraded() -> None:
     now = datetime(2026, 5, 21, 12, 0, tzinfo=UTC)
     payload = build_source_health_monitor(
