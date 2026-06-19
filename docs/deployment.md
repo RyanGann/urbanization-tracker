@@ -34,7 +34,8 @@ The repository includes a starter [render.yaml](../render.yaml) Blueprint with:
 - Docker API service.
 - Static Vite frontend.
 - Managed Render Postgres database.
-- Cron job for bounded alert delivery.
+- Cron jobs for Huntsville ArcGIS ingestion, Huntsville agenda PDF ingestion, Madison County
+  ingestion, and bounded alert delivery.
 
 Render prompts for `sync: false` values during initial Blueprint creation. Set `VITE_API_BASE_URL`
 to the deployed API origin and `PUBLIC_BASE_URL` to the public web origin or an origin that routes
@@ -87,6 +88,21 @@ Data persistence:
 - Bulk raw source artifacts, source PDFs, and generated map artifacts should still move to object
   storage before hosted automated ingestion is considered complete.
 
+Hosted ingestion jobs:
+
+| Job | Starter schedule | Command | Durable store |
+| --- | --- | --- | --- |
+| `urbanization-tracker-huntsville-ingestion` | `17 8 * * *` | `sh -c "alembic upgrade head && python -m app.ingestion.cli ingest-huntsville --data-dir /app/data"` | `processed_collection_items` |
+| `urbanization-tracker-agenda-ingestion` | `43 9 * * 1-5` | `sh -c "alembic upgrade head && python -m app.ingestion.cli ingest-huntsville-agendas --data-dir /app/data --document-limit 3"` | `phase3_collection_items` |
+| `urbanization-tracker-madison-county-ingestion` | `29 11 * * 1` | `sh -c "alembic upgrade head && python -m app.ingestion.cli ingest-madison-county --data-dir /app/data"` | `processed_collection_items` |
+| `urbanization-tracker-alert-delivery` | `*/15 * * * *` | `sh -c "alembic upgrade head && python -m app.ingestion.cli send-alerts"` | `phase3_collection_items` |
+
+These schedules are starter values intended to avoid top-of-hour bursts. Keep
+`PROCESSED_STORE_BACKEND=postgres` and `PHASE3_STORE_BACKEND=postgres` on cron jobs so the useful
+published/staged state survives across ephemeral cron containers. The raw PDFs, raw ArcGIS payloads,
+and extracted text written under `/app/data` are still temporary unless a persistent disk or object
+storage sink is added.
+
 ## Option Matrix
 
 Render is the recommendation for the alpha because it gives managed services, Docker support, static
@@ -111,8 +127,10 @@ Auth now would add an account model before the product needs one.
 
 - Set `REVIEWER_API_TOKEN` and verify private reviewer API routes return `401` without it.
 - Put `/review` and `/api/reviewer/*` behind an edge access policy.
-- Decide whether the first public alpha uses seed/demo data, a manually uploaded artifact snapshot,
-  or a short database-persistence pass for ingestion output.
+- Run `make migrate-processed-postgres` and `make migrate-phase3-postgres` before enabling hosted
+  cron jobs against an existing artifact-backed environment.
+- Decide whether the first public alpha enables scheduled ingestion immediately or starts from a
+  manually reviewed database snapshot.
 - Configure database backups and PostGIS.
 - For manual database backups, run:
 
