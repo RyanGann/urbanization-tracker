@@ -754,6 +754,60 @@ button {
   font-size: 14px;
 }
 
+.operations-panel {
+  margin-bottom: 14px;
+}
+
+.operations-grid {
+  padding: 12px;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(260px, auto);
+  gap: 12px;
+  align-items: center;
+}
+
+.operation-group .button-row {
+  margin-top: 0;
+}
+
+.file-action {
+  position: relative;
+  overflow: hidden;
+}
+
+.file-action input {
+  position: absolute;
+  inset: 0;
+  opacity: 0;
+  cursor: pointer;
+}
+
+.inline-field {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  color: #36454d;
+  font-size: 13px;
+  font-weight: 750;
+}
+
+.inline-field input {
+  width: 74px;
+  min-height: 36px;
+  padding: 7px 8px;
+  border: 1px solid #cfd8d0;
+  border-radius: 7px;
+  color: #1d2b31;
+  background: #fbfcfa;
+}
+
+.alert-delivery-control {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  align-items: center;
+}
+
 .compact-list {
   padding: 10px;
   display: grid;
@@ -930,7 +984,8 @@ button {
   .detail-layout,
   .detail-facts,
   .phase3-grid,
-  .reviewer-shell .phase3-grid {
+  .reviewer-shell .phase3-grid,
+  .operations-grid {
     grid-template-columns: 1fr;
   }
 
@@ -939,7 +994,8 @@ button {
   }
 
   .review-header,
-  .review-card-header {
+  .review-card-header,
+  .alert-delivery-control {
     align-items: flex-start;
     flex-direction: column;
   }

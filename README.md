@@ -26,6 +26,7 @@ This repository is now through Phase 4: a Huntsville alpha with live ArcGIS inge
 
 - [v0.1-alpha Release Note](docs/releases/v0.1-alpha.md)
 - [Architecture](docs/architecture.md)
+- [Next Steps](docs/next-steps.md)
 - [Huntsville Data Sources](docs/data-sources/huntsville-al.md)
 - [Implementation Checklist](docs/implementation-checklist.md)
 - [Follow-Up Codex Prompts](docs/follow-up-prompts.md)
@@ -58,7 +59,10 @@ make ingest-huntsville
 make ingest-huntsville-agendas
 ```
 
-The API will serve processed ingestion artifacts from `data/processed/` when they exist, and otherwise falls back to seed/demo data.
+The API will serve processed ingestion output when it exists, and otherwise falls back to seed/demo
+data. Local development uses `data/processed/`; hosted environments can use
+`PROCESSED_STORE_BACKEND=postgres` for canonical processed collections while raw payloads remain
+artifacts.
 
 ## Important Caveat
 

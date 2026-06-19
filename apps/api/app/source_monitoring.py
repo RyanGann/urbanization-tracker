@@ -18,7 +18,7 @@ def build_source_health_monitor(
 ) -> dict[str, Any]:
     settings = get_settings()
     checked_at = now or datetime.now(UTC)
-    max_age = max_age_hours or settings.source_health_max_age_hours
+    max_age = max_age_hours if max_age_hours is not None else settings.source_health_max_age_hours
     rows = list(
         health_rows
         if health_rows is not None

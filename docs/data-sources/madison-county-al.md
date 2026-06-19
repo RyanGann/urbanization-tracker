@@ -16,6 +16,17 @@
 make ingest-madison-county
 ```
 
+The Render Blueprint includes a starter weekly cron job named
+`urbanization-tracker-madison-county-ingestion`:
+
+```bash
+python -m app.ingestion.cli ingest-madison-county --data-dir /app/data
+```
+
+It runs with `PROCESSED_STORE_BACKEND=postgres` so canonical Madison County records survive
+ephemeral cron containers. Raw ArcGIS payloads under `/app/data/raw/` remain temporary until
+persistent disk or object storage is configured.
+
 The layer is a recorded subdivision context source. Published records are normalized as
 `completed` subdivision records because the source fields describe filed subdivision plats rather
 than current applications or permits. Public UI copy should keep that caveat visible and avoid

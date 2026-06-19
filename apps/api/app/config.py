@@ -1,7 +1,8 @@
 from functools import lru_cache
 from pathlib import Path
+from typing import Literal
 
-from pydantic import Field
+from pydantic import Field, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -25,6 +26,13 @@ class Settings(BaseSettings):
         default=48,
         description="Maximum age for active source-health checks before monitor endpoints fail.",
     )
+    artifact_storage_base_uri: str | None = Field(
+        default=None,
+        description=(
+            "Optional URI prefix for raw/source artifact references when files are mirrored "
+            "to object storage."
+        ),
+    )
     cors_origins: str = Field(
         default="http://localhost:5173,http://127.0.0.1:5173",
         description="Comma-separated list of allowed browser origins.",
@@ -36,9 +44,16 @@ class Settings(BaseSettings):
             "development; set in production or protect the routes at the edge."
         ),
     )
-    phase3_store_backend: str = Field(
+    phase3_store_backend: Literal["artifact", "postgres"] = Field(
         default="artifact",
         description="Phase 3 store backend: 'artifact' for JSON files or 'postgres' for DB rows.",
+    )
+    processed_store_backend: Literal["artifact", "postgres"] = Field(
+        default="artifact",
+        description=(
+            "Canonical processed-ingestion store backend: 'artifact' for JSON files or "
+            "'postgres' for DB rows."
+        ),
     )
     public_base_url: str = Field(
         default="http://localhost:5173",
@@ -60,6 +75,13 @@ class Settings(BaseSettings):
     smtp_use_tls: bool = True
 
     model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8")
+
+    @field_validator("phase3_store_backend", "processed_store_backend", mode="before")
+    @classmethod
+    def normalize_store_backend(cls, value: object) -> object:
+        if isinstance(value, str):
+            return value.strip().lower()
+        return value
 
     @property
     def cors_origin_list(self) -> list[str]:

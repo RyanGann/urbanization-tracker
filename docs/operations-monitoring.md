@@ -8,9 +8,9 @@ The API exposes two health surfaces with different jobs:
   ingestion jobs are expected to run.
 
 `/health/source-health` returns `200` when every active configured source has a healthy latest run,
-no recorded errors, and a `checked_at` value inside the freshness window. It returns `503` when any
+no recorded errors, and a `last_checked_at` value inside the freshness window. It returns `503` when any
 active source has never run, reports a failing/degraded status, has validation errors, has an invalid
-timestamp, or is stale.
+`last_checked_at` timestamp, or is stale.
 
 The default freshness window is 48 hours. Override it with:
 

@@ -324,3 +324,20 @@ class Phase3CollectionItem(Base):
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
     )
+
+
+class ProcessedCollectionItem(Base):
+    __tablename__ = "processed_collection_items"
+    __table_args__ = (
+        UniqueConstraint("collection_name", "item_id", name="uq_processed_collection_item"),
+    )
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    collection_name: Mapped[str] = mapped_column(String(120), nullable=False, index=True)
+    item_id: Mapped[str] = mapped_column(String(255), nullable=False)
+    sort_order: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    payload_json: Mapped[dict[str, Any]] = mapped_column(JSON, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
+    )

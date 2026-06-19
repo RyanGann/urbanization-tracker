@@ -91,7 +91,13 @@ make ingest-huntsville-agendas
 make ingest-madison-county
 ```
 
-After ingestion, the API serves processed artifacts from `data/processed/`, source health from `/api/source-health`, agenda source documents from `/api/source-documents`, and reviewer-gated candidates from `/api/reviewer/staged-records`.
+After ingestion, the API serves canonical processed records, source health from
+`/api/source-health`, agenda source documents from `/api/source-documents`, and reviewer-gated
+candidates from `/api/reviewer/staged-records`. Local development stores canonical processed output
+under `data/processed/`; hosted environments can store the canonical processed collections in
+Postgres with `PROCESSED_STORE_BACKEND=postgres`.
+Raw GeoJSON, agenda PDFs, extracted text, and archive-page captures are indexed in
+`data/processed/artifact_manifest.json`.
 
 Inspect configured jurisdictions and connector health:
 
@@ -100,22 +106,30 @@ curl http://localhost:8000/api/jurisdictions
 curl http://localhost:8000/api/connector-health
 ```
 
-Move Phase 3 operational artifacts into Postgres when preparing a durable environment:
+Move processed and Phase 3 operational artifacts into Postgres when preparing a durable
+environment:
 
 ```bash
 make db-migrate
+make migrate-processed-postgres
 make migrate-phase3-postgres
+make processed-store-status
+make phase3-store-status
 ```
 
 If you are using the Docker Compose database and API service, run:
 
 ```bash
 docker compose exec api alembic upgrade head
+make docker-migrate-processed-postgres
 make docker-migrate-phase3-postgres
 ```
 
-Set `PHASE3_STORE_BACKEND=postgres` for the API and ingestion jobs after migration. Leave it as
-`artifact` for local JSON-file development.
+Set `PROCESSED_STORE_BACKEND=postgres` and `PHASE3_STORE_BACKEND=postgres` for the API and
+ingestion jobs after migration. Leave them as `artifact` for local JSON-file development. Hosted
+environments should treat Postgres as the operational store for reviewer-facing Phase 3 data; raw
+PDFs, raw GeoJSON payloads, and extracted text remain file artifacts until object storage is
+configured.
 
 ## Phase 1 Data Boundaries
 
@@ -127,6 +141,11 @@ Set `PHASE3_STORE_BACKEND=postgres` for the API and ingestion jobs after migrati
 ## Phase 2 Data Boundaries
 
 - `data/` contains live fetched source artifacts and is ignored by git.
+- `data/processed/artifact_manifest.json` tracks raw artifact size, hash, source key, local path,
+  and storage URI. Set `ARTIFACT_STORAGE_BASE_URI` to test object-storage-style URI prefixes.
+- `PROCESSED_STORE_BACKEND=postgres` stores canonical processed development records, staged
+  records, environmental overlays, and source health in Postgres instead of
+  `data/processed/*.json`.
 - New Subdivisions polygons are treated as publishable public records with source attribution.
 - Building Permits are point context with low geometry confidence, not footprints.
 - Proximity flags are screening-level context and should not be treated as legal or environmental determinations.
@@ -145,12 +164,15 @@ Set `PHASE3_STORE_BACKEND=postgres` for the API and ingestion jobs after migrati
 - `PHASE3_STORE_BACKEND=postgres` stores source documents, staged agenda/submission records,
   published reviewer records, watch areas, alerts, record versions, and change-log entries in
   Postgres instead of `data/processed/phase3_*.json`.
+- `GET /api/reviewer/phase3-store` and `make phase3-store-status` report which Phase 3 collections
+  are in artifacts, Postgres, or local test memory.
 - Set `REVIEWER_API_TOKEN` to require a bearer token for `/api/reviewer/*`; when it is unset,
   reviewer routes stay open for local development.
 
 ## Phase 4 Expansion Boundaries
 
 - Jurisdiction/source configs live in `apps/api/app/jurisdictions/`.
-- The Madison County config is a demo second-pilot fixture, not a live public data source.
+- The Madison County config includes a live recorded-subdivision source; the inactive demo fixture
+  is retained only as an onboarding example.
 - New sources must complete `docs/privacy-safety-checklist.md` before public display.
 - Reviewer decision import/export is a local operational handoff, not a replacement for database audit tables.
