@@ -567,10 +567,10 @@ export function ReviewerPage() {
 
       <section className="panel operations-panel">
         <div className="panel-heading">
-          <span>
+          <h2>
             <GitMerge size={17} aria-hidden />
             Operations
-          </span>
+          </h2>
         </div>
         <div className="operations-grid">
           <div className="operation-group">

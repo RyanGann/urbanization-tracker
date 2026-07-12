@@ -55,6 +55,7 @@ def run_deployment_preflight(
     checks = [
         _check_reviewer_token(active_settings),
         _check_phase3_store(active_settings),
+        _check_processed_store(active_settings),
         _check_cors_origins(active_settings),
         _check_public_base_url(active_settings),
         _check_alert_delivery(active_settings),
@@ -118,6 +119,22 @@ def _check_phase3_store(settings: Settings) -> PreflightCheck:
         key="phase3_store",
         status="pass",
         summary="Phase 3 operational collections use Postgres.",
+    )
+
+
+def _check_processed_store(settings: Settings) -> PreflightCheck:
+    backend = settings.processed_store_backend.lower()
+    if backend != "postgres":
+        return PreflightCheck(
+            key="processed_store",
+            status="fail",
+            summary="PROCESSED_STORE_BACKEND must be postgres for production.",
+            detail=f"Current backend is {settings.processed_store_backend!r}.",
+        )
+    return PreflightCheck(
+        key="processed_store",
+        status="pass",
+        summary="Canonical processed collections use Postgres.",
     )
 
 

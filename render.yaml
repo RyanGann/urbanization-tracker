@@ -2,7 +2,11 @@ services:
   - type: web
     runtime: docker
     name: urbanization-tracker-api
+    branch: main
     rootDir: apps/api
+    region: ohio
+    plan: starter
+    autoDeployTrigger: checksPass
     healthCheckPath: /health
     envVars:
       - key: DATABASE_URL
@@ -12,7 +16,7 @@ services:
       - key: INGESTION_DATA_DIR
         value: /app/data
       - key: CORS_ORIGINS
-        sync: false
+        value: https://urbanization-tracker-web.onrender.com
       - key: REVIEWER_API_TOKEN
         generateValue: true
       - key: PHASE3_STORE_BACKEND
@@ -20,32 +24,27 @@ services:
       - key: PROCESSED_STORE_BACKEND
         value: postgres
       - key: PUBLIC_BASE_URL
-        sync: false
+        value: https://urbanization-tracker-web.onrender.com
       - key: ALERT_DELIVERY_ENABLED
         value: "false"
       - key: ALERT_DELIVERY_RATE_LIMIT
         value: "25"
-      - key: SMTP_HOST
-        sync: false
       - key: SMTP_PORT
         value: "587"
-      - key: SMTP_USERNAME
-        sync: false
-      - key: SMTP_PASSWORD
-        sync: false
-      - key: SMTP_FROM_EMAIL
-        sync: false
       - key: SMTP_USE_TLS
         value: "true"
 
   - type: web
     runtime: static
     name: urbanization-tracker-web
+    branch: main
+    plan: free
+    autoDeployTrigger: checksPass
     buildCommand: npm ci && npm --workspace apps/web run build
     staticPublishPath: apps/web/dist
     envVars:
       - key: VITE_API_BASE_URL
-        sync: false
+        value: https://urbanization-tracker-api.onrender.com
     routes:
       - type: rewrite
         source: /*
@@ -54,7 +53,11 @@ services:
   - type: cron
     runtime: docker
     name: urbanization-tracker-huntsville-ingestion
+    branch: main
     rootDir: apps/api
+    region: ohio
+    plan: starter
+    autoDeployTrigger: checksPass
     schedule: "17 8 * * *"
     dockerCommand: sh -c "alembic upgrade head && python -m app.ingestion.cli ingest-huntsville --data-dir /app/data"
     envVars:
@@ -64,6 +67,8 @@ services:
           property: connectionString
       - key: INGESTION_DATA_DIR
         value: /app/data
+      - key: HOSTED_INGESTION_ENABLED
+        value: "false"
       - key: PROCESSED_STORE_BACKEND
         value: postgres
       - key: PHASE3_STORE_BACKEND
@@ -72,7 +77,11 @@ services:
   - type: cron
     runtime: docker
     name: urbanization-tracker-agenda-ingestion
+    branch: main
     rootDir: apps/api
+    region: ohio
+    plan: starter
+    autoDeployTrigger: checksPass
     schedule: "43 9 * * 1-5"
     dockerCommand: sh -c "alembic upgrade head && python -m app.ingestion.cli ingest-huntsville-agendas --data-dir /app/data --document-limit 3"
     envVars:
@@ -82,6 +91,8 @@ services:
           property: connectionString
       - key: INGESTION_DATA_DIR
         value: /app/data
+      - key: HOSTED_INGESTION_ENABLED
+        value: "false"
       - key: PROCESSED_STORE_BACKEND
         value: postgres
       - key: PHASE3_STORE_BACKEND
@@ -90,7 +101,11 @@ services:
   - type: cron
     runtime: docker
     name: urbanization-tracker-madison-county-ingestion
+    branch: main
     rootDir: apps/api
+    region: ohio
+    plan: starter
+    autoDeployTrigger: checksPass
     schedule: "29 11 * * 1"
     dockerCommand: sh -c "alembic upgrade head && python -m app.ingestion.cli ingest-madison-county --data-dir /app/data"
     envVars:
@@ -100,6 +115,8 @@ services:
           property: connectionString
       - key: INGESTION_DATA_DIR
         value: /app/data
+      - key: HOSTED_INGESTION_ENABLED
+        value: "false"
       - key: PROCESSED_STORE_BACKEND
         value: postgres
       - key: PHASE3_STORE_BACKEND
@@ -108,7 +125,11 @@ services:
   - type: cron
     runtime: docker
     name: urbanization-tracker-alert-delivery
+    branch: main
     rootDir: apps/api
+    region: ohio
+    plan: starter
+    autoDeployTrigger: checksPass
     schedule: "*/15 * * * *"
     dockerCommand: sh -c "alembic upgrade head && python -m app.ingestion.cli send-alerts"
     envVars:
@@ -121,25 +142,20 @@ services:
       - key: PHASE3_STORE_BACKEND
         value: postgres
       - key: PUBLIC_BASE_URL
-        sync: false
+        value: https://urbanization-tracker-web.onrender.com
       - key: ALERT_DELIVERY_ENABLED
         value: "false"
       - key: ALERT_DELIVERY_RATE_LIMIT
         value: "25"
-      - key: SMTP_HOST
-        sync: false
       - key: SMTP_PORT
         value: "587"
-      - key: SMTP_USERNAME
-        sync: false
-      - key: SMTP_PASSWORD
-        sync: false
-      - key: SMTP_FROM_EMAIL
-        sync: false
       - key: SMTP_USE_TLS
         value: "true"
 
 databases:
   - name: urbanization-tracker-db
+    region: ohio
+    plan: basic-1gb
     databaseName: urbanization_tracker
     user: urbanization_tracker
+    ipAllowList: []

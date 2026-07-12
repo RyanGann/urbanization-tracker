@@ -1,52 +1,60 @@
 # Next Steps
 
-Last updated: 2026-05-21
+Last updated: 2026-07-09
 
-This is the working backlog for moving the alpha from local proof-of-concept workflows toward a
-durable public deployment. Each item should be handled as a small reviewable slice, committed, and
-opened as a GitHub pull request before moving to the next item.
+The codebase is through Phase 4 and has the application and deployment plumbing needed for a
+private alpha. The critical path is now production configuration and operational verification, not
+another broad feature phase.
 
-## 1. Database-First Operational Persistence
+## Completed Hardening
 
-Goal: keep generated raw files as audit artifacts, but move operational state into durable storage.
+- [x] Add Postgres-backed Phase 3 operational collections, migration tooling, and status APIs.
+- [x] Add Postgres-backed canonical processed collections and migration tooling.
+- [x] Configure hosted API and cron definitions to use Postgres stores.
+- [x] Add scheduled Huntsville ArcGIS, Huntsville agenda, Madison County, and alert-delivery jobs to
+  the Render Blueprint.
+- [x] Add deployment preflight checks for reviewer protection, HTTPS origins, persistence, alert
+  configuration, database connectivity, and PostGIS.
+- [x] Add source-freshness monitoring suitable for an external uptime check.
+- [x] Replace bounding-box-only proximity decisions with geometry intersection and distance checks,
+  backed by floodplain and wetland regression fixtures.
+- [x] Add reviewer decision import/export and bounded alert-delivery controls.
+- [x] Track raw artifact hashes, sizes, source keys, and intended storage URIs in an artifact
+  manifest.
+- [x] Add a live Madison County subdivision connector while retaining the inactive demo fixture for
+  onboarding examples.
 
-- [ ] Make Phase 3 operational collection status visible to reviewers and maintainers.
-- [ ] Use `PHASE3_STORE_BACKEND=postgres` for hosted API, ingestion, alert, and reviewer workflows.
-- [ ] Migrate existing `data/processed/phase3_*.json` collections with `make migrate-phase3-postgres`.
-- [ ] Move canonical ingestion outputs away from `data/processed/development_records.json` and into
-  Postgres-backed read/write paths.
-- [ ] Keep bulky raw ArcGIS payloads, agenda PDFs, extracted text, and generated map artifacts as
-  artifact/object-storage files referenced from database rows.
+## Private Alpha Deployment
 
-Decision needed later: choose the hosted artifact store before automating ingestion. Render disks
-are acceptable for a narrow alpha, but S3-compatible storage such as R2/S3 is a better long-term
-home for raw PDFs and raw GeoJSON payloads.
+- [ ] Provision the Render Blueprint or an equivalent API, static web app, Postgres/PostGIS database,
+  and scheduled-job environment.
+- [ ] Set `REVIEWER_API_TOKEN`, production `CORS_ORIGINS`, `PUBLIC_BASE_URL`, and
+  `VITE_API_BASE_URL`.
+- [ ] Protect `/review` and `/api/reviewer/*` with an edge access policy in addition to the API token.
+- [ ] Run Alembic migrations and migrate any existing processed and Phase 3 artifact collections
+  into the hosted database.
+- [ ] Run `make deployment-preflight` against the deployed database and resolve every failed check.
+- [ ] Confirm PostGIS, managed backups, restore ownership, and an external uptime/error monitor for
+  both `/health` and `/health/source-health`.
+- [ ] Choose whether the first alpha starts from a manually reviewed snapshot or immediately enables
+  the scheduled ingestion jobs.
+- [ ] Choose and configure durable object storage for raw ArcGIS payloads, agenda PDFs, extracted
+  text, and generated artifacts.
 
-## 2. Hosted Ingestion Jobs
+## Operational Follow-Up
 
-- [ ] Add scheduled Huntsville ArcGIS ingestion.
-- [ ] Add scheduled Huntsville agenda ingestion.
-- [ ] Add scheduled Madison County ingestion.
-- [ ] Surface run failures through connector health and uptime/error monitoring.
+- [ ] Display processed-store and Phase 3 store status in the reviewer UI; the API and CLI status
+  surfaces already exist.
+- [ ] Keep outbound alerts disabled until SMTP credentials, unsubscribe behavior, rate limiting, and
+  production delivery have been verified end to end.
+- [ ] Add a bounce/complaint handling runbook once an email provider is selected.
+- [ ] Replace local geometry calculations with normalized PostGIS predicates and distances for the
+  durable spatial model.
+- [ ] Continue improving public-submission moderation and duplicate-resolution affordances based on
+  reviewer feedback.
 
-## 3. Spatial Accuracy Hardening
+## Engineering Cleanup
 
-- [ ] Replace bounding-box proximity calculations with PostGIS spatial predicates and distances.
-- [ ] Add fixture tests for floodplain intersection and wetland distance thresholds.
-- [ ] Keep public labels conservative and explicit about screening-level use.
-
-## 4. Reviewer Operations
-
-- [ ] Expose decision import/export in the reviewer UI.
-- [ ] Expose Phase 3 store status in the reviewer UI.
-- [ ] Add controls or documented runbooks for alert delivery batches.
-- [ ] Improve public-submission moderation affordances.
-
-## 5. Public Alpha Launch Readiness
-
-- [ ] Set `REVIEWER_API_TOKEN`.
-- [ ] Protect `/review` and `/api/reviewer/*` at the edge.
-- [ ] Configure production `CORS_ORIGINS`.
-- [ ] Confirm database backups and PostGIS extension.
-- [ ] Decide whether initial public data comes from a manually reviewed snapshot or scheduled jobs.
-- [ ] Configure SMTP only after unsubscribe and rate-limit behavior has been verified in production.
+- [ ] Split the web bundle; the current production JavaScript chunk is roughly 1 MB minified.
+- [ ] Expand browser coverage beyond the two Chromium smoke tests as reviewer workflows stabilize.
+- [ ] Keep this file and the release note synchronized with deployment changes.
