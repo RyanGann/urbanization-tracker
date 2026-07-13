@@ -592,6 +592,13 @@ button {
   padding: 22px 0 36px;
 }
 
+.route-loading {
+  min-height: 180px;
+  display: grid;
+  place-items: center;
+  color: #526168;
+}
+
 .back-link {
   width: max-content;
   margin-bottom: 14px;

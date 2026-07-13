@@ -47,14 +47,32 @@ test("map shell renders seed records with mocked API", async ({ page }) => {
   await page.goto("/");
 
   await expect(page.getByRole("link", { name: /Urbanization Tracker/i })).toBeVisible();
-  await expect(page.getByText("Seed Test Subdivision")).toBeVisible();
+  await expect(page.getByText("Seed Test Subdivision")).toBeVisible({ timeout: 15_000 });
   await expect(page.getByTestId("development-map")).toBeVisible();
   await expect(page.locator(".maplibregl-canvas")).toBeVisible();
   await expect(page.getByTestId("development-map")).toHaveAttribute("data-feature-count", "1");
 });
 
+test("direct participate and record routes load their page bundles", async ({ page }) => {
+  await page.route("**/api/change-log", async (route) => {
+    await route.fulfill({ contentType: "application/json", body: JSON.stringify([]) });
+  });
+  await page.route("**/api/development-records/**", async (route) => {
+    const body = route.request().url().endsWith("/versions") ? [] : seedRecord;
+    await route.fulfill({ contentType: "application/json", body: JSON.stringify(body) });
+  });
+
+  await page.goto("/participate");
+  await expect(page.getByRole("heading", { name: "Participate" })).toBeVisible();
+
+  await page.goto(`/records/${seedRecord.public_id}`);
+  await expect(page.getByRole("heading", { name: seedRecord.title })).toBeVisible();
+});
+
 test("reviewer operations import decisions and enforce alert limits", async ({ page }) => {
   const apiCalls: { importBody?: unknown; alertUrls: string[] } = { alertUrls: [] };
+  const requestedUrls: string[] = [];
+  page.on("request", (request) => requestedUrls.push(request.url()));
 
   await page.route("**/api/source-health", async (route) => {
     await route.fulfill({
@@ -161,6 +179,13 @@ test("reviewer operations import decisions and enforce alert limits", async ({ p
   });
   await expect(phase3StorePanel.getByText("degraded", { exact: true })).toBeVisible();
   await expect(phase3StorePanel.getByText("failing", { exact: true })).toHaveCount(0);
+  expect(
+    requestedUrls.some(
+      (url) =>
+        url.includes("/src/pages/MapPage.tsx") ||
+        url.includes("/src/components/DevelopmentMap.tsx")
+    )
+  ).toBe(false);
 
   await page.getByLabel("Import decisions").setInputFiles({
     name: "handoff.json",
