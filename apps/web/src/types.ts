@@ -194,6 +194,34 @@ export interface AlertDeliveryResult {
   errors: string[];
 }
 
+export interface StoreCollectionStatus {
+  name: string;
+  database_count: number;
+  artifact_count: number;
+  memory_count?: number;
+  artifact_error?: string | null;
+  requires_migration: boolean;
+}
+
+export interface Phase3StoreStatus {
+  backend: string;
+  database_first: boolean;
+  database_error: string | null;
+  raw_artifact_root: string;
+  collections: StoreCollectionStatus[];
+}
+
+export interface ProcessedStoreStatus {
+  backend: string;
+  database_first: boolean;
+  database_error: string | null;
+  collections: StoreCollectionStatus[];
+  raw_artifacts: Array<{
+    name: string;
+    artifact_count: number;
+  }>;
+}
+
 export interface ReviewerDecisionSnapshot {
   staged_id: string;
   title: string;

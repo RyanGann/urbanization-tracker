@@ -164,6 +164,8 @@ configured.
 - `PHASE3_STORE_BACKEND=postgres` stores source documents, staged agenda/submission records,
   published reviewer records, watch areas, alerts, record versions, and change-log entries in
   Postgres instead of `data/processed/phase3_*.json`.
+- `GET /api/reviewer/processed-store` and `make processed-store-status` report the canonical
+  processed collection backend and migration state.
 - `GET /api/reviewer/phase3-store` and `make phase3-store-status` report which Phase 3 collections
   are in artifacts, Postgres, or local test memory.
 - Set `REVIEWER_API_TOKEN` to require a bearer token for `/api/reviewer/*`; when it is unset,

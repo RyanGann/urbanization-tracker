@@ -872,6 +872,77 @@ button {
   margin-bottom: 14px;
 }
 
+.store-status-grid {
+  margin-bottom: 14px;
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 14px;
+}
+
+.store-status-grid .panel + .panel {
+  margin-top: 0;
+}
+
+.store-status-content {
+  padding: 12px;
+}
+
+.store-facts {
+  margin-top: 0;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.store-collection-list {
+  padding: 0;
+}
+
+.store-warning,
+.store-error,
+.store-status-message,
+.store-raw-summary {
+  margin: 10px 0;
+  padding: 9px 10px;
+  border-radius: 7px;
+  font-size: 13px;
+  line-height: 1.4;
+}
+
+.store-warning {
+  color: #5d5408;
+  background: #fff8d9;
+  border: 1px solid #e3d275;
+}
+
+.store-error {
+  color: #7b1f24;
+  background: #fbe9eb;
+  border: 1px solid #efa9b0;
+}
+
+.store-status-message {
+  margin: 12px;
+}
+
+.store-state {
+  flex: 0 0 auto;
+  font-size: 12px;
+  font-weight: 750;
+}
+
+.store-state-warning {
+  color: #6e4a03;
+}
+
+.store-state-error {
+  color: #7b1f24;
+}
+
+.store-raw-summary {
+  margin-bottom: 0;
+  color: #526168;
+  background: #f3f7f2;
+}
+
 .health-content {
   padding: 12px;
 }
@@ -992,6 +1063,7 @@ button {
   .detail-layout,
   .detail-facts,
   .phase3-grid,
+  .store-status-grid,
   .reviewer-shell .phase3-grid,
   .operations-grid {
     grid-template-columns: 1fr;

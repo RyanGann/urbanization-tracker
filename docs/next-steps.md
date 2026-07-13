@@ -43,8 +43,8 @@ another broad feature phase.
 
 ## Operational Follow-Up
 
-- [ ] Display processed-store and Phase 3 store status in the reviewer UI; the API and CLI status
-  surfaces already exist.
+- [x] Display processed-store and Phase 3 store status in the reviewer UI, backed by authenticated
+  API endpoints and the existing CLI status commands.
 - [ ] Keep outbound alerts disabled until SMTP credentials, unsubscribe behavior, rate limiting, and
   production delivery have been verified end to end.
 - [ ] Add a bounce/complaint handling runbook once an email provider is selected.

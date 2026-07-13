@@ -86,6 +86,47 @@ test("reviewer operations import decisions and enforce alert limits", async ({ p
   await page.route("**/api/reviewer/alerts", async (route) => {
     await route.fulfill({ contentType: "application/json", body: JSON.stringify([]) });
   });
+  await page.route("**/api/reviewer/processed-store", async (route) => {
+    await route.fulfill({
+      contentType: "application/json",
+      body: JSON.stringify({
+        backend: "postgres",
+        database_first: true,
+        database_error: null,
+        collections: [
+          {
+            name: "development_records",
+            database_count: 4,
+            artifact_count: 0,
+            requires_migration: false
+          }
+        ],
+        raw_artifacts: [{ name: "raw_records", artifact_count: 3 }]
+      })
+    });
+  });
+  await page.route("**/api/reviewer/phase3-store", async (route) => {
+    await route.fulfill({
+      contentType: "application/json",
+      body: JSON.stringify({
+        backend: "postgres",
+        database_first: true,
+        database_error: null,
+        raw_artifact_root: "raw",
+        collections: [
+          {
+            name: "public_submissions",
+            database_count: 2,
+            artifact_count: 0,
+            memory_count: 0,
+            artifact_path: "processed/phase3_public_submissions.json",
+            artifact_error: null,
+            requires_migration: false
+          }
+        ]
+      })
+    });
+  });
   await page.route("**/api/reviewer/decisions/import", async (route) => {
     apiCalls.importBody = route.request().postDataJSON();
     await route.fulfill({
@@ -110,6 +151,11 @@ test("reviewer operations import decisions and enforce alert limits", async ({ p
 
   await page.goto("/review");
   await expect(page.getByRole("heading", { name: "Operations" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Processed Store" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Phase 3 Store" })).toBeVisible();
+  await expect(page.getByText("4 database · 0 artifact")).toBeVisible();
+  await expect(page.getByText("2 database · 0 artifact · 0 memory")).toBeVisible();
+  await expect(page.getByText("Raw audit artifacts: 3")).toBeVisible();
 
   await page.getByLabel("Import decisions").setInputFiles({
     name: "handoff.json",

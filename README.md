@@ -32,7 +32,7 @@ processed stores, Render cron definitions, deployment preflight checks, source-f
 monitoring, reviewer operations, and a live Madison County subdivision connector in addition to
 the Huntsville pilot sources.
 
-Current verification passes API and web lint/typechecking, 58 API tests, 4 web unit tests, the web
+Current verification passes API and web lint/typechecking, 60 API tests, 4 web unit tests, the web
 production build, and 2 Chromium end-to-end smoke tests. The latest local ingestion snapshot was
 captured on 2026-06-19; it is useful as a development artifact but should not be treated as current
 public data.

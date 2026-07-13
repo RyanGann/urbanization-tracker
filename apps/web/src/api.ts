@@ -8,6 +8,8 @@ import type {
   DuplicateCandidate,
   EnvironmentalOverlay,
   Jurisdiction,
+  Phase3StoreStatus,
+  ProcessedStoreStatus,
   RecordFilters,
   RecordVersion,
   ReviewerDecisionImportItem,
@@ -170,6 +172,18 @@ export function createWatchArea(watchArea: WatchAreaCreate): Promise<WatchAreaRe
 
 export function fetchReviewerAlerts(): Promise<Alert[]> {
   return request<Alert[]>("/api/reviewer/alerts", {
+    reviewer: true
+  });
+}
+
+export function fetchPhase3StoreStatus(): Promise<Phase3StoreStatus> {
+  return request<Phase3StoreStatus>("/api/reviewer/phase3-store", {
+    reviewer: true
+  });
+}
+
+export function fetchProcessedStoreStatus(): Promise<ProcessedStoreStatus> {
+  return request<ProcessedStoreStatus>("/api/reviewer/processed-store", {
     reviewer: true
   });
 }
