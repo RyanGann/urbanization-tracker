@@ -112,7 +112,10 @@ function collectionLabel(name: string) {
 }
 
 function storeHealth(status: PersistenceStoreStatus) {
-  if (status.database_error || status.collections.some((collection) => collection.artifact_error)) {
+  if (
+    (status.database_first && status.database_error) ||
+    status.collections.some((collection) => collection.artifact_error)
+  ) {
     return "failing";
   }
   if (

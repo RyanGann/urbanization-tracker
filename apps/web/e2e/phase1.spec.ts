@@ -109,9 +109,9 @@ test("reviewer operations import decisions and enforce alert limits", async ({ p
     await route.fulfill({
       contentType: "application/json",
       body: JSON.stringify({
-        backend: "postgres",
-        database_first: true,
-        database_error: null,
+        backend: "artifact",
+        database_first: false,
+        database_error: "Database status check failed.",
         raw_artifact_root: "raw",
         collections: [
           {
@@ -156,6 +156,11 @@ test("reviewer operations import decisions and enforce alert limits", async ({ p
   await expect(page.getByText("4 database · 0 artifact")).toBeVisible();
   await expect(page.getByText("2 database · 0 artifact · 0 memory")).toBeVisible();
   await expect(page.getByText("Raw audit artifacts: 3")).toBeVisible();
+  const phase3StorePanel = page.locator(".store-status-panel").filter({
+    hasText: "Phase 3 Store"
+  });
+  await expect(phase3StorePanel.getByText("degraded", { exact: true })).toBeVisible();
+  await expect(phase3StorePanel.getByText("failing", { exact: true })).toHaveCount(0);
 
   await page.getByLabel("Import decisions").setInputFiles({
     name: "handoff.json",
