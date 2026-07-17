@@ -4,6 +4,7 @@ import {
   AlertCircle,
   Bell,
   Check,
+  Database,
   Download,
   ExternalLink,
   FileText,
@@ -26,6 +27,8 @@ import {
   fetchConnectorHealth,
   fetchDuplicateCandidates,
   fetchJurisdictions,
+  fetchPhase3StoreStatus,
+  fetchProcessedStoreStatus,
   fetchReviewerAlerts,
   fetchReviewerPublicSubmissions,
   fetchReviewerWatchAreas,
@@ -45,7 +48,8 @@ import type {
   DevelopmentRecord,
   ReviewerDecisionImportItem,
   ReviewStatus,
-  StagedDevelopmentRecord
+  StagedDevelopmentRecord,
+  StoreCollectionStatus
 } from "../types";
 import { developmentTypeLabel, statusLabel } from "../utils/records";
 
@@ -86,6 +90,119 @@ function alertDeliverySummary(result: AlertDeliveryResult) {
     ? `${result.sent} sent, ${result.suppressed} suppressed, ${result.failed} failed.`
     : "Delivery is not configured.";
   return result.errors.length ? `${summary} Errors: ${result.errors.join("; ")}` : summary;
+}
+
+interface PersistenceStoreStatus {
+  backend: string;
+  database_first: boolean;
+  database_error: string | null;
+  collections: StoreCollectionStatus[];
+  raw_artifacts?: Array<{ name: string; artifact_count: number }>;
+}
+
+interface StoreStatusPanelProps {
+  title: string;
+  status?: PersistenceStoreStatus;
+  isPending: boolean;
+  isError: boolean;
+}
+
+function collectionLabel(name: string) {
+  return name.replaceAll("_", " ");
+}
+
+function storeHealth(status: PersistenceStoreStatus) {
+  if (
+    (status.database_first && status.database_error) ||
+    status.collections.some((collection) => collection.artifact_error)
+  ) {
+    return "failing";
+  }
+  if (
+    !status.database_first ||
+    status.collections.some((collection) => collection.requires_migration)
+  ) {
+    return "degraded";
+  }
+  return "healthy";
+}
+
+function StoreStatusPanel({ title, status, isPending, isError }: StoreStatusPanelProps) {
+  return (
+    <article className="panel list-panel store-status-panel">
+      <div className="panel-heading">
+        <h2>
+          <Database size={17} aria-hidden />
+          {title}
+        </h2>
+        {status ? <StatusBadge value={storeHealth(status)} kind="review" /> : null}
+      </div>
+      {status ? (
+        <div className="store-status-content">
+          <dl className="facts store-facts">
+            <div>
+              <dt>Active backend</dt>
+              <dd>{status.backend}</dd>
+            </div>
+            <div>
+              <dt>Authoritative store</dt>
+              <dd>{status.database_first ? "Postgres" : "Local or in-memory"}</dd>
+            </div>
+          </dl>
+          {status.database_error ? (
+            <p className="store-error" role="alert">
+              The database status check failed. Run deployment preflight before migration or
+              ingestion.
+            </p>
+          ) : null}
+          {!status.database_first ? (
+            <p className="store-warning">
+              Postgres is not authoritative for this store in the current environment.
+            </p>
+          ) : null}
+          <div className="compact-list store-collection-list">
+            {status.collections.map((collection) => (
+              <div className="compact-row" key={collection.name}>
+                <span>
+                  <strong>{collectionLabel(collection.name)}</strong>
+                  <small>
+                    {collection.database_count} database · {collection.artifact_count} artifact
+                    {collection.memory_count === undefined
+                      ? ""
+                      : ` · ${collection.memory_count} memory`}
+                  </small>
+                </span>
+                {collection.artifact_error ? (
+                  <span className="store-state store-state-error">Artifact error</span>
+                ) : collection.requires_migration ? (
+                  <span className="store-state store-state-warning">Migration required</span>
+                ) : null}
+              </div>
+            ))}
+          </div>
+          {status.raw_artifacts?.length ? (
+            <p className="store-raw-summary">
+              Raw audit artifacts: {status.raw_artifacts.reduce(
+                (total, artifact) => total + artifact.artifact_count,
+                0
+              )}
+            </p>
+          ) : null}
+        </div>
+      ) : (
+        <p
+          className={isError ? "store-error" : "muted store-status-message"}
+          role={isError ? "alert" : undefined}
+        >
+          {isError
+            ? "Store status is unavailable."
+            : isPending
+              ? "Loading store status…"
+              : "No store status is available."}
+        </p>
+      )}
+    </article>
+  );
 }
 
 function reviewerDecisionImportItem(decision: unknown): ReviewerDecisionImportItem {
@@ -148,6 +265,14 @@ export function ReviewerPage() {
   const alertsQuery = useQuery({
     queryKey: ["reviewer", "alerts"],
     queryFn: fetchReviewerAlerts
+  });
+  const phase3StoreQuery = useQuery({
+    queryKey: ["reviewer", "phase3-store"],
+    queryFn: fetchPhase3StoreStatus
+  });
+  const processedStoreQuery = useQuery({
+    queryKey: ["reviewer", "processed-store"],
+    queryFn: fetchProcessedStoreStatus
   });
   const connectorHealthQuery = useQuery({
     queryKey: ["connector-health"],
@@ -226,7 +351,9 @@ export function ReviewerPage() {
     duplicateCandidatesQuery,
     submissionsQuery,
     watchAreasQuery,
-    alertsQuery
+    alertsQuery,
+    phase3StoreQuery,
+    processedStoreQuery
   ].some((query) => isUnauthorized(query.error));
 
   const saveToken = (event: FormEvent<HTMLFormElement>) => {
@@ -289,8 +416,8 @@ export function ReviewerPage() {
         <button
           className="icon-link"
           type="button"
-          onClick={() => stagedQuery.refetch()}
-          title="Refresh queue"
+          onClick={() => queryClient.invalidateQueries()}
+          title="Refresh reviewer data"
         >
           <RotateCcw size={16} aria-hidden />
           Refresh
@@ -375,6 +502,21 @@ export function ReviewerPage() {
         ) : (
           <p className="muted health-content">No ingestion health has been recorded yet.</p>
         )}
+      </section>
+
+      <section className="store-status-grid" aria-label="Persistence status">
+        <StoreStatusPanel
+          title="Processed Store"
+          status={processedStoreQuery.data}
+          isPending={processedStoreQuery.isPending}
+          isError={processedStoreQuery.isError}
+        />
+        <StoreStatusPanel
+          title="Phase 3 Store"
+          status={phase3StoreQuery.data}
+          isPending={phase3StoreQuery.isPending}
+          isError={phase3StoreQuery.isError}
+        />
       </section>
 
       <section className="phase3-grid">

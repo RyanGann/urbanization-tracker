@@ -97,9 +97,11 @@ Data persistence:
 - Phase 3 operational collections can run from Postgres with `PHASE3_STORE_BACKEND=postgres`.
   Before switching an existing environment, run `make db-migrate` and
   `make migrate-phase3-postgres` from an environment that can reach the deployed database.
-- Verify the active Phase 3 store with `make phase3-store-status` or
-  `GET /api/reviewer/phase3-store`. Any collection with `requires_migration=true` still has JSON
-  artifacts that have not been copied into Postgres.
+- Verify the canonical processed store with `make processed-store-status` or
+  `GET /api/reviewer/processed-store`, and verify the Phase 3 store with
+  `make phase3-store-status` or `GET /api/reviewer/phase3-store`. Both API routes require reviewer
+  access when `REVIEWER_API_TOKEN` is configured. Any collection with
+  `requires_migration=true` still has JSON artifacts that have not been copied into Postgres.
 - Ingestion writes `data/processed/artifact_manifest.json` with hashes, sizes, source keys, and
   storage URIs for raw GeoJSON, agenda PDFs, extracted text, and archive-page captures.
 - Bulk raw source artifacts, source PDFs, and generated map artifacts should still be mirrored to

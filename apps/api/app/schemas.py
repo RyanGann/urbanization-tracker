@@ -203,6 +203,26 @@ class Phase3StoreStatus(BaseModel):
     collections: list[Phase3StoreCollectionStatus]
 
 
+class ProcessedStoreCollectionStatus(BaseModel):
+    name: str
+    database_count: int
+    artifact_count: int
+    requires_migration: bool
+
+
+class RawArtifactStatus(BaseModel):
+    name: str
+    artifact_count: int
+
+
+class ProcessedStoreStatus(BaseModel):
+    backend: str
+    database_first: bool
+    database_error: str | None = None
+    collections: list[ProcessedStoreCollectionStatus]
+    raw_artifacts: list[RawArtifactStatus]
+
+
 class RecordVersion(BaseModel):
     id: str
     public_id: str

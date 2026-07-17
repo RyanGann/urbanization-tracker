@@ -20,6 +20,7 @@ from app.phase3_store import (
     record_versions_for,
     set_public_submission_status,
 )
+from app.processed_store import processed_store_status
 from app.schemas import (
     Alert,
     AlertDeliveryResult,
@@ -32,6 +33,7 @@ from app.schemas import (
     FeatureCollection,
     Jurisdiction,
     Phase3StoreStatus,
+    ProcessedStoreStatus,
     RecordVersion,
     ReviewDecision,
     ReviewerDecisionImport,
@@ -238,6 +240,14 @@ def get_reviewer_alerts() -> list[Alert]:
 @reviewer_router.get("/phase3-store", response_model=Phase3StoreStatus)
 def get_reviewer_phase3_store_status() -> Phase3StoreStatus:
     return Phase3StoreStatus.model_validate(phase3_store_status())
+
+
+@reviewer_router.get("/processed-store", response_model=ProcessedStoreStatus)
+def get_reviewer_processed_store_status() -> ProcessedStoreStatus:
+    payload = processed_store_status()
+    if payload.get("database_error"):
+        payload["database_error"] = "Database status check failed."
+    return ProcessedStoreStatus.model_validate(payload)
 
 
 @reviewer_router.post("/alerts/send", response_model=AlertDeliveryResult)

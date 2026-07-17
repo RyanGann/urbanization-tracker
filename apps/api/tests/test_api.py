@@ -271,12 +271,45 @@ def test_reviewer_phase3_store_status_reports_memory_backend() -> None:
     assert any(collection["name"] == "public_submissions" for collection in body["collections"])
 
 
+def test_reviewer_processed_store_status_omits_server_paths() -> None:
+    response = client.get("/api/reviewer/processed-store")
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["backend"] == "artifact"
+    assert body["database_first"] is False
+    assert any(collection["name"] == "development_records" for collection in body["collections"])
+    assert all("artifact_path" not in collection for collection in body["collections"])
+    assert all("artifact_path" not in artifact for artifact in body["raw_artifacts"])
+
+
+def test_reviewer_processed_store_status_sanitizes_database_errors(monkeypatch) -> None:
+    monkeypatch.setattr(
+        "app.main.processed_store_status",
+        lambda: {
+            "backend": "postgres",
+            "database_first": True,
+            "database_error": "connection failed for postgresql://user:secret@example.test/db",
+            "collections": [],
+            "raw_artifacts": [],
+        },
+    )
+
+    response = client.get("/api/reviewer/processed-store")
+
+    assert response.status_code == 200
+    assert response.json()["database_error"] == "Database status check failed."
+    assert "secret" not in response.text
+
+
 def test_reviewer_api_requires_bearer_token_when_configured(monkeypatch) -> None:
     monkeypatch.setenv("REVIEWER_API_TOKEN", "test-reviewer-token")
     get_settings.cache_clear()
     try:
         blocked_response = client.get("/api/reviewer/staged-records")
         assert blocked_response.status_code == 401
+        blocked_store_response = client.get("/api/reviewer/processed-store")
+        assert blocked_store_response.status_code == 401
 
         authorized_response = client.get(
             "/api/reviewer/staged-records",
