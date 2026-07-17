@@ -183,7 +183,8 @@ test("reviewer operations import decisions and enforce alert limits", async ({ p
     requestedUrls.some(
       (url) =>
         url.includes("/src/pages/MapPage.tsx") ||
-        url.includes("/src/components/DevelopmentMap.tsx")
+        url.includes("/src/components/DevelopmentMap.tsx") ||
+        url.includes("maplibre-gl")
     )
   ).toBe(false);
 

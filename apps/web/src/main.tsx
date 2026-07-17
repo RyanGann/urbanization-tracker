@@ -1,4 +1,3 @@
-import "maplibre-gl/dist/maplibre-gl.css";
 import "./styles.css";
 
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
