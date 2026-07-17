@@ -55,6 +55,6 @@ another broad feature phase.
 
 ## Engineering Cleanup
 
-- [ ] Split the web bundle; the current production JavaScript chunk is roughly 1 MB minified.
-- [ ] Expand browser coverage beyond the two Chromium smoke tests as reviewer workflows stabilize.
+- [x] Split route bundles so non-map pages do not load MapLibre and the map implementation.
+- [x] Expand Chromium smoke coverage to direct map, participate, record-detail, and reviewer routes.
 - [ ] Keep this file and the release note synchronized with deployment changes.

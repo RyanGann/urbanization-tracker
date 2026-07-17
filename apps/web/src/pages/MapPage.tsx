@@ -1,3 +1,5 @@
+import "maplibre-gl/dist/maplibre-gl.css";
+
 import { useQuery } from "@tanstack/react-query";
 import { ExternalLink, Filter, Layers, ListFilter, MapPin, RotateCcw } from "lucide-react";
 import { useCallback, useMemo, useState } from "react";
