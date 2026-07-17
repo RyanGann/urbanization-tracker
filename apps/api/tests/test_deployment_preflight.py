@@ -11,6 +11,7 @@ def production_settings(**overrides: object) -> Settings:
         "cors_origins": "https://tracker.example.test",
         "reviewer_api_token": "reviewer-secret-token-with-length",
         "phase3_store_backend": "postgres",
+        "processed_store_backend": "postgres",
         "public_base_url": "https://tracker.example.test",
         "alert_delivery_enabled": True,
         "alert_delivery_rate_limit": 25,
@@ -45,6 +46,7 @@ def test_deployment_preflight_fails_for_unsafe_defaults() -> None:
     assert result["status"] == "fail"
     assert _status_for(result, "reviewer_access") == "fail"
     assert _status_for(result, "phase3_store") == "fail"
+    assert _status_for(result, "processed_store") == "fail"
     assert _status_for(result, "cors_origins") == "fail"
     assert _status_for(result, "public_base_url") == "fail"
     assert _status_for(result, "alert_delivery") == "warn"
@@ -61,6 +63,17 @@ def test_deployment_preflight_fails_when_alert_delivery_lacks_smtp() -> None:
     alert_check = _check_for(result, "alert_delivery")
     assert alert_check["status"] == "fail"
     assert "SMTP_HOST" in alert_check["detail"]
+
+
+def test_deployment_preflight_fails_when_processed_store_is_not_postgres() -> None:
+    result = run_deployment_preflight(
+        settings=production_settings(processed_store_backend="artifact"),
+        check_database=False,
+    )
+
+    processed_store_check = _check_for(result, "processed_store")
+    assert processed_store_check["status"] == "fail"
+    assert "PROCESSED_STORE_BACKEND" in processed_store_check["summary"]
 
 
 def test_deployment_preflight_fails_without_postgis() -> None:

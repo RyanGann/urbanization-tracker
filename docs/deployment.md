@@ -37,9 +37,22 @@ The repository includes a starter [render.yaml](../render.yaml) Blueprint with:
 - Cron jobs for Huntsville ArcGIS ingestion, Huntsville agenda PDF ingestion, Madison County
   ingestion, and bounded alert delivery.
 
-Render prompts for `sync: false` values during initial Blueprint creation. Set `VITE_API_BASE_URL`
-to the deployed API origin and `PUBLIC_BASE_URL` to the public web origin or an origin that routes
-`/api/*` to the API.
+The initial private alpha uses Render's generated URLs:
+
+- Web: `https://urbanization-tracker-web.onrender.com`
+- API: `https://urbanization-tracker-api.onrender.com`
+
+The API, cron jobs, and Postgres database are placed in Render's Ohio region. The database uses the
+paid `basic-1gb` plan and blocks public database connections; application services use its private
+connection string. The static site uses the free plan.
+
+Scheduled source ingestion is created with `HOSTED_INGESTION_ENABLED=false`. Leave it disabled until
+raw payloads and PDFs are uploaded to durable object storage. Alert delivery also remains disabled.
+These controls let the web/API/database deploy without silently losing audit artifacts from cron
+containers.
+
+The Blueprint uses the generated Render URLs for `VITE_API_BASE_URL`, `CORS_ORIGINS`, and
+`PUBLIC_BASE_URL`. Update those values when custom domains are selected.
 
 API service:
 
@@ -102,8 +115,9 @@ Preflight:
   make deployment-preflight
   ```
 
-- The command validates reviewer token protection, Phase 3 Postgres mode, deployed HTTPS CORS and
-  public URL settings, alert delivery settings, PostgreSQL connectivity, and the PostGIS extension.
+- The command validates reviewer token protection, Phase 3 and canonical processed Postgres modes,
+  deployed HTTPS CORS and public URL settings, alert delivery settings, PostgreSQL connectivity,
+  and the PostGIS extension.
   Use `python -m app.ingestion.cli deployment-preflight --skip-database` only for config-only dry
   runs where the database is intentionally unreachable.
 

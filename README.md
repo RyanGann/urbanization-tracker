@@ -22,6 +22,26 @@ This repository is now through Phase 4: a Huntsville alpha with live ArcGIS inge
 - Ingestion: Python ETL connectors for ArcGIS REST services, static geospatial downloads, public APIs, webpages, PDFs/agendas, and manual submissions.
 - Reviewer workflow: custom lightweight admin/reviewer UI rather than Django Admin.
 
+## Project Status
+
+Last verified: **2026-07-12**.
+
+The application is a code-complete Phase 4 alpha with production deployment scaffolding. It is not
+yet a verified public production service. The repository includes Postgres-backed operational and
+processed stores, Render cron definitions, deployment preflight checks, source-freshness
+monitoring, reviewer operations, and a live Madison County subdivision connector in addition to
+the Huntsville pilot sources.
+
+Current verification passes API and web lint/typechecking, 58 API tests, 4 web unit tests, the web
+production build, and 2 Chromium end-to-end smoke tests. The latest local ingestion snapshot was
+captured on 2026-06-19; it is useful as a development artifact but should not be treated as current
+public data.
+
+The remaining launch work is environment-specific: provision the hosted services, set production
+secrets and HTTPS origins, migrate existing collections into Postgres, verify PostGIS and backups,
+protect reviewer routes at the edge, configure artifact storage and monitoring, and decide when to
+enable scheduled ingestion and outbound email.
+
 ## Planning Documents
 
 - [v0.1-alpha Release Note](docs/releases/v0.1-alpha.md)

@@ -11,6 +11,7 @@ def test_render_blueprint_defines_ingestion_cron_jobs() -> None:
     ) in huntsville
     assert _env_var_value(huntsville, "PROCESSED_STORE_BACKEND") == "postgres"
     assert _env_var_value(huntsville, "PHASE3_STORE_BACKEND") == "postgres"
+    assert _env_var_value(huntsville, "HOSTED_INGESTION_ENABLED") == "false"
 
     agenda = _service_block(content, "urbanization-tracker-agenda-ingestion")
     assert (
@@ -19,6 +20,7 @@ def test_render_blueprint_defines_ingestion_cron_jobs() -> None:
     ) in agenda
     assert _env_var_value(agenda, "PROCESSED_STORE_BACKEND") == "postgres"
     assert _env_var_value(agenda, "PHASE3_STORE_BACKEND") == "postgres"
+    assert _env_var_value(agenda, "HOSTED_INGESTION_ENABLED") == "false"
 
     madison_county = _service_block(content, "urbanization-tracker-madison-county-ingestion")
     assert (
@@ -27,6 +29,7 @@ def test_render_blueprint_defines_ingestion_cron_jobs() -> None:
     ) in madison_county
     assert _env_var_value(madison_county, "PROCESSED_STORE_BACKEND") == "postgres"
     assert _env_var_value(madison_county, "PHASE3_STORE_BACKEND") == "postgres"
+    assert _env_var_value(madison_county, "HOSTED_INGESTION_ENABLED") == "false"
 
     alert_delivery = _service_block(content, "urbanization-tracker-alert-delivery")
     assert (
@@ -34,6 +37,32 @@ def test_render_blueprint_defines_ingestion_cron_jobs() -> None:
     ) in alert_delivery
     assert _env_var_value(alert_delivery, "PROCESSED_STORE_BACKEND") == "postgres"
     assert _env_var_value(alert_delivery, "PHASE3_STORE_BACKEND") == "postgres"
+
+
+def test_render_blueprint_uses_private_alpha_defaults() -> None:
+    content = (_repo_root() / "render.yaml").read_text(encoding="utf-8")
+
+    api = _service_block(content, "urbanization-tracker-api")
+    assert "    region: ohio\n" in api
+    assert "    plan: starter\n" in api
+    assert "    autoDeployTrigger: checksPass\n" in api
+    assert _env_var_value(api, "CORS_ORIGINS") == (
+        "https://urbanization-tracker-web.onrender.com"
+    )
+    assert _env_var_value(api, "PUBLIC_BASE_URL") == (
+        "https://urbanization-tracker-web.onrender.com"
+    )
+
+    web = _service_block(content, "urbanization-tracker-web")
+    assert "    plan: free\n" in web
+    assert _env_var_value(web, "VITE_API_BASE_URL") == (
+        "https://urbanization-tracker-api.onrender.com"
+    )
+
+    database = content[content.index("databases:\n") :]
+    assert "    region: ohio\n" in database
+    assert "    plan: basic-1gb\n" in database
+    assert "    ipAllowList: []\n" in database
 
 
 def _service_block(content: str, name: str) -> str:

@@ -15,6 +15,12 @@ from app.processed_store import (
     processed_store_status,
 )
 
+HOSTED_INGESTION_COMMANDS = {
+    "ingest-huntsville",
+    "ingest-huntsville-agendas",
+    "ingest-madison-county",
+}
+
 
 def main() -> None:
     parser = argparse.ArgumentParser(description="Urbanization Tracker ingestion commands")
@@ -111,6 +117,23 @@ def main() -> None:
     )
 
     args = parser.parse_args()
+    if args.command in HOSTED_INGESTION_COMMANDS and not get_settings().hosted_ingestion_enabled:
+        print(
+            json.dumps(
+                {
+                    "command": args.command,
+                    "reason": (
+                        "HOSTED_INGESTION_ENABLED is false. Configure durable artifact storage "
+                        "before enabling scheduled ingestion."
+                    ),
+                    "status": "disabled",
+                },
+                indent=2,
+                sort_keys=True,
+            )
+        )
+        return
+
     if args.command == "ingest-huntsville":
         result = ingest_huntsville(
             data_dir=args.data_dir,
