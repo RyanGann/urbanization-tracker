@@ -38,7 +38,6 @@ services:
     runtime: static
     name: urbanization-tracker-web
     branch: main
-    plan: free
     autoDeployTrigger: checksPass
     buildCommand: npm ci && npm --workspace apps/web run build
     staticPublishPath: apps/web/dist
