@@ -54,7 +54,7 @@ def test_render_blueprint_uses_private_alpha_defaults() -> None:
     )
 
     web = _service_block(content, "urbanization-tracker-web")
-    assert "    plan: free\n" in web
+    assert "    plan:" not in web
     assert _env_var_value(web, "VITE_API_BASE_URL") == (
         "https://urbanization-tracker-api.onrender.com"
     )
