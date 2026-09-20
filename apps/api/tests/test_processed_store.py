@@ -2,11 +2,13 @@ from pathlib import Path
 from typing import Any
 
 from app.config import get_settings
+from app.data_availability import Availability
 from app.ingestion import pipeline
 from app.processed_store import (
     migrate_processed_artifacts_to_postgres,
     processed_store_status,
     read_processed_list,
+    read_processed_list_result,
     read_processed_payload,
     write_processed_list,
     write_processed_payload,
@@ -187,3 +189,43 @@ def test_ingestion_writes_canonical_processed_collections_to_postgres_backend(
     assert stored["source_health"][0]["run_id"] == "test-run"
     assert not (tmp_path / "processed" / "development_records.json").exists()
     assert (tmp_path / "processed" / "raw_records.json").exists()
+
+
+def test_processed_store_status_uses_memory_in_demo_without_durable_probes(
+    monkeypatch, tmp_path
+) -> None:
+    monkeypatch.setenv("DATA_MODE", "demo")
+    monkeypatch.setenv("INGESTION_DATA_DIR", str(tmp_path))
+    monkeypatch.setenv("PROCESSED_STORE_BACKEND", "postgres")
+    get_settings.cache_clear()
+
+    def fail_durable_probe(*_args: Any, **_kwargs: Any) -> Any:
+        raise AssertionError("demo status must not inspect durable stores")
+
+    monkeypatch.setattr("app.processed_store._postgres_collection_counts", fail_durable_probe)
+    monkeypatch.setattr("app.processed_store._artifact_count", fail_durable_probe)
+
+    status = processed_store_status()
+
+    assert status["backend"] == "memory"
+    assert status["database_first"] is False
+    assert status["database_error"] is None
+    assert all(collection["artifact_count"] == 0 for collection in status["collections"])
+    assert all(artifact["artifact_count"] == 0 for artifact in status["raw_artifacts"])
+
+
+def test_processed_list_status_treats_artifact_stat_error_as_unavailable(
+    monkeypatch, tmp_path
+) -> None:
+    monkeypatch.setenv("INGESTION_DATA_DIR", str(tmp_path))
+    monkeypatch.setenv("PROCESSED_STORE_BACKEND", "artifact")
+    get_settings.cache_clear()
+
+    def fail_stat(_path: Path) -> bool:
+        raise OSError("access denied")
+
+    monkeypatch.setattr(Path, "exists", fail_stat)
+
+    result = read_processed_list_result("development_records")
+
+    assert result.availability is Availability.UNAVAILABLE

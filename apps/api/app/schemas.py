@@ -55,7 +55,16 @@ class DevelopmentRecord(BaseModel):
 
 
 class DevelopmentRecordCollection(BaseModel):
+    data_mode: Literal["live", "demo"]
     records: list[DevelopmentRecord]
+
+
+class DatasetStatus(BaseModel):
+    data_mode: Literal["live", "demo"]
+    availability: Literal["ready", "uninitialized", "unavailable"]
+    dataset_revision: str | None = None
+    source_freshness: str | None = None
+    declared_scope: str | None = None
 
 
 class StagedDevelopmentRecord(BaseModel):
@@ -330,3 +339,4 @@ class EnvironmentalOverlay(BaseModel):
 class FeatureCollection(BaseModel):
     type: Literal["FeatureCollection"] = "FeatureCollection"
     features: list[dict[str, Any]]
+    data_mode: Literal["live", "demo"] | None = None

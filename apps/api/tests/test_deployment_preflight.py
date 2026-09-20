@@ -170,3 +170,14 @@ def _check_for(result: dict[str, object], key: str) -> dict[str, str]:
         if check["key"] == key:
             return check
     raise AssertionError(f"Missing check {key!r}")
+
+
+def test_deployment_preflight_fails_in_demo_mode() -> None:
+    result = run_deployment_preflight(
+        settings=production_settings(data_mode="demo"),
+        check_database=False,
+    )
+
+    data_mode_check = _check_for(result, "data_mode")
+    assert data_mode_check["status"] == "fail"
+    assert "DATA_MODE" in data_mode_check["summary"]

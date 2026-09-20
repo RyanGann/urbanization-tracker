@@ -10,8 +10,10 @@ from pathlib import Path
 from typing import Any, cast
 
 from sqlalchemy import delete, func, select
+from sqlalchemy.exc import SQLAlchemyError
 
 from app.config import get_settings
+from app.data_availability import Availability, DataUnavailableError
 
 HUNTSVILLE_CENTER: tuple[float, float] = (-86.5861, 34.7304)
 PUBLIC_SUBMISSION_SOURCE = "public-submission://local"
@@ -392,18 +394,22 @@ def migrate_artifact_collections_to_postgres(
 def phase3_store_status() -> dict[str, Any]:
     settings = get_settings()
     configured_backend = settings.phase3_store_backend.lower()
-    backend = "memory" if _memory_only else configured_backend
+    effective_memory = _memory_only or settings.data_mode == "demo"
+    backend = "memory" if effective_memory else configured_backend
     database_counts: dict[str, int] = {}
     database_error: str | None = None
 
-    if not _memory_only:
+    if not effective_memory:
         database_counts, database_error = _postgres_collection_counts()
 
     collections = []
     for name in PHASE3_COLLECTIONS:
-        artifact_count, artifact_error = _artifact_collection_count(name)
+        if effective_memory:
+            artifact_count, artifact_error = 0, None
+        else:
+            artifact_count, artifact_error = _artifact_collection_count(name)
         database_count = database_counts.get(name, 0)
-        memory_count = len(_memory_collections.get(name, [])) if _memory_only else 0
+        memory_count = len(_memory_collections.get(name, [])) if effective_memory else 0
         collections.append(
             {
                 "name": name,
@@ -416,7 +422,7 @@ def phase3_store_status() -> dict[str, Any]:
                 ),
                 "artifact_error": artifact_error,
                 "requires_migration": (
-                    not _memory_only
+                    not effective_memory
                     and database_error is None
                     and artifact_error is None
                     and artifact_count > database_count
@@ -426,7 +432,7 @@ def phase3_store_status() -> dict[str, Any]:
 
     return {
         "backend": backend,
-        "database_first": configured_backend == "postgres" and not _memory_only,
+        "database_first": configured_backend == "postgres" and not effective_memory,
         "database_error": database_error,
         "raw_artifact_root": _relative_to_data_dir(
             settings.ingestion_data_dir / "raw",
@@ -629,21 +635,33 @@ def _alerts_for_watch_area(
 
 
 def _read_collection(name: str) -> list[dict[str, Any]]:
-    if _memory_only:
+    if _memory_only or get_settings().data_mode == "demo":
         return copy.deepcopy(_memory_collections.get(name, []))
     if _use_postgres_store():
-        return _read_postgres_collection(name)
+        try:
+            return _read_postgres_collection(name)
+        except SQLAlchemyError as exc:
+            raise DataUnavailableError(
+                collection=f"phase3_{name}", availability=Availability.UNAVAILABLE
+            ) from exc
     path = _collection_path(name)
-    if not path.exists():
-        return copy.deepcopy(_memory_collections.get(name, []))
-    payload = json.loads(path.read_text(encoding="utf-8"))
-    if not isinstance(payload, list):
-        return []
+    try:
+        if not path.exists():
+            return []
+        payload = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, UnicodeDecodeError, json.JSONDecodeError) as exc:
+        raise DataUnavailableError(
+            collection=f"phase3_{name}", availability=Availability.UNAVAILABLE
+        ) from exc
+    if not isinstance(payload, list) or any(not isinstance(item, dict) for item in payload):
+        raise DataUnavailableError(
+            collection=f"phase3_{name}", availability=Availability.UNAVAILABLE
+        )
     return copy.deepcopy(payload)
 
 
 def _write_collection(name: str, items: list[dict[str, Any]]) -> None:
-    if _memory_only:
+    if _memory_only or get_settings().data_mode == "demo":
         _memory_collections[name] = copy.deepcopy(items)
         return
     if _use_postgres_store():
@@ -680,9 +698,7 @@ def _write_postgres_collection(name: str, items: list[dict[str, Any]]) -> None:
     from app.models import Phase3CollectionItem
 
     with SessionLocal.begin() as db:
-        db.execute(
-            delete(Phase3CollectionItem).where(Phase3CollectionItem.collection_name == name)
-        )
+        db.execute(delete(Phase3CollectionItem).where(Phase3CollectionItem.collection_name == name))
         db.add_all(
             Phase3CollectionItem(
                 collection_name=name,

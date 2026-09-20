@@ -28,7 +28,8 @@ for (const signal of ["SIGINT", "SIGTERM"]) {
 
 function usage(message) {
   if (message) console.error(`Error: ${message}`);
-  console.error("Usage: node scripts/run-integration.mjs --suite api|live|performance [--scenario functional|representative|snapshot] [--snapshot-dir DISPOSABLE_COPY] [--profile desktop|mobile] [--smoke] [--keep-on-failure]");
+  console.error("Usage: node scripts/run-integration.mjs --suite api|live|performance [--scenario functional|representative|snapshot|c01-data-modes] [--snapshot-dir DISPOSABLE_COPY] [--profile desktop|mobile] [--smoke] [--keep-on-failure]");
+
   process.exitCode = 2;
 }
 
@@ -58,8 +59,12 @@ function parseArgs(argv) {
     if (!["functional", "representative", "snapshot"].includes(options.scenario)) throw new Error("Performance scenario must be functional, representative or snapshot");
     if ((options.scenario === "snapshot") !== !!options.snapshotDir) throw new Error("Snapshot scenario requires --snapshot-dir; other scenarios forbid it");
     if (!["desktop", "mobile"].includes(options.profile)) throw new Error("Performance profile must be desktop or mobile");
-  } else if (options.scenario || options.profile || options.smoke || options.snapshotDir) {
-    throw new Error("Performance options require --suite performance");
+  } else {
+    if (options.profile || options.smoke || options.snapshotDir) throw new Error("Performance options require --suite performance");
+    if (options.scenario && options.scenario !== "c01-data-modes") throw new Error(`Scenario '${options.scenario}' is not implemented`);
+    if (options.scenario === "c01-data-modes" && (options.suite !== "api" || options.assertFailure || options.isolationCheck || options.child)) {
+      throw new Error("--scenario c01-data-modes requires the top-level api suite without assertion or isolation flags");
+    }
   }
   if (options.assertFailure && options.suite !== "api") {
     throw new Error("--assert-failure is only supported with --suite api");
@@ -179,6 +184,21 @@ async function waitForWeb(compose, log, timeoutMs = 90_000) {
   throw new Error(`web readiness probe timed out: ${lastError}`);
 }
 
+async function updateComposeEnvironment(envFile, updates) {
+  const values = new Map(
+    (await readFile(envFile, "utf8"))
+      .split(/\r?\n/)
+      .filter(Boolean)
+      .map((line) => {
+        const separator = line.indexOf("=");
+        return [line.slice(0, separator), line.slice(separator + 1)];
+      })
+  );
+  for (const [key, value] of Object.entries(updates)) values.set(key, value);
+  const contents = [...values].map(([key, value]) => `${key}=${value}`).join("\n");
+  await writeFile(envFile, `${contents}\n`, { encoding: "utf8", mode: 0o600 });
+}
+
 async function assertApi(apiUrl, reviewerToken, fixture, assertFailure) {
   const health = await fetchWithTimeout(`${apiUrl}/health`);
   if (!health.ok) throw new Error(`health request returned ${health.status}`);
@@ -262,12 +282,15 @@ async function runSuite(options) {
     id: `t01-postgis-${sentinel}`,
     title: `T01 PostGIS Fixture ${sentinel}`
   };
+  const liveSubmissionTitle = `C01 live submission ${sentinel}`;
+  const demoSubmissionTitle = `C01 demo submission ${sentinel}`;
   let apiUrl = "";
   const compose = ["compose", "--project-name", project, "--project-directory", root, "--env-file", envFile, "-f", composeFile];
   let failed = false;
   let failureMessage = null;
   let imageDigests = {};
   let imageIds = {};
+  const scenarioArtifacts = {};
   const commitSha = (await run("git", ["rev-parse", "HEAD"], { log })).output.trim();
   const workingTreeDirty = !!(await run("git", ["status", "--porcelain"], { log })).output.trim();
   console.log(JSON.stringify({ run_id: runId, project, suite: options.suite, artifact_directory: artifactDir }));
@@ -279,6 +302,12 @@ async function runSuite(options) {
     Object.assign(fixture, { id: performance.manifest.expected.first_development.public_id, title: performance.manifest.expected.first_development.title, count: performance.manifest.development_records });
   }
   let stopSampling;
+  if (options.scenario === "c01-data-modes") {
+    // Create the bind-mount source as the host user before Compose starts the API.
+    // Otherwise Docker creates it as root and the runner cannot write C01 fixtures on Linux CI.
+    await mkdir(join(artifactDir, "c01-data"), { recursive: true });
+  }
+
   await writeFile(envFile, [
     `INTEGRATION_ARTIFACT_DIR=${artifactDir.replaceAll("\\", "/")}`,
     `INTEGRATION_REVIEWER_TOKEN=${reviewerToken}`,
@@ -287,12 +316,21 @@ async function runSuite(options) {
     `P01_PERFORMANCE_PROFILE=${options.profile ?? "desktop"}`,
     `P01_PERFORMANCE_SCENARIO=${options.scenario ?? "functional"}`,
     `P01_SMOKE=${!!options.smoke}`,
-    "P01_OUTPUT=/artifacts/performance/browser.json"
+    "P01_OUTPUT=/artifacts/performance/browser.json",
+    "INTEGRATION_DATA_MODE=live",
+    "INTEGRATION_PHASE3_STORE_BACKEND=postgres",
+    "INTEGRATION_PROCESSED_STORE_BACKEND=postgres",
+    "INTEGRATION_INGESTION_DATA_DIR=/var/empty-data"
+
   ].join("\n") + "\n", { encoding: "utf8", mode: 0o600 });
   await writeFile(cleanupEnv, [
     `INTEGRATION_ARTIFACT_DIR=${artifactDir.replaceAll("\\", "/")}`,
     "INTEGRATION_REVIEWER_TOKEN=",
-    "INTEGRATION_FIXTURE_TITLE="
+    "INTEGRATION_FIXTURE_TITLE=",
+    "INTEGRATION_DATA_MODE=live",
+    "INTEGRATION_PHASE3_STORE_BACKEND=postgres",
+    "INTEGRATION_PROCESSED_STORE_BACKEND=postgres",
+    "INTEGRATION_INGESTION_DATA_DIR=/var/empty-data"
   ].join("\n") + "\n", { encoding: "utf8", mode: 0o600 });
   await writeFile(join(artifactDir, "recovery.json"), JSON.stringify({
     run_id: runId,
@@ -313,29 +351,136 @@ async function runSuite(options) {
   }, null, 2) + "\n", "utf8");
   const fixtureHash = performance?.manifest.sha256 ?? createHash("sha256").update(await readFile(fixturePath)).digest("hex");
 
+  const runC01HttpAssertions = async (phase) => {
+    const resultPath = `/c01-data/results/${phase}.json`;
+    await run("docker", [
+      ...compose,
+      "run", "--rm", "--no-deps",
+      "--volume", `${join(root, "apps", "api", "tests", "integration").replaceAll("\\", "/")}:/integration:ro`,
+      "api", "python", "/integration/c01_data_modes.py",
+      "--api-url", "http://api-gateway:8000",
+      "--phase", phase,
+      "--fixture-id", fixture.id,
+      "--reviewer-token", reviewerToken,
+      "--live-submission-title", liveSubmissionTitle,
+      "--demo-submission-title", demoSubmissionTitle,
+      "--result", resultPath
+    ], { log });
+  };
+
+  const runC01BrowserAssertions = async (phase) => {
+    await run("docker", [
+      ...compose,
+      "run", "--rm", "--env", `C01_BROWSER_PHASE=${phase}`,
+      "browser", "--grep", "C01 data modes"
+    ], { log, timeoutMs: 300_000 });
+  };
+
+  const reconfigureC01Api = async (updates) => {
+    await updateComposeEnvironment(envFile, updates);
+    await run("docker", [...compose, "up", "--detach", "--force-recreate", "api"], { log });
+    apiUrl = await publishedPort(compose, "api-gateway", 8000, log);
+    await waitForHealth(apiUrl);
+  };
+
+  const runC01DataModes = async () => {
+    const c01DataDirectory = join(artifactDir, "c01-data");
+    const emptyArtifact = join(c01DataDirectory, "empty", "processed", "development_records.json");
+    const corruptArtifact = join(c01DataDirectory, "corrupt", "processed", "development_records.json");
+    await mkdir(dirname(emptyArtifact), { recursive: true });
+    await mkdir(dirname(corruptArtifact), { recursive: true });
+    await writeFile(emptyArtifact, "[]\n", "utf8");
+    await writeFile(corruptArtifact, "{}\n", "utf8");
+    scenarioArtifacts.empty_development_records_sha256 = createHash("sha256").update(await readFile(emptyArtifact)).digest("hex");
+    scenarioArtifacts.corrupt_development_records_sha256 = createHash("sha256").update(await readFile(corruptArtifact)).digest("hex");
+
+    await runC01HttpAssertions("postgres-empty");
+    await run("docker", [...compose, "up", "--detach", "web"], { log, timeoutMs: 300_000 });
+    await waitForWeb(compose, log);
+    await runC01BrowserAssertions("empty");
+
+    await run("docker", [
+      ...compose,
+      "run", "--rm", "--no-deps",
+      "--volume", `${join(root, "apps", "api", "tests", "integration").replaceAll("\\", "/")}:/integration:ro`,
+      "--env", `INTEGRATION_FIXTURE_ID=${fixture.id}`,
+      "--env", `INTEGRATION_FIXTURE_TITLE=${fixture.title}`,
+      "api", "python", "/integration/seed_integration.py"
+    ], { log });
+    await runC01HttpAssertions("postgres-seeded");
+
+    await run("docker", [...compose, "stop", "db"], { log });
+    await runC01HttpAssertions("postgres-stopped");
+    await run("docker", [...compose, "start", "db"], { log });
+    await waitForDatabase(compose, log);
+    apiUrl = await publishedPort(compose, "api-gateway", 8000, log);
+    await waitForHealth(apiUrl);
+    await runC01HttpAssertions("postgres-recovered");
+
+    await runC01HttpAssertions("live-phase3-seeded");
+    await reconfigureC01Api({
+      INTEGRATION_DATA_MODE: "demo",
+      INTEGRATION_PHASE3_STORE_BACKEND: "postgres",
+      INTEGRATION_PROCESSED_STORE_BACKEND: "postgres",
+      INTEGRATION_INGESTION_DATA_DIR: "/var/empty-data"
+    });
+    await runC01HttpAssertions("demo-phase3-isolated");
+    await runC01BrowserAssertions("demo");
+    await reconfigureC01Api({
+      INTEGRATION_DATA_MODE: "live",
+      INTEGRATION_PHASE3_STORE_BACKEND: "postgres",
+      INTEGRATION_PROCESSED_STORE_BACKEND: "postgres",
+      INTEGRATION_INGESTION_DATA_DIR: "/var/empty-data"
+    });
+    await runC01HttpAssertions("live-phase3-restored");
+
+    await reconfigureC01Api({
+      INTEGRATION_DATA_MODE: "live",
+      INTEGRATION_PHASE3_STORE_BACKEND: "artifact",
+      INTEGRATION_PROCESSED_STORE_BACKEND: "artifact",
+      INTEGRATION_INGESTION_DATA_DIR: "/c01-data/missing"
+    });
+    await runC01HttpAssertions("artifact-missing");
+    await runC01BrowserAssertions("unavailable");
+
+    await reconfigureC01Api({ INTEGRATION_INGESTION_DATA_DIR: "/c01-data/empty" });
+    await runC01HttpAssertions("artifact-empty");
+    await runC01BrowserAssertions("empty");
+
+    await reconfigureC01Api({ INTEGRATION_INGESTION_DATA_DIR: "/c01-data/corrupt" });
+    await runC01HttpAssertions("artifact-corrupt");
+
+  };
+
   try {
-    await run("docker", [...compose, "build", "api", ...(options.suite !== "api" ? ["web", "browser"] : [])], { log, timeoutMs: 300_000 });
+    await run("docker", [...compose, "build", "api", ...((options.suite !== "api" || options.scenario === "c01-data-modes") ? ["web", "browser"] : [])], { log, timeoutMs: 300_000 });
     await run("docker", [...compose, "up", "--detach", "db", "mail"], { log, timeoutMs: 300_000 });
     await waitForDatabase(compose, log);
     await run("docker", [...compose, "run", "--rm", "--no-deps", "api", "alembic", "upgrade", "head"], { log });
-    await run("docker", [...compose, "run", "--rm", "--no-deps", "--volume", `${join(root, "apps", "api", "tests", "integration").replaceAll("\\", "/")}:/integration:ro`, "--env", `INTEGRATION_FIXTURE_ID=${fixture.id}`, "--env", `INTEGRATION_FIXTURE_TITLE=${fixture.title}`, ...(performance ? ["--volume", `${artifactDir.replaceAll("\\", "/")}:/performance:ro`, "--env", "INTEGRATION_FIXTURE_PATH=/performance/fixture.json", "--env", "INTEGRATION_PRESERVE_IDS=1", "--env", "P01_VALIDATE_GEOMETRY=1"] : []), "api", "python", "/integration/seed_integration.py"], { log, timeoutMs: 600_000 });
+    if (options.scenario !== "c01-data-modes") await run("docker", [...compose, "run", "--rm", "--no-deps", "--volume", `${join(root, "apps", "api", "tests", "integration").replaceAll("\\", "/")}:/integration:ro`, "--env", `INTEGRATION_FIXTURE_ID=${fixture.id}`, "--env", `INTEGRATION_FIXTURE_TITLE=${fixture.title}`, ...(performance ? ["--volume", `${artifactDir.replaceAll("\\", "/")}:/performance:ro`, "--env", "INTEGRATION_FIXTURE_PATH=/performance/fixture.json", "--env", "INTEGRATION_PRESERVE_IDS=1", "--env", "P01_VALIDATE_GEOMETRY=1"] : []), "api", "python", "/integration/seed_integration.py"], { log, timeoutMs: 600_000 });
     if (performance) await enableMeasurementLimits(performance);
+
     await run("docker", [...compose, "up", "--detach", "api"], { log });
     await run("docker", [...compose, "up", "--detach", "api-gateway"], { log });
     apiUrl = await publishedPort(compose, "api-gateway", 8000, log);
     await waitForHealth(apiUrl);
     await run("docker", [...compose, "exec", "-T", "db", "psql", "-U", "integration", "-d", "integration", "-Atqc", "SELECT PostGIS_Version();"], { log });
     await run("docker", [...compose, "exec", "-T", "api", "alembic", "current"], { log });
-    await assertApi(apiUrl, reviewerToken, fixture, options.assertFailure);
-    await run("docker", [...compose, "restart", "api"], { log });
-    apiUrl = await publishedPort(compose, "api-gateway", 8000, log);
-    await waitForHealth(apiUrl);
-    await assertApi(apiUrl, reviewerToken, fixture, false);
-    if (performance) {
-      await captureDatabase({ compose, run, log, artifactDir });
-      stopSampling = await startResourceSampling({ compose, run, log, artifactDir });
+    if (options.scenario === "c01-data-modes") {
+      await runC01DataModes();
+    } else {
+      await assertApi(apiUrl, reviewerToken, fixture, options.assertFailure);
+      await run("docker", [...compose, "restart", "api"], { log });
+      apiUrl = await publishedPort(compose, "api-gateway", 8000, log);
+      await waitForHealth(apiUrl);
+      await assertApi(apiUrl, reviewerToken, fixture, false);
+      if (performance) {
+        await captureDatabase({ compose, run, log, artifactDir });
+        stopSampling = await startResourceSampling({ compose, run, log, artifactDir });
+      }
     }
     if (options.suite !== "api") {
+
       await run("docker", [...compose, "up", "--detach", "web"], { log, timeoutMs: 300_000 });
       await waitForWeb(compose, log);
       await run("docker", [...compose, "run", "--rm", ...(performance ? ["--entrypoint", "node"] : []), "browser", ...(performance ? ["e2e/performance-baseline.mjs"] : [])], { log, timeoutMs: performance ? 14_400_000 : 300_000 });
@@ -394,12 +539,16 @@ async function runSuite(options) {
       project,
       suite: options.suite,
       performance: performance ? { fixture: performance.manifest, profile: options.profile, smoke: !!options.smoke, resource_limits: { api_cpus: 1, api_memory_gib: 1, db_cpus: 2, db_memory_gib: 2 } } : null,
+      scenario: options.scenario ?? null,
+
       api_url: apiUrl,
       fixture_sha256: fixtureHash,
       fixture,
+      scenario_artifacts: scenarioArtifacts,
       command: `node scripts/run-integration.mjs ${requestedArgs.join(" ")}`,
       options: {
         suite: options.suite,
+        scenario: options.scenario ?? null,
         keep_on_failure: options.keepOnFailure,
         assert_failure: options.assertFailure,
         isolation_check: options.isolationCheck
