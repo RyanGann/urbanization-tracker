@@ -28,7 +28,7 @@ test(`C01 data modes real API map state: ${phase ?? "not-configured"}`, async ({
   }
 
   if (phase === "demo") {
-    await expect(page.getByText("Demo data   not live planning data.")).toBeVisible();
+    await expect(page.getByText(/Demo data.*not live planning data/)).toBeVisible();
     await expect(page.locator(".record-row")).not.toHaveCount(0);
     return;
   }
