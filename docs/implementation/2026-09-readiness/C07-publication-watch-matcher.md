@@ -26,9 +26,9 @@ These are inspection starting points, not a requirement to put all new code in e
 
 ## Implementation steps
 
-1. Create a watch_alert_outbox with a unique idempotency key and the lifecycle in CONTRACTS.md. A development notification key is (watch_id,event_id,channel); confirmation jobs use a separate message_kind and request key.
+1. Create a watch_alert_outbox with a unique idempotency key and the lifecycle in CONTRACTS.md. A development notification key is (watch_id,event_id,channel); confirmation jobs use a separate message_kind and request key. Introduce subscription state and confirmed_at storage here; migrate unverified legacy subscriptions to pending_confirmation. C08 will deliver fixture-generated messages through the local sink, and S03 will add the public confirmation lifecycle.
 
-2. Add a bounded CLI matcher that claims unprocessed publication events safely and considers active, confirmed subscriptions created before the event. S03 will activate verified subscriptions; preexisting unverified subscriptions remain pending and cannot receive mail.
+2. Add a bounded CLI matcher that claims unprocessed publication events safely and considers only currently active subscriptions with a non-null confirmed_at <= event.occurred_at. Creation time alone is insufficient: a pending watch confirmed after an event must never receive that historical event when a delayed matcher runs. S03 will activate verified subscriptions; preexisting unverified subscriptions remain pending and cannot receive mail.
 
 3. Match public after-state geometry with exact PostGIS ST_Intersects and any explicitly supported distance rule using original geometry/geography, not bounding boxes alone. Apply the same validated status/type filters as the watch contract. A retraction or a change leaving a watched area may notify only watches that previously matched that record; label why.
 
@@ -42,7 +42,7 @@ These are inspection starting points, not a requirement to put all new code in e
 
 - [ ] Create an active test watch -> publish later matching record through HTTP -> one outbox row; restart/replay/two concurrent matchers -> still one.
 - [ ] Update substantive content -> one new revision alert; last_checked-only update -> none; baseline migration -> none.
-- [ ] A polygon hole/bbox false positive does not match; edge intersection does. Filter mismatch, unsubscribed and unconfirmed watches do not queue.
+- [ ] A polygon hole/bbox false positive does not match; edge intersection does. Filter mismatch, unsubscribed and unconfirmed watches do not queue. A watch pending when an event occurs, then confirmed before delayed matching, still queues no historical alert on initial match or replay.
 - [ ] Failure between inserting alerts and marking event processed rolls back; retry completes without loss.
 - [ ] Run the affected existing lint/types/tests plus the real-stack scenarios above; retain exact commands, SHA, fixture checksum and results. Do not claim an unrun check passed.
 - [ ] Update API/client schemas and user-facing error states together when their contract changes; report any departure from the shared contract before merging.

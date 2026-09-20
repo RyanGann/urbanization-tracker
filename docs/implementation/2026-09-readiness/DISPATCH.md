@@ -94,6 +94,6 @@ G4 environmental additions and X01's optional five-day 3D experiment follow the 
 
 One valid dependency order (not a promise of parallel execution):
 
-S01 → T01 → C01 → P01 → C02 → P02 → U00 → C03 → O01 → P03 → S02 → C04 → D01 → P04 → C05 → O04 → P05 → C06 → P06 → C07 → D02 → P07 → O02 → P08 → S03 → C08 → U01 → U02 → P09 → U03 → U04 → C09 → O03 → E01 → E02 → X01 → E03 → E04
+S01 → T01 → C01 → P01 → C02 → P02 → U00 → C03 → O01 → P03 → S02 → C04 → D01 → P04 → C05 → O04 → P05 → C06 → P06 → C07 → D02 → P07 → C08 → O02 → P08 → S03 → U01 → U02 → P09 → U03 → U04 → C09 → O03 → E01 → E02 → X01 → E03 → E04
 
 Use the index's track priorities to choose among ready tasks. Avoid a long serial queue merely because this example lists independent work in one line.

@@ -36,9 +36,9 @@ A public-content fingerprint uses canonical JSON ordering and a versioned field 
 
 For pilot correctness, use one transaction-level PostgreSQL advisory lock for canonical/operational mutation: namespace `2088694651`, key `1`. Acquire it before reading state to modify, using a shared SQLAlchemy Session and bounded lock/statement timeouts. Nested helpers must not independently commit. This intentionally serializes short pilot writes; reassess only after measurement. Fetches, uploads, PDF parsing and SMTP stay outside the lock/transaction.
 
-Convert writers incrementally: C02 creation paths; C03 source merges; C04 agenda merges; C05 review/import actions; C06 publication; C07 matcher; S03 subscription lifecycle; C08 sender; C09 merge. Until all affected writers migrate, do not claim concurrent production safety. Replace ordinary whole-collection delete/reinsert with item upserts/deletes. Maintenance import is explicit and locked.
+Convert writers incrementally: C02 creation paths; C03 source merges; C04 agenda merges; C05 review/import actions; C06 publication; C07 matcher; C08 sender; S03 subscription lifecycle; C09 merge. Until all affected writers migrate, do not claim concurrent production safety. Replace ordinary whole-collection delete/reinsert with item upserts/deletes. Maintenance import is explicit and locked.
 
-Add `publication_events` using string public_id (not a guessed FK to unused integer model scaffolding), unique `(public_id, revision)`, event ID, kind, before/after public snapshots, source/run provenance, content hash/version, occurred_at, notify_eligible and matcher processing state. Kinds: published, changed, retracted, context_changed, merged; baseline is a non-notifying migration event. Canonical write + event + map-index projection commit together. A no-op refresh advances freshness only. Retain genuine history and disclose when tracking began.
+Add `publication_events` using string public_id (not a guessed FK to unused integer model scaffolding), unique `(public_id, revision)`, event ID, kind, before/after public snapshots, source/run provenance, content hash/version, occurred_at, notify_eligible and matcher processing state. Kinds: published, changed, retracted, context_changed, merged; baseline is a non-notifying migration event. Canonical write and event commit together; once P07 enables the map index, its projection commits in that transaction too. Before enabling it, install the hook in every active writer, backfill/reconcile under the canonical mutation lock and atomically mark the index ready. A no-op refresh advances freshness only. Retain genuine history and disclose when tracking began.
 
 Review mutations require `expected_revision`. Automatically published valid ArcGIS audit rows are read-only; manual candidates expose allowed_actions. Known but disallowed action is 409. Retraction is explicit and keeps a tombstone/history.
 
@@ -100,7 +100,7 @@ Client accumulates at most 2,000 visible records then discloses a zoom/filter re
 
 ## 5. Watch and delivery lifecycle — C07, S02, S03, C08
 
-Watch states: pending_confirmation, active, unsubscribed. Legacy unverified watches are pending. Store confirmed_at; only events after activation are eligible, preventing confirmation from generating historical backlog. Creation-time matches are a preview count, not automatic historical mail.
+Watch states: pending_confirmation, active, unsubscribed. Legacy unverified watches are pending. C07 introduces this storage; C08 implements durable delivery with fixture messages and the local sink; S03 then adds the public confirmation/unsubscribe flow. Eligibility requires current active state and non-null confirmed_at <= event.occurred_at, preventing delayed matching from sending events that occurred before confirmation. Creation-time matches are a preview count, not automatic historical mail.
 
 Matcher uses exact canonical geometry and validated filters. An event that leaves a watch area or retracts a previously matched record may notify prior matching subscriptions; do not notify unrelated watches. Baseline/context-only updates default to non-notifying.
 
@@ -112,7 +112,7 @@ SMTP delivery is at-least-once. A crash after server acceptance can produce a du
 
 ## 6. Source coverage, safety and release behavior — D01, D02, O01–O04
 
-Persist scope boundary/version, time window, source query, expected/fetched/accepted/rejected counts, coverage (complete/partial/failed/unknown), last successful data time and latest attempted refresh. Freshness and successful transport do not imply complete coverage. Missing records in a complete observation become source_missing with evidence; never infer cancelled or delete audit history. Partial/failed batches cannot retire missing records or replace a good environmental version.
+Persist scope boundary/version, time window, source query, expected/fetched/accepted/rejected counts, coverage (complete/partial/failed/unknown), last successful data time and latest attempted refresh. Freshness and successful transport do not imply complete coverage. Before D01 implements scoped reconciliation, legacy/capped fetches are unknown or partial, with omitted coverage defaulting to unknown. Only proven complete observations may mark missing records source_missing with evidence; never infer cancelled or delete audit history. Partial/failed/unknown batches cannot retire missing records or replace a good environmental version as complete.
 
 Use original geometries for PostGIS screening, with source/rule/record versions and unknown/partial outcomes outside reliable coverage. Context re-evaluation creates traceable non-notifying changes by default.
 

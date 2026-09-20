@@ -202,7 +202,8 @@
       "gate": "G1",
       "depends_on": [
         "C07",
-        "S02"
+        "S02",
+        "C08"
       ],
       "review": "Routine with lead review",
       "pr_boundary": "One subscription lifecycle API/UI PR.",
@@ -217,8 +218,7 @@
       "track": "Correctness",
       "gate": "G1",
       "depends_on": [
-        "C07",
-        "S03"
+        "C07"
       ],
       "review": "Lead review",
       "pr_boundary": "One delivery-worker hardening PR.",
@@ -663,10 +663,10 @@
     "C07",
     "D02",
     "P07",
+    "C08",
     "O02",
     "P08",
     "S03",
-    "C08",
     "U01",
     "U02",
     "P09",

@@ -33,7 +33,7 @@ These are inspection starting points, not a requirement to put all new code in e
 
 3. Normalize using the registry and preserve first discovery time. Define the public-content fingerprint in CONTRACTS.md; date_last_checked and ingestion timestamps do not constitute a substantive update.
 
-4. Replace whole-collection ingestion writes with a batch merge under the C02 transaction. Pass source_key, explicit scope, run_id, coverage outcome, and observations separately from the row array, including for a zero-row result.
+4. Replace whole-collection ingestion writes with a batch merge under the C02 transaction. Pass source_key, explicit scope, run_id, coverage outcome, and observations separately from the row array, including for a zero-row result. Until D01's scoped count reconciliation is implemented, every legacy/capped production fetch must report unknown or partial coverage, never complete; an omitted coverage value defaults to unknown. A successful HTTP response or reaching the configured row cap cannot establish completeness.
 
 5. Never retire records from failed/partial observations. For a complete scoped result, mark previously observed missing records as source_missing with provenance; retain their published history and do not infer cancelled/completed status. Use an explicit later review/retraction workflow.
 
@@ -43,7 +43,7 @@ These are inspection starting points, not a requirement to put all new code in e
 
 - [ ] Replay identical data -> same IDs and first discovery dates; change status/name -> same ID, new content fingerprint; change only checked time -> unchanged fingerprint.
 - [ ] Missing ID, duplicate ID and ambiguous legacy backfill produce diagnostics and no silent merging.
-- [ ] Concurrent ingestion and submission retain both; failed/partial/complete-empty source runs have distinct, verified outcomes.
+- [ ] Concurrent ingestion and submission retain both; failed/partial/complete-empty source runs have distinct, verified outcomes. Current capped fetches and omitted coverage default to partial/unknown and never mark missing records source_missing; only explicitly proven complete test observations may exercise that transition before D01 lands.
 - [ ] Existing bookmarked record URLs continue resolving after the identity migration.
 - [ ] Run the affected existing lint/types/tests plus the real-stack scenarios above; retain exact commands, SHA, fixture checksum and results. Do not claim an unrun check passed.
 - [ ] Update API/client schemas and user-facing error states together when their contract changes; report any departure from the shared contract before merging.

@@ -91,8 +91,8 @@ A PR can merge before its broader gate is complete if its intermediate state is 
 | Guide | Depends on | Review |
 | --- | --- | --- |
 | [C07: Generate future-change watch alerts through a durable outbox](C07-publication-watch-matcher.md) | C06, S02 | Lead review |
-| [S03: Confirm watch subscriptions and make unsubscribe links work](S03-watch-confirmation-unsubscribe.md) | C07, S02 | Routine with lead review |
-| [C08: Deliver outbox messages with leases, retries, and clear failure states](C08-delivery-leases-retries.md) | C07, S03 | Lead review |
+| [S03: Confirm watch subscriptions and make unsubscribe links work](S03-watch-confirmation-unsubscribe.md) | C07, S02, C08 | Routine with lead review |
+| [C08: Deliver outbox messages with leases, retries, and clear failure states](C08-delivery-leases-retries.md) | C07 | Lead review |
 
 ## Remaining map performance
 

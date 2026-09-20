@@ -5,7 +5,7 @@ Status: **Planned; no application implementation in this guide.** Baseline: `dbd
 | Field | Assignment |
 | --- | --- |
 | Track / gate | Security / G1 |
-| Depends on | [C07](C07-publication-watch-matcher.md), [S02](S02-public-input-validation.md) |
+| Depends on | [C07](C07-publication-watch-matcher.md), [S02](S02-public-input-validation.md), [C08](C08-delivery-leases-retries.md) |
 | Review | Routine with lead review |
 | PR boundary | One subscription lifecycle API/UI PR. |
 
@@ -30,7 +30,7 @@ These are inspection starting points, not a requirement to put all new code in e
 
 ## Implementation steps
 
-1. Introduce pending_confirmation, active and unsubscribed subscription states. Creating a watch gives a generic receipt and queues a confirmation message; it never activates delivery immediately. Legacy subscriptions without proof of confirmation remain pending.
+1. Wire the public lifecycle onto C07's pending_confirmation, active and unsubscribed subscription states and C08's durable delivery worker. Creating a watch gives a generic receipt and queues a confirmation message; it never activates delivery immediately. Legacy subscriptions without proof of confirmation remain pending. Use the existing worker with the local SMTP sink for this PR's exact-link acceptance checks; do not add a competing sender.
 
 2. Generate cryptographically random, purpose-bound, expiring confirmation tokens and store only hashes in the subscription/token table. Put the minimum short-lived delivery secret in the restricted outbox only when needed to send, exclude it from logs/backups exported to reviewers, and clear it after sending/expiry.
 
@@ -57,7 +57,7 @@ Do not email all legacy users automatically during migration. Document the pendi
 
 ## Outside this PR
 
-No paid email-provider selection, real invitation campaign, or claim of delivered mail before C08.
+No paid email-provider selection, real invitation campaign, or claim that a locally captured message proves production delivery.
 
 ## Agent handoff
 

@@ -29,7 +29,7 @@ These are inspection starting points, not a requirement to put all new code in e
 
 1. Add development_map_index keyed by string public_id with publication_revision, safe summary fields, indexed original geometry/centroid and bounded display geometry. This is a derived projection of existing canonical records, not a second source of truth.
 
-2. Backfill through an explicit command and attach synchronous upsert/delete to C06's publication transaction. Missing or incompatible index state returns 503; do not silently fall back to an unbounded full scan.
+2. Add an index-state record initially not ready, then install synchronous upsert/delete in every active C06 publication writer before exposing the read API. For this pilot, run backfill and canonical-ID/revision reconciliation under C02's canonical mutation lock (or explicitly pause all writers); only then mark the index ready in that same transaction. Older writers that lack the projection hook must be stopped before cutover. A concurrent publication must either precede the locked backfill or wait and commit through the installed hook afterward. Failed/timed-out backfill keeps readiness false and is retryable. Missing or incompatible index state returns 503; never fall back to an unbounded full scan.
 
 3. Implement GET /api/map/developments using CONTRACTS.md: required bbox/zoom, shared repeated filter names, default limit 500/max 1,000, stable cursor, dataset revision, total matching count, returned count, next_cursor and truncation reason.
 
@@ -42,7 +42,7 @@ These are inspection starting points, not a requirement to put all new code in e
 ## Acceptance and verification
 
 - [ ] Real API filtering/empty selections, viewport edges, holes, pagination, cursor tampering, concurrent publication and index rebuild are covered.
-- [ ] Publish/update/retract -> detail, index and revision change atomically; failed transaction leaves all unchanged.
+- [ ] Publish/update/retract -> detail, index and revision change atomically; failed transaction leaves all unchanged. Use two database connections and a barrier to force publication during backfill, then prove the ready index has every current ID/revision and no retracted record; no write may fall between backfill and hook installation.
 - [ ] A large synthetic fixture proves selective index use and response budget; private/source payload fields never appear.
 - [ ] Exact total and displayed counts are distinguished; a page-size byte cap never silently loses a record.
 - [ ] Run the affected existing lint/types/tests plus the real-stack scenarios above; retain exact commands, SHA, fixture checksum and results. Do not claim an unrun check passed.

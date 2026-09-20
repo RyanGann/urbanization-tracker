@@ -5,7 +5,7 @@ Status: **Planned; no application implementation in this guide.** Baseline: `dbd
 | Field | Assignment |
 | --- | --- |
 | Track / gate | Correctness / G1 |
-| Depends on | [C07](C07-publication-watch-matcher.md), [S03](S03-watch-confirmation-unsubscribe.md) |
+| Depends on | [C07](C07-publication-watch-matcher.md) |
 | Review | Lead review |
 | PR boundary | One delivery-worker hardening PR. |
 
@@ -32,7 +32,7 @@ These are inspection starting points, not a requirement to put all new code in e
 
 2. Use queued, leased, retry, sent, suppressed and dead states. Default bounded batch 25, finite timeouts, retry delays 1/5/30 minutes then 2/12 hours with jitter, and a maximum attempt count. Enforce configured provider throughput with a shared database-backed send budget so concurrent workers cannot multiply it. Permanent address/provider failures become dead; transient transport failures retry.
 
-3. Recheck subscription state immediately before sending a development alert; suppress pending/unsubscribed watches. Confirmation messages follow their own expiry and resend rules. Validate positive batch limits and honor global ALERT_DELIVERY_ENABLED=false.
+3. Recheck subscription state immediately before sending a development alert; suppress pending/unsubscribed watches. Confirmation messages follow their own expiry and resend rules. Validate positive batch limits and honor global ALERT_DELIVERY_ENABLED=false. This worker precedes S03: test active/unsubscribed states and confirmation jobs using isolated fixtures against C07's state schema. S03 later adds the public confirmation/unsubscribe endpoints and tests the exact emailed links end to end.
 
 4. Use a deterministic Message-ID per outbox item and provider idempotency when available. SMTP is at-least-once: a crash after acceptance but before recording success may duplicate a message. Document that ambiguity; do not claim exactly-once delivery.
 
@@ -43,7 +43,7 @@ These are inspection starting points, not a requirement to put all new code in e
 ## Acceptance and verification
 
 - [ ] Two workers compete for the same batch: one lease per row; a crashed worker's lease expires and is retried.
-- [ ] Local SMTP accepts, temporarily rejects, permanently rejects and stalls; verify states, attempt budgets, rate limits and cancellation on unsubscribe.
+- [ ] Local SMTP accepts, temporarily rejects, permanently rejects and stalls; verify states, attempt budgets, rate limits and cancellation when the fixture subscription becomes unsubscribed. Fixture confirmation jobs produce the expected web-origin link without requiring S03's not-yet-implemented routes.
 - [ ] Simulate crash before send and after SMTP acceptance; demonstrate recovery and document the duplicate window.
 - [ ] No network email is attempted when disabled, and error responses/logs redact recipient, credentials and tokens.
 - [ ] Run the affected existing lint/types/tests plus the real-stack scenarios above; retain exact commands, SHA, fixture checksum and results. Do not claim an unrun check passed.
