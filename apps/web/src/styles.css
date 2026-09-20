@@ -155,9 +155,10 @@ button {
   min-height: 520px;
 }
 
-.map-canvas {
+.map-stage > .map-canvas {
   position: absolute;
   inset: 0;
+  height: 100%;
 }
 
 .map-footer {

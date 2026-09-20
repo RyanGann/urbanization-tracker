@@ -13,6 +13,6 @@
     "e2e": "npm --workspace apps/web run e2e"
   },
   "engines": {
-    "node": ">=20"
+    "node": ">=22"
   }
 }
