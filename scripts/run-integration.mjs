@@ -154,6 +154,23 @@ async function waitForDatabase(compose, log, timeoutMs = 60_000) {
   throw new Error(`database SQL readiness probe timed out: ${lastError}`);
 }
 
+async function waitForWeb(compose, log, timeoutMs = 90_000) {
+  const deadline = Date.now() + timeoutMs;
+  let lastError = "not attempted";
+  while (Date.now() < deadline) {
+    if (interrupted) throw new Error("integration run interrupted");
+    const probe = await run("docker", [...compose, "exec", "-T", "web", "wget", "-q", "-O", "/dev/null", "http://127.0.0.1/"], {
+      log,
+      allowFailure: true,
+      timeoutMs: 10_000
+    });
+    if (probe.code === 0) return;
+    lastError = probe.output.trim();
+    await new Promise((resolveDelay) => setTimeout(resolveDelay, 500));
+  }
+  throw new Error(`web readiness probe timed out: ${lastError}`);
+}
+
 async function assertApi(apiUrl, reviewerToken, fixture, assertFailure) {
   const health = await fetchWithTimeout(`${apiUrl}/health`);
   if (!health.ok) throw new Error(`health request returned ${health.status}`);
@@ -294,6 +311,7 @@ async function runSuite(options) {
     await assertApi(apiUrl, reviewerToken, fixture, false);
     if (options.suite === "live") {
       await run("docker", [...compose, "up", "--detach", "web"], { log, timeoutMs: 300_000 });
+      await waitForWeb(compose, log);
       await run("docker", [...compose, "run", "--rm", "browser"], { log, timeoutMs: 300_000 });
     }
   } catch (error) {
