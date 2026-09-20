@@ -291,21 +291,17 @@ def probe_database(settings: Settings) -> DatabaseProbeResult:
     engine = _create_database_probe_engine(settings)
     try:
         with engine.connect() as connection:
-            row = (
-                connection.execute(
-                    text(
-                        """
+            row = connection.execute(
+                text(
+                    """
                     SELECT
                       current_database() AS database_name,
                       EXISTS (
                         SELECT 1 FROM pg_extension WHERE extname = 'postgis'
                       ) AS postgis_enabled
                     """
-                    )
                 )
-                .mappings()
-                .one()
-            )
+            ).mappings().one()
         return DatabaseProbeResult(
             reachable=True,
             postgis_enabled=bool(row["postgis_enabled"]),

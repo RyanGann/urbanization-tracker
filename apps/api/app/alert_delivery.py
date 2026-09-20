@@ -80,7 +80,8 @@ def _build_alert_message(
 ) -> EmailMessage:
     record_url = f"{public_base_url}/records/{alert['record_public_id']}"
     unsubscribe_url = (
-        f"{public_base_url}/api/watch-areas/unsubscribe/{watch_area['unsubscribe_token']}"
+        f"{public_base_url}/api/watch-areas/unsubscribe/"
+        f"{watch_area['unsubscribe_token']}"
     )
     message = EmailMessage()
     message["From"] = sender

@@ -57,7 +57,9 @@ def approx_area_sq_m(geometry: dict[str, Any]) -> float | None:
     if geometry_type == "Polygon":
         return round(abs(_polygon_area_sq_m(geometry["coordinates"])))
     if geometry_type == "MultiPolygon":
-        return round(sum(abs(_polygon_area_sq_m(polygon)) for polygon in geometry["coordinates"]))
+        return round(
+            sum(abs(_polygon_area_sq_m(polygon)) for polygon in geometry["coordinates"])
+        )
     return None
 
 
@@ -200,7 +202,9 @@ def _segments(points: list[ProjectedPosition], *, closed: bool) -> list[Segment]
     return segments
 
 
-def _projected_geometries_intersect(left: _ProjectedGeometry, right: _ProjectedGeometry) -> bool:
+def _projected_geometries_intersect(
+    left: _ProjectedGeometry, right: _ProjectedGeometry
+) -> bool:
     if any(
         _points_equal(left_point, right_point)
         for left_point in left.points
@@ -214,17 +218,25 @@ def _projected_geometries_intersect(left: _ProjectedGeometry, right: _ProjectedG
     ):
         return True
     if any(
-        _point_on_segment(point, segment) for point in left.points for segment in right.segments
+        _point_on_segment(point, segment)
+        for point in left.points
+        for segment in right.segments
     ) or any(
-        _point_on_segment(point, segment) for point in right.points for segment in left.segments
+        _point_on_segment(point, segment)
+        for point in right.points
+        for segment in left.segments
     ):
         return True
     if any(
-        _point_in_polygon(point, polygon) for point in left.points for polygon in right.polygons
+        _point_in_polygon(point, polygon)
+        for point in left.points
+        for polygon in right.polygons
     ):
         return True
     return any(
-        _point_in_polygon(point, polygon) for point in right.points for polygon in left.polygons
+        _point_in_polygon(point, polygon)
+        for point in right.points
+        for polygon in left.polygons
     )
 
 
@@ -286,9 +298,9 @@ def _orientation(
     middle: ProjectedPosition,
     right: ProjectedPosition,
 ) -> float:
-    return (middle[0] - left[0]) * (right[1] - left[1]) - (middle[1] - left[1]) * (
-        right[0] - left[0]
-    )
+    return (middle[0] - left[0]) * (right[1] - left[1]) - (
+        middle[1] - left[1]
+    ) * (right[0] - left[0])
 
 
 def _collinear_and_on_segment(
@@ -340,7 +352,9 @@ def _point_in_ring(point: ProjectedPosition, ring: list[ProjectedPosition]) -> b
         y_between = (start[1] > y) != (end[1] > y)
         if not y_between:
             continue
-        x_intersection = (end[0] - start[0]) * (y - start[1]) / (end[1] - start[1]) + start[0]
+        x_intersection = (end[0] - start[0]) * (y - start[1]) / (
+            end[1] - start[1]
+        ) + start[0]
         if x < x_intersection:
             inside = not inside
     return inside

@@ -91,7 +91,7 @@ def data_unavailable_error(_request: Request, _exc: DataUnavailableError) -> JSO
             "detail": {
                 "code": "data_unavailable",
                 "message": (
-                    "Canonical data is not available. Try again after " 
+                    "Canonical data is not available. Try again after "
                     "initialization completes."
                 ),
             }
