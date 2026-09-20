@@ -1,0 +1,32 @@
+{
+  "development_records": [
+    {
+      "public_id": "t01-postgis-fixture",
+      "title": "T01 PostGIS Fixture Development",
+      "description": "Deterministic real-store integration fixture.",
+      "development_type": "subdivision",
+      "status": "layout",
+      "source_status": "layout",
+      "source_url": "https://example.test/t01",
+      "source_agency": "T01 test fixture",
+      "date_discovered": "2026-09-19",
+      "date_last_checked": "2026-09-19",
+      "application_date": null,
+      "approval_date": null,
+      "permit_issue_date": null,
+      "review_status": "published",
+      "confidence_level": "high",
+      "geometry_source": "integration fixture",
+      "geometry_confidence": "high",
+      "geometry": { "type": "Point", "coordinates": [-86.5861, 34.7304] },
+      "centroid": [-86.5861, 34.7304],
+      "area_sq_m": null,
+      "address": null,
+      "parcel_ids": [],
+      "source_fields": { "fixture": "t01" },
+      "proximity_flags": []
+    }
+  ],
+  "environmental_overlays": [],
+  "source_health": { "status": "healthy", "sources": [], "records": {} }
+}
