@@ -1,0 +1,71 @@
+{
+  "schema_version": 1,
+  "source": {
+    "run_id": "2026-09-20T03-46-57-629Z-1bdaa7a9",
+    "commit_sha": "6d26c3f403abf7909276bcb002b5cb1ed2bf1102",
+    "working_tree_dirty": false,
+    "profile": "mobile",
+    "fixture_profile": "B",
+    "fixture_sha256": "6cc899d1db3110a1278f77a2352c11b0aba8e43f9a95e1a4be58409c7fc18150"
+  },
+  "result": {
+    "outcome": "failed",
+    "failure": "docker exited with 1",
+    "cleanup_result": "removed",
+    "cleanup_failure": null,
+    "complete": false,
+    "functional_pass": false,
+    "errors": []
+  },
+  "workload": {
+    "cold": {
+      "requested": 10,
+      "completed": 2,
+      "unrun": 8,
+      "failed": 2
+    },
+    "interactions": {
+      "requested": 20,
+      "completed": 0,
+      "unrun": 20,
+      "failed": 0
+    },
+    "api": {
+      "requested": 400,
+      "completed": 14,
+      "unrun": 386
+    },
+    "totals": {
+      "requested": 430,
+      "completed": 16,
+      "unrun": 414
+    }
+  },
+  "resources": {
+    "configured_limits": {
+      "api_cpus": 1,
+      "api_memory_gib": 1,
+      "db_cpus": 2,
+      "db_memory_gib": 2
+    },
+    "policy": null,
+    "containers": {
+      "api": {
+        "oom_killed": true,
+        "exit_code": 137,
+        "memory_limit_bytes": 1073741824,
+        "memory_swap_limit_bytes": 2147483648,
+        "nano_cpus": 1000000000,
+        "cgroup_memory_peak_bytes": null
+      },
+      "db": {
+        "oom_killed": false,
+        "exit_code": 0,
+        "memory_limit_bytes": 2147483648,
+        "memory_swap_limit_bytes": 4294967296,
+        "nano_cpus": 2000000000,
+        "cgroup_memory_peak_bytes": 602746880
+      }
+    }
+  }
+}

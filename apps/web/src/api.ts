@@ -26,6 +26,7 @@ import type {
   WatchAreaCreate,
   WatchAreaReceipt
 } from "./types";
+import { performanceMark } from "./utils/performance";
 
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL ?? "http://localhost:8000";
 const REVIEWER_TOKEN_KEY = "urbanization-tracker:reviewer-token";
@@ -87,7 +88,10 @@ async function request<T>(path: string, init?: ApiRequestInit): Promise<T> {
     throw new ApiError(response.status, message, typeof errorDetail === "string" ? undefined : errorDetail?.code);
   }
 
-  return response.json() as Promise<T>;
+  const payload = (await response.json()) as T;
+  if (path.split("?")[0] === "/api/development-records") performanceMark("records-received");
+  if (path === "/api/environmental-overlays") performanceMark("overlays-received");
+  return payload;
 }
 
 function appendArrayParams(

@@ -70,6 +70,12 @@ jobs:
       - name: Run production Playwright smoke
         run: npm --workspace apps/web run e2e:production
 
+      - name: Test performance measurement counters
+        run: node --test apps/web/e2e/performance/metrics.test.mjs scripts/performance/integration.test.mjs
+
+      - name: Run performance functional precheck
+        run: node scripts/run-integration.mjs --suite performance --scenario functional --profile desktop --smoke
+
       - name: Run real API and browser smoke
         run: node scripts/run-integration.mjs --suite live
 

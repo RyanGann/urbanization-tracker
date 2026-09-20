@@ -82,6 +82,9 @@ test("production preview loads the worker and selects rendered map point and pol
   await expect(page.evaluate(() => (window as typeof window & {
     __urbanizationTrackerMap?: unknown;
   }).__urbanizationTrackerMap)).resolves.toBeUndefined();
+  await expect(page.evaluate(() => (window as typeof window & {
+    __urbanizationPerformance?: unknown;
+  }).__urbanizationPerformance)).resolves.toBeUndefined();
 
   await page.getByRole("button", { name: /Production Preview Subdivision/ }).click();
   await page.waitForTimeout(1_250);

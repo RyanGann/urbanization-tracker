@@ -1,0 +1,240 @@
+{
+  "note": "Legacy JSON collection reads. Plans exclude network transfer, JSON decoding and Python serialization.",
+  "database": {
+    "database_bytes": 54186467,
+    "postgres_version": "PostgreSQL 16.4 (Debian 16.4-1.pgdg110+2) on x86_64-pc-linux-gnu, compiled by gcc (Debian 10.2.1-6) 10.2.1 20210110, 64-bit",
+    "postgis_version": "3.4 USE_GEOS=1 USE_PROJ=1 USE_STATS=1"
+  },
+  "collections": [
+    {
+      "collection_name": "development_records",
+      "rows": 1324
+    },
+    {
+      "collection_name": "environmental_overlays",
+      "rows": 1
+    },
+    {
+      "collection_name": "source_health",
+      "rows": 1
+    }
+  ],
+  "development_plan": [
+    {
+      "Plan": {
+        "Node Type": "Sort",
+        "Parallel Aware": false,
+        "Async Capable": false,
+        "Startup Cost": 31.43,
+        "Total Cost": 31.45,
+        "Plan Rows": 8,
+        "Plan Width": 830,
+        "Actual Startup Time": 1.873,
+        "Actual Total Time": 1.934,
+        "Actual Rows": 1324,
+        "Actual Loops": 1,
+        "Sort Key": [
+          "sort_order",
+          "id"
+        ],
+        "Sort Method": "quicksort",
+        "Sort Space Used": 1329,
+        "Sort Space Type": "Memory",
+        "Shared Hit Blocks": 181,
+        "Shared Read Blocks": 0,
+        "Shared Dirtied Blocks": 0,
+        "Shared Written Blocks": 0,
+        "Local Hit Blocks": 0,
+        "Local Read Blocks": 0,
+        "Local Dirtied Blocks": 0,
+        "Local Written Blocks": 0,
+        "Temp Read Blocks": 0,
+        "Temp Written Blocks": 0,
+        "Plans": [
+          {
+            "Node Type": "Bitmap Heap Scan",
+            "Parent Relationship": "Outer",
+            "Parallel Aware": false,
+            "Async Capable": false,
+            "Relation Name": "processed_collection_items",
+            "Alias": "processed_collection_items",
+            "Startup Cost": 4.34,
+            "Total Cost": 31.31,
+            "Plan Rows": 8,
+            "Plan Width": 830,
+            "Actual Startup Time": 0.079,
+            "Actual Total Time": 0.417,
+            "Actual Rows": 1324,
+            "Actual Loops": 1,
+            "Recheck Cond": "((collection_name)::text = 'development_records'::text)",
+            "Rows Removed by Index Recheck": 0,
+            "Exact Heap Blocks": 175,
+            "Lossy Heap Blocks": 0,
+            "Shared Hit Blocks": 178,
+            "Shared Read Blocks": 0,
+            "Shared Dirtied Blocks": 0,
+            "Shared Written Blocks": 0,
+            "Local Hit Blocks": 0,
+            "Local Read Blocks": 0,
+            "Local Dirtied Blocks": 0,
+            "Local Written Blocks": 0,
+            "Temp Read Blocks": 0,
+            "Temp Written Blocks": 0,
+            "Plans": [
+              {
+                "Node Type": "Bitmap Index Scan",
+                "Parent Relationship": "Outer",
+                "Parallel Aware": false,
+                "Async Capable": false,
+                "Index Name": "ix_processed_collection_items_collection_name",
+                "Startup Cost": 0,
+                "Total Cost": 4.34,
+                "Plan Rows": 8,
+                "Plan Width": 0,
+                "Actual Startup Time": 0.059,
+                "Actual Total Time": 0.06,
+                "Actual Rows": 1324,
+                "Actual Loops": 1,
+                "Index Cond": "((collection_name)::text = 'development_records'::text)",
+                "Shared Hit Blocks": 3,
+                "Shared Read Blocks": 0,
+                "Shared Dirtied Blocks": 0,
+                "Shared Written Blocks": 0,
+                "Local Hit Blocks": 0,
+                "Local Read Blocks": 0,
+                "Local Dirtied Blocks": 0,
+                "Local Written Blocks": 0,
+                "Temp Read Blocks": 0,
+                "Temp Written Blocks": 0
+              }
+            ]
+          }
+        ]
+      },
+      "Planning": {
+        "Shared Hit Blocks": 115,
+        "Shared Read Blocks": 0,
+        "Shared Dirtied Blocks": 0,
+        "Shared Written Blocks": 0,
+        "Local Hit Blocks": 0,
+        "Local Read Blocks": 0,
+        "Local Dirtied Blocks": 0,
+        "Local Written Blocks": 0,
+        "Temp Read Blocks": 0,
+        "Temp Written Blocks": 0
+      },
+      "Planning Time": 0.37,
+      "Triggers": [],
+      "Execution Time": 2.23
+    }
+  ],
+  "overlay_plan": [
+    {
+      "Plan": {
+        "Node Type": "Sort",
+        "Parallel Aware": false,
+        "Async Capable": false,
+        "Startup Cost": 31.43,
+        "Total Cost": 31.45,
+        "Plan Rows": 8,
+        "Plan Width": 830,
+        "Actual Startup Time": 0.108,
+        "Actual Total Time": 0.109,
+        "Actual Rows": 1,
+        "Actual Loops": 1,
+        "Sort Key": [
+          "sort_order",
+          "id"
+        ],
+        "Sort Method": "quicksort",
+        "Sort Space Used": 25,
+        "Sort Space Type": "Memory",
+        "Shared Hit Blocks": 6,
+        "Shared Read Blocks": 0,
+        "Shared Dirtied Blocks": 0,
+        "Shared Written Blocks": 0,
+        "Local Hit Blocks": 0,
+        "Local Read Blocks": 0,
+        "Local Dirtied Blocks": 0,
+        "Local Written Blocks": 0,
+        "Temp Read Blocks": 0,
+        "Temp Written Blocks": 0,
+        "Plans": [
+          {
+            "Node Type": "Bitmap Heap Scan",
+            "Parent Relationship": "Outer",
+            "Parallel Aware": false,
+            "Async Capable": false,
+            "Relation Name": "processed_collection_items",
+            "Alias": "processed_collection_items",
+            "Startup Cost": 4.34,
+            "Total Cost": 31.31,
+            "Plan Rows": 8,
+            "Plan Width": 830,
+            "Actual Startup Time": 0.056,
+            "Actual Total Time": 0.057,
+            "Actual Rows": 1,
+            "Actual Loops": 1,
+            "Recheck Cond": "((collection_name)::text = 'environmental_overlays'::text)",
+            "Rows Removed by Index Recheck": 0,
+            "Exact Heap Blocks": 1,
+            "Lossy Heap Blocks": 0,
+            "Shared Hit Blocks": 3,
+            "Shared Read Blocks": 0,
+            "Shared Dirtied Blocks": 0,
+            "Shared Written Blocks": 0,
+            "Local Hit Blocks": 0,
+            "Local Read Blocks": 0,
+            "Local Dirtied Blocks": 0,
+            "Local Written Blocks": 0,
+            "Temp Read Blocks": 0,
+            "Temp Written Blocks": 0,
+            "Plans": [
+              {
+                "Node Type": "Bitmap Index Scan",
+                "Parent Relationship": "Outer",
+                "Parallel Aware": false,
+                "Async Capable": false,
+                "Index Name": "ix_processed_collection_items_collection_name",
+                "Startup Cost": 0,
+                "Total Cost": 4.34,
+                "Plan Rows": 8,
+                "Plan Width": 0,
+                "Actual Startup Time": 0.042,
+                "Actual Total Time": 0.042,
+                "Actual Rows": 1,
+                "Actual Loops": 1,
+                "Index Cond": "((collection_name)::text = 'environmental_overlays'::text)",
+                "Shared Hit Blocks": 2,
+                "Shared Read Blocks": 0,
+                "Shared Dirtied Blocks": 0,
+                "Shared Written Blocks": 0,
+                "Local Hit Blocks": 0,
+                "Local Read Blocks": 0,
+                "Local Dirtied Blocks": 0,
+                "Local Written Blocks": 0,
+                "Temp Read Blocks": 0,
+                "Temp Written Blocks": 0
+              }
+            ]
+          }
+        ]
+      },
+      "Planning": {
+        "Shared Hit Blocks": 115,
+        "Shared Read Blocks": 0,
+        "Shared Dirtied Blocks": 0,
+        "Shared Written Blocks": 0,
+        "Local Hit Blocks": 0,
+        "Local Read Blocks": 0,
+        "Local Dirtied Blocks": 0,
+        "Local Written Blocks": 0,
+        "Temp Read Blocks": 0,
+        "Temp Written Blocks": 0
+      },
+      "Planning Time": 0.356,
+      "Triggers": [],
+      "Execution Time": 0.165
+    }
+  ]
+}

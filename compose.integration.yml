@@ -60,6 +60,7 @@ services:
       dockerfile: apps/web/Dockerfile.integration
       args:
         VITE_API_BASE_URL: http://api:8000
+        VITE_PERFORMANCE_MARKS: ${P01_PERFORMANCE_MARKS:-false}
     depends_on:
       api:
         condition: service_started
@@ -89,6 +90,11 @@ services:
       INTEGRATION_FIXTURE_TITLE: ${INTEGRATION_FIXTURE_TITLE}
       PLAYWRIGHT_OUTPUT_DIR: /artifacts/playwright/test-results
       PLAYWRIGHT_JUNIT_OUTPUT_NAME: /artifacts/playwright/live.junit.xml
+      P01_PERFORMANCE_PROFILE: ${P01_PERFORMANCE_PROFILE:-}
+      P01_PERFORMANCE_SCENARIO: ${P01_PERFORMANCE_SCENARIO:-}
+      P01_API_INTERNAL_URL: ${P01_API_INTERNAL_URL:-http://api:8000}
+      P01_OUTPUT: ${P01_OUTPUT:-/artifacts/performance/unused.json}
+      P01_SMOKE: ${P01_SMOKE:-false}
     depends_on:
       web:
         condition: service_healthy

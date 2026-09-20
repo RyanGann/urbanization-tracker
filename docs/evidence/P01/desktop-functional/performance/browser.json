@@ -1,0 +1,1623 @@
+{
+  "schema_version": 1,
+  "purpose": "functional_smoke",
+  "profile": "desktop",
+  "fixture_sha256": "cc7114c31fa8dbce0374279ccc4b4eabb8bebf021513719781c8ba7312c1edc3",
+  "fixture_profile": "A",
+  "settings": {
+    "viewport": {
+      "width": 1440,
+      "height": 900
+    },
+    "cpu_throttle": 1,
+    "download_bps": null,
+    "upload_bps": null,
+    "latency_ms": 0,
+    "cache": "Fresh browser contexts, HTTP cache disabled; database warmed by seeding and API verification",
+    "counts": {
+      "cold": 2,
+      "interaction": 2,
+      "api": 2
+    }
+  },
+  "definitions": {
+    "first_useful_ms": "Navigation start to parsed records + committed list + known rendered selectable feature visible without scrolling",
+    "context_ready_ms": "Navigation start to known enabled environmental feature rendered and visible without scrolling",
+    "api_encoded_body_bytes": "Actual streamed body bytes before decompression, excluding HTTP headers/framing",
+    "browser_transfer_bytes": "CDP loadingFinished encodedDataLength; includes protocol transfer overhead, separate from body metrics",
+    "catalog": "Not implemented; current endpoint returns full geometry",
+    "tiles": "Not implemented",
+    "approx_p95": "Nearest-rank estimate; cold browser sample count is small",
+    "fail_fast": "Two failed cold loads or two failed API requests stop that scenario; unrun samples remain explicit"
+  },
+  "catalog_ready_ms": null,
+  "tile_bytes": null,
+  "cold": [
+    {
+      "index": 0,
+      "ok": true,
+      "first_useful_ms": 946.6999999992549,
+      "context_ready_ms": 955,
+      "scroll_required": false,
+      "marks": {
+        "p01:map-loaded": 318.5,
+        "p01:overlays-received": 436.5999999977648,
+        "p01:records-received": 437.19999999925494,
+        "p01:list-ready": 471.19999999925494
+      },
+      "feature_rendered_ms": 946.6999999992549,
+      "overlay_rendered_ms": 955,
+      "initial_development": {
+        "time": 946.6999999992549,
+        "moving": false,
+        "loaded": true,
+        "center": [
+          -86.64999999999998,
+          34.755145472379866
+        ],
+        "zoom": 9.987186761394325,
+        "point": {
+          "x": 705.5652173912845,
+          "y": 375.75228703860745
+        },
+        "visible": true,
+        "visibility": [
+          "visible",
+          "visible"
+        ],
+        "features": [
+          {
+            "id": 0,
+            "public_id": "p01-a-development-0000",
+            "layer": "development-polygons-fill"
+          }
+        ]
+      },
+      "initial_overlay": {
+        "time": 955,
+        "moving": false,
+        "loaded": true,
+        "center": [
+          -86.64999999999998,
+          34.755145472379866
+        ],
+        "zoom": 9.987186761394325,
+        "point": {
+          "x": 424.3756521739058,
+          "y": 788.5159662422176
+        },
+        "visible": true,
+        "visibility": [
+          "visible",
+          "visible"
+        ],
+        "features": [
+          {
+            "id": "p01-environment-1",
+            "layer": "env-wetlands-line"
+          },
+          {
+            "id": "p01-environment-1",
+            "layer": "env-wetlands-fill"
+          }
+        ]
+      },
+      "network": [
+        {
+          "url": "http://web/",
+          "type": "Document",
+          "status": 200,
+          "category": "application_assets",
+          "from_cache": false,
+          "decoded_body_bytes": 417,
+          "encoded_chunk_bytes": 0,
+          "transfer_bytes": 655,
+          "complete": true,
+          "failed": false,
+          "server_timing": null
+        },
+        {
+          "url": "http://web/assets/index-DttT0492.js",
+          "type": "Script",
+          "status": 200,
+          "category": "application_assets",
+          "from_cache": false,
+          "decoded_body_bytes": 212651,
+          "encoded_chunk_bytes": 212651,
+          "transfer_bytes": 212907,
+          "complete": true,
+          "failed": false,
+          "server_timing": null
+        },
+        {
+          "url": "http://web/assets/index-wzCtfe1x.css",
+          "type": "Stylesheet",
+          "status": 200,
+          "category": "application_assets",
+          "from_cache": false,
+          "decoded_body_bytes": 12858,
+          "encoded_chunk_bytes": 12858,
+          "transfer_bytes": 13098,
+          "complete": true,
+          "failed": false,
+          "server_timing": null
+        },
+        {
+          "url": "http://web/assets/MapPage-BCIa4IRm.js",
+          "type": "Script",
+          "status": 200,
+          "category": "application_assets",
+          "from_cache": false,
+          "decoded_body_bytes": 1046714,
+          "encoded_chunk_bytes": 1046714,
+          "transfer_bytes": 1046971,
+          "complete": true,
+          "failed": false,
+          "server_timing": null
+        },
+        {
+          "url": "http://web/assets/api-yL6M4neS.js",
+          "type": "Script",
+          "status": 200,
+          "category": "application_assets",
+          "from_cache": false,
+          "decoded_body_bytes": 15674,
+          "encoded_chunk_bytes": 15674,
+          "transfer_bytes": 15928,
+          "complete": true,
+          "failed": false,
+          "server_timing": null
+        },
+        {
+          "url": "http://web/assets/StatusBadge-CRc_dnmH.js",
+          "type": "Script",
+          "status": 200,
+          "category": "application_assets",
+          "from_cache": false,
+          "decoded_body_bytes": 998,
+          "encoded_chunk_bytes": 998,
+          "transfer_bytes": 1249,
+          "complete": true,
+          "failed": false,
+          "server_timing": null
+        },
+        {
+          "url": "http://web/assets/rotate-ccw-70fECxyj.js",
+          "type": "Script",
+          "status": 200,
+          "category": "application_assets",
+          "from_cache": false,
+          "decoded_body_bytes": 366,
+          "encoded_chunk_bytes": 366,
+          "transfer_bytes": 617,
+          "complete": true,
+          "failed": false,
+          "server_timing": null
+        },
+        {
+          "url": "http://web/assets/map-pin-crbGmUaC.js",
+          "type": "Script",
+          "status": 200,
+          "category": "application_assets",
+          "from_cache": false,
+          "decoded_body_bytes": 420,
+          "encoded_chunk_bytes": 420,
+          "transfer_bytes": 671,
+          "complete": true,
+          "failed": false,
+          "server_timing": null
+        },
+        {
+          "url": "http://web/assets/MapPage-GRinvwPn.css",
+          "type": "Stylesheet",
+          "status": 200,
+          "category": "application_assets",
+          "from_cache": false,
+          "decoded_body_bytes": 83060,
+          "encoded_chunk_bytes": 83060,
+          "transfer_bytes": 83301,
+          "complete": true,
+          "failed": false,
+          "server_timing": null
+        },
+        {
+          "url": "http://web/assets/maplibre-gl-worker-h4-_G1GT.js",
+          "category": "application_assets",
+          "complete": false,
+          "failed": false
+        },
+        {
+          "url": "http://api:8000/api/development-records?status=layout&status=preliminary&status=final&status=issued_permit&confidence=high&confidence=medium&confidence=low&development_type=subdivision&development_type=building_permit",
+          "type": "Preflight",
+          "status": 200,
+          "category": "application_data",
+          "from_cache": false,
+          "decoded_body_bytes": 0,
+          "encoded_chunk_bytes": 0,
+          "transfer_bytes": 0,
+          "complete": true,
+          "failed": false,
+          "server_timing": null
+        },
+        {
+          "url": "http://api:8000/api/environmental-overlays",
+          "type": "Preflight",
+          "status": 200,
+          "category": "application_data",
+          "from_cache": false,
+          "decoded_body_bytes": 0,
+          "encoded_chunk_bytes": 0,
+          "transfer_bytes": 0,
+          "complete": true,
+          "failed": false,
+          "server_timing": null
+        },
+        {
+          "url": "data:image/svg+xml;charset=utf-8,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20width%3D%2229%22%20height%3D%2229%22%20fill%3D%22%23333%22%20viewBox%3D%220%200%2029%2029%22%3E%3Cpath%20d%3D%22M14.5%208.5c-.75%200-1.5.75-1.5%201.5v3h-3c-.75%200-1.5.75-1.5%201.5S9.25%2016%2010%2016h3v3c0%20.75.75%201.5%201.5%201.5S16%2019.75%2016%2019v-3h3c.75%200%201.5-.75%201.5-1.5S19.75%2013%2019%2013h-3v-3c0-.75-.75-1.5-1.5-1.5%22%2F%3E%3C%2Fsvg%3E",
+          "type": "Image",
+          "status": 200,
+          "category": "application_assets",
+          "from_cache": false,
+          "decoded_body_bytes": 295,
+          "encoded_chunk_bytes": 0,
+          "transfer_bytes": 0,
+          "complete": true,
+          "failed": false,
+          "server_timing": null
+        },
+        {
+          "url": "data:image/svg+xml;charset=utf-8,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20width%3D%2229%22%20height%3D%2229%22%20fill%3D%22%23333%22%20viewBox%3D%220%200%2029%2029%22%3E%3Cpath%20d%3D%22M10%2013c-.75%200-1.5.75-1.5%201.5S9.25%2016%2010%2016h9c.75%200%201.5-.75%201.5-1.5S19.75%2013%2019%2013z%22%2F%3E%3C%2Fsvg%3E",
+          "type": "Image",
+          "status": 200,
+          "category": "application_assets",
+          "from_cache": false,
+          "decoded_body_bytes": 195,
+          "encoded_chunk_bytes": 0,
+          "transfer_bytes": 0,
+          "complete": true,
+          "failed": false,
+          "server_timing": null
+        },
+        {
+          "url": "data:image/svg+xml;charset=utf-8,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20width%3D%2229%22%20height%3D%2229%22%20fill%3D%22%23333%22%20viewBox%3D%220%200%2029%2029%22%3E%3Cpath%20d%3D%22m10.5%2014%204-8%204%208z%22%2F%3E%3Cpath%20fill%3D%22%23ccc%22%20d%3D%22m10.5%2016%204%208%204-8z%22%2F%3E%3C%2Fsvg%3E",
+          "type": "Image",
+          "status": 200,
+          "category": "application_assets",
+          "from_cache": false,
+          "decoded_body_bytes": 171,
+          "encoded_chunk_bytes": 0,
+          "transfer_bytes": 0,
+          "complete": true,
+          "failed": false,
+          "server_timing": null
+        },
+        {
+          "url": "http://api:8000/api/development-records?status=layout&status=preliminary&status=final&status=issued_permit&confidence=high&confidence=medium&confidence=low&development_type=subdivision&development_type=building_permit",
+          "type": "Fetch",
+          "status": 200,
+          "category": "application_data",
+          "from_cache": false,
+          "decoded_body_bytes": 27592,
+          "encoded_chunk_bytes": 27592,
+          "transfer_bytes": 27815,
+          "complete": true,
+          "failed": false,
+          "server_timing": null
+        },
+        {
+          "url": "http://api:8000/api/environmental-overlays",
+          "type": "Fetch",
+          "status": 200,
+          "category": "application_data",
+          "from_cache": false,
+          "decoded_body_bytes": 16883,
+          "encoded_chunk_bytes": 16883,
+          "transfer_bytes": 17106,
+          "complete": true,
+          "failed": false,
+          "server_timing": null
+        },
+        {
+          "url": "data:image/svg+xml;charset=utf-8,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20width%3D%2224%22%20height%3D%2224%22%20fill-rule%3D%22evenodd%22%20viewBox%3D%220%200%2020%2020%22%3E%3Cpath%20d%3D%22M4%2010a6%206%200%201%200%2012%200%206%206%200%201%200-12%200m5-3a1%201%200%201%200%202%200%201%201%200%201%200-2%200m0%203a1%201%200%201%201%202%200v3a1%201%200%201%201-2%200%22%2F%3E%3C%2Fsvg%3E",
+          "type": "Image",
+          "status": 200,
+          "category": "application_assets",
+          "from_cache": false,
+          "decoded_body_bytes": 222,
+          "encoded_chunk_bytes": 0,
+          "transfer_bytes": 0,
+          "complete": true,
+          "failed": false,
+          "server_timing": null
+        }
+      ],
+      "long_tasks": [
+        {
+          "startTime": 66.39999999850988,
+          "duration": 72
+        },
+        {
+          "startTime": 183.89999999850988,
+          "duration": 56
+        },
+        {
+          "startTime": 286.19999999925494,
+          "duration": 133
+        },
+        {
+          "startTime": 476.80000000074506,
+          "duration": 66
+        },
+        {
+          "startTime": 562,
+          "duration": 224
+        },
+        {
+          "startTime": 790.1999999992549,
+          "duration": 149
+        }
+      ],
+      "metrics": [
+        {
+          "name": "Timestamp",
+          "value": 16973.151084
+        },
+        {
+          "name": "AudioHandlers",
+          "value": 0
+        },
+        {
+          "name": "AudioWorkletProcessors",
+          "value": 0
+        },
+        {
+          "name": "Documents",
+          "value": 12
+        },
+        {
+          "name": "Frames",
+          "value": 5
+        },
+        {
+          "name": "JSEventListeners",
+          "value": 290
+        },
+        {
+          "name": "LayoutObjects",
+          "value": 458
+        },
+        {
+          "name": "MediaKeySessions",
+          "value": 0
+        },
+        {
+          "name": "MediaKeys",
+          "value": 0
+        },
+        {
+          "name": "Nodes",
+          "value": 441
+        },
+        {
+          "name": "Resources",
+          "value": 14
+        },
+        {
+          "name": "ContextLifecycleStateObservers",
+          "value": 17
+        },
+        {
+          "name": "V8PerContextDatas",
+          "value": 4
+        },
+        {
+          "name": "WorkerGlobalScopes",
+          "value": 1
+        },
+        {
+          "name": "UACSSResources",
+          "value": 0
+        },
+        {
+          "name": "RTCPeerConnections",
+          "value": 0
+        },
+        {
+          "name": "ResourceFetchers",
+          "value": 13
+        },
+        {
+          "name": "AdSubframes",
+          "value": 0
+        },
+        {
+          "name": "DetachedScriptStates",
+          "value": 2
+        },
+        {
+          "name": "ArrayBufferContents",
+          "value": 390
+        },
+        {
+          "name": "LayoutCount",
+          "value": 8
+        },
+        {
+          "name": "RecalcStyleCount",
+          "value": 10
+        },
+        {
+          "name": "LayoutDuration",
+          "value": 0.089681
+        },
+        {
+          "name": "RecalcStyleDuration",
+          "value": 0.009883
+        },
+        {
+          "name": "DevToolsCommandDuration",
+          "value": 0.036314
+        },
+        {
+          "name": "ScriptDuration",
+          "value": 0.238636
+        },
+        {
+          "name": "V8CompileDuration",
+          "value": 0
+        },
+        {
+          "name": "TaskDuration",
+          "value": 0.926515
+        },
+        {
+          "name": "TaskOtherDuration",
+          "value": 0.552001
+        },
+        {
+          "name": "ThreadTime",
+          "value": 0.311255
+        },
+        {
+          "name": "ProcessTime",
+          "value": 0.8
+        },
+        {
+          "name": "JSHeapUsedSize",
+          "value": 7785752
+        },
+        {
+          "name": "JSHeapTotalSize",
+          "value": 12107776
+        },
+        {
+          "name": "FirstMeaningfulPaint",
+          "value": 0
+        },
+        {
+          "name": "DomContentLoaded",
+          "value": 16972.233357
+        },
+        {
+          "name": "NavigationStart",
+          "value": 16972.188815
+        }
+      ],
+      "functional_interaction_pass": true,
+      "page_errors": []
+    },
+    {
+      "index": 1,
+      "ok": true,
+      "first_useful_ms": 742.3000000007451,
+      "context_ready_ms": 747.1999999992549,
+      "scroll_required": false,
+      "marks": {
+        "p01:map-loaded": 248.30000000074506,
+        "p01:overlays-received": 336.30000000074506,
+        "p01:records-received": 336.69999999925494,
+        "p01:list-ready": 342.69999999925494
+      },
+      "feature_rendered_ms": 742.3000000007451,
+      "overlay_rendered_ms": 747.1999999992549,
+      "initial_development": {
+        "time": 742.3000000007451,
+        "moving": false,
+        "loaded": true,
+        "center": [
+          -86.64999999999998,
+          34.755145472379866
+        ],
+        "zoom": 9.987186761394325,
+        "point": {
+          "x": 705.5652173912845,
+          "y": 375.75228703860745
+        },
+        "visible": true,
+        "visibility": [
+          "visible",
+          "visible"
+        ],
+        "features": [
+          {
+            "id": 0,
+            "public_id": "p01-a-development-0000",
+            "layer": "development-polygons-fill"
+          }
+        ]
+      },
+      "initial_overlay": {
+        "time": 747.1999999992549,
+        "moving": false,
+        "loaded": true,
+        "center": [
+          -86.64999999999998,
+          34.755145472379866
+        ],
+        "zoom": 9.987186761394325,
+        "point": {
+          "x": 424.3756521739058,
+          "y": 788.5159662422176
+        },
+        "visible": true,
+        "visibility": [
+          "visible",
+          "visible"
+        ],
+        "features": [
+          {
+            "id": "p01-environment-1",
+            "layer": "env-wetlands-line"
+          },
+          {
+            "id": "p01-environment-1",
+            "layer": "env-wetlands-fill"
+          }
+        ]
+      },
+      "network": [
+        {
+          "url": "http://web/",
+          "type": "Document",
+          "status": 200,
+          "category": "application_assets",
+          "from_cache": false,
+          "decoded_body_bytes": 417,
+          "encoded_chunk_bytes": 0,
+          "transfer_bytes": 655,
+          "complete": true,
+          "failed": false,
+          "server_timing": null
+        },
+        {
+          "url": "http://web/assets/index-DttT0492.js",
+          "type": "Script",
+          "status": 200,
+          "category": "application_assets",
+          "from_cache": false,
+          "decoded_body_bytes": 212651,
+          "encoded_chunk_bytes": 212651,
+          "transfer_bytes": 212907,
+          "complete": true,
+          "failed": false,
+          "server_timing": null
+        },
+        {
+          "url": "http://web/assets/index-wzCtfe1x.css",
+          "type": "Stylesheet",
+          "status": 200,
+          "category": "application_assets",
+          "from_cache": false,
+          "decoded_body_bytes": 12858,
+          "encoded_chunk_bytes": 12858,
+          "transfer_bytes": 13098,
+          "complete": true,
+          "failed": false,
+          "server_timing": null
+        },
+        {
+          "url": "http://web/assets/MapPage-BCIa4IRm.js",
+          "type": "Script",
+          "status": 200,
+          "category": "application_assets",
+          "from_cache": false,
+          "decoded_body_bytes": 1046714,
+          "encoded_chunk_bytes": 1046714,
+          "transfer_bytes": 1046971,
+          "complete": true,
+          "failed": false,
+          "server_timing": null
+        },
+        {
+          "url": "http://web/assets/api-yL6M4neS.js",
+          "type": "Script",
+          "status": 200,
+          "category": "application_assets",
+          "from_cache": false,
+          "decoded_body_bytes": 15674,
+          "encoded_chunk_bytes": 15674,
+          "transfer_bytes": 15928,
+          "complete": true,
+          "failed": false,
+          "server_timing": null
+        },
+        {
+          "url": "http://web/assets/StatusBadge-CRc_dnmH.js",
+          "type": "Script",
+          "status": 200,
+          "category": "application_assets",
+          "from_cache": false,
+          "decoded_body_bytes": 998,
+          "encoded_chunk_bytes": 998,
+          "transfer_bytes": 1249,
+          "complete": true,
+          "failed": false,
+          "server_timing": null
+        },
+        {
+          "url": "http://web/assets/rotate-ccw-70fECxyj.js",
+          "type": "Script",
+          "status": 200,
+          "category": "application_assets",
+          "from_cache": false,
+          "decoded_body_bytes": 366,
+          "encoded_chunk_bytes": 366,
+          "transfer_bytes": 617,
+          "complete": true,
+          "failed": false,
+          "server_timing": null
+        },
+        {
+          "url": "http://web/assets/map-pin-crbGmUaC.js",
+          "type": "Script",
+          "status": 200,
+          "category": "application_assets",
+          "from_cache": false,
+          "decoded_body_bytes": 420,
+          "encoded_chunk_bytes": 420,
+          "transfer_bytes": 671,
+          "complete": true,
+          "failed": false,
+          "server_timing": null
+        },
+        {
+          "url": "http://web/assets/MapPage-GRinvwPn.css",
+          "type": "Stylesheet",
+          "status": 200,
+          "category": "application_assets",
+          "from_cache": false,
+          "decoded_body_bytes": 83060,
+          "encoded_chunk_bytes": 83060,
+          "transfer_bytes": 83301,
+          "complete": true,
+          "failed": false,
+          "server_timing": null
+        },
+        {
+          "url": "http://web/assets/maplibre-gl-worker-h4-_G1GT.js",
+          "category": "application_assets",
+          "complete": false,
+          "failed": false
+        },
+        {
+          "url": "http://api:8000/api/development-records?status=layout&status=preliminary&status=final&status=issued_permit&confidence=high&confidence=medium&confidence=low&development_type=subdivision&development_type=building_permit",
+          "type": "Preflight",
+          "status": 200,
+          "category": "application_data",
+          "from_cache": false,
+          "decoded_body_bytes": 0,
+          "encoded_chunk_bytes": 0,
+          "transfer_bytes": 0,
+          "complete": true,
+          "failed": false,
+          "server_timing": null
+        },
+        {
+          "url": "http://api:8000/api/environmental-overlays",
+          "type": "Preflight",
+          "status": 200,
+          "category": "application_data",
+          "from_cache": false,
+          "decoded_body_bytes": 0,
+          "encoded_chunk_bytes": 0,
+          "transfer_bytes": 0,
+          "complete": true,
+          "failed": false,
+          "server_timing": null
+        },
+        {
+          "url": "data:image/svg+xml;charset=utf-8,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20width%3D%2229%22%20height%3D%2229%22%20fill%3D%22%23333%22%20viewBox%3D%220%200%2029%2029%22%3E%3Cpath%20d%3D%22M14.5%208.5c-.75%200-1.5.75-1.5%201.5v3h-3c-.75%200-1.5.75-1.5%201.5S9.25%2016%2010%2016h3v3c0%20.75.75%201.5%201.5%201.5S16%2019.75%2016%2019v-3h3c.75%200%201.5-.75%201.5-1.5S19.75%2013%2019%2013h-3v-3c0-.75-.75-1.5-1.5-1.5%22%2F%3E%3C%2Fsvg%3E",
+          "type": "Image",
+          "status": 200,
+          "category": "application_assets",
+          "from_cache": false,
+          "decoded_body_bytes": 295,
+          "encoded_chunk_bytes": 0,
+          "transfer_bytes": 0,
+          "complete": true,
+          "failed": false,
+          "server_timing": null
+        },
+        {
+          "url": "data:image/svg+xml;charset=utf-8,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20width%3D%2229%22%20height%3D%2229%22%20fill%3D%22%23333%22%20viewBox%3D%220%200%2029%2029%22%3E%3Cpath%20d%3D%22M10%2013c-.75%200-1.5.75-1.5%201.5S9.25%2016%2010%2016h9c.75%200%201.5-.75%201.5-1.5S19.75%2013%2019%2013z%22%2F%3E%3C%2Fsvg%3E",
+          "type": "Image",
+          "status": 200,
+          "category": "application_assets",
+          "from_cache": false,
+          "decoded_body_bytes": 195,
+          "encoded_chunk_bytes": 0,
+          "transfer_bytes": 0,
+          "complete": true,
+          "failed": false,
+          "server_timing": null
+        },
+        {
+          "url": "data:image/svg+xml;charset=utf-8,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20width%3D%2229%22%20height%3D%2229%22%20fill%3D%22%23333%22%20viewBox%3D%220%200%2029%2029%22%3E%3Cpath%20d%3D%22m10.5%2014%204-8%204%208z%22%2F%3E%3Cpath%20fill%3D%22%23ccc%22%20d%3D%22m10.5%2016%204%208%204-8z%22%2F%3E%3C%2Fsvg%3E",
+          "type": "Image",
+          "status": 200,
+          "category": "application_assets",
+          "from_cache": false,
+          "decoded_body_bytes": 171,
+          "encoded_chunk_bytes": 0,
+          "transfer_bytes": 0,
+          "complete": true,
+          "failed": false,
+          "server_timing": null
+        },
+        {
+          "url": "http://api:8000/api/development-records?status=layout&status=preliminary&status=final&status=issued_permit&confidence=high&confidence=medium&confidence=low&development_type=subdivision&development_type=building_permit",
+          "type": "Fetch",
+          "status": 200,
+          "category": "application_data",
+          "from_cache": false,
+          "decoded_body_bytes": 27592,
+          "encoded_chunk_bytes": 27592,
+          "transfer_bytes": 27815,
+          "complete": true,
+          "failed": false,
+          "server_timing": null
+        },
+        {
+          "url": "http://api:8000/api/environmental-overlays",
+          "type": "Fetch",
+          "status": 200,
+          "category": "application_data",
+          "from_cache": false,
+          "decoded_body_bytes": 16883,
+          "encoded_chunk_bytes": 16883,
+          "transfer_bytes": 17106,
+          "complete": true,
+          "failed": false,
+          "server_timing": null
+        },
+        {
+          "url": "data:image/svg+xml;charset=utf-8,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20width%3D%2224%22%20height%3D%2224%22%20fill-rule%3D%22evenodd%22%20viewBox%3D%220%200%2020%2020%22%3E%3Cpath%20d%3D%22M4%2010a6%206%200%201%200%2012%200%206%206%200%201%200-12%200m5-3a1%201%200%201%200%202%200%201%201%200%201%200-2%200m0%203a1%201%200%201%201%202%200v3a1%201%200%201%201-2%200%22%2F%3E%3C%2Fsvg%3E",
+          "type": "Image",
+          "status": 200,
+          "category": "application_assets",
+          "from_cache": false,
+          "decoded_body_bytes": 222,
+          "encoded_chunk_bytes": 0,
+          "transfer_bytes": 0,
+          "complete": true,
+          "failed": false,
+          "server_timing": null
+        }
+      ],
+      "long_tasks": [
+        {
+          "startTime": 127.60000000149012,
+          "duration": 54
+        },
+        {
+          "startTime": 220.40000000223517,
+          "duration": 102
+        },
+        {
+          "startTime": 441.69999999925494,
+          "duration": 163
+        },
+        {
+          "startTime": 611.3000000007451,
+          "duration": 101
+        }
+      ],
+      "metrics": [
+        {
+          "name": "Timestamp",
+          "value": 16974.706948
+        },
+        {
+          "name": "AudioHandlers",
+          "value": 0
+        },
+        {
+          "name": "AudioWorkletProcessors",
+          "value": 0
+        },
+        {
+          "name": "Documents",
+          "value": 12
+        },
+        {
+          "name": "Frames",
+          "value": 5
+        },
+        {
+          "name": "JSEventListeners",
+          "value": 292
+        },
+        {
+          "name": "LayoutObjects",
+          "value": 458
+        },
+        {
+          "name": "MediaKeySessions",
+          "value": 0
+        },
+        {
+          "name": "MediaKeys",
+          "value": 0
+        },
+        {
+          "name": "Nodes",
+          "value": 441
+        },
+        {
+          "name": "Resources",
+          "value": 14
+        },
+        {
+          "name": "ContextLifecycleStateObservers",
+          "value": 17
+        },
+        {
+          "name": "V8PerContextDatas",
+          "value": 4
+        },
+        {
+          "name": "WorkerGlobalScopes",
+          "value": 1
+        },
+        {
+          "name": "UACSSResources",
+          "value": 0
+        },
+        {
+          "name": "RTCPeerConnections",
+          "value": 0
+        },
+        {
+          "name": "ResourceFetchers",
+          "value": 13
+        },
+        {
+          "name": "AdSubframes",
+          "value": 0
+        },
+        {
+          "name": "DetachedScriptStates",
+          "value": 2
+        },
+        {
+          "name": "ArrayBufferContents",
+          "value": 383
+        },
+        {
+          "name": "LayoutCount",
+          "value": 8
+        },
+        {
+          "name": "RecalcStyleCount",
+          "value": 10
+        },
+        {
+          "name": "LayoutDuration",
+          "value": 0.024835
+        },
+        {
+          "name": "RecalcStyleDuration",
+          "value": 0.00974
+        },
+        {
+          "name": "DevToolsCommandDuration",
+          "value": 0.035685
+        },
+        {
+          "name": "ScriptDuration",
+          "value": 0.206039
+        },
+        {
+          "name": "V8CompileDuration",
+          "value": 0
+        },
+        {
+          "name": "TaskDuration",
+          "value": 0.711519
+        },
+        {
+          "name": "TaskOtherDuration",
+          "value": 0.43522
+        },
+        {
+          "name": "ThreadTime",
+          "value": 0.283677
+        },
+        {
+          "name": "ProcessTime",
+          "value": 0.68
+        },
+        {
+          "name": "JSHeapUsedSize",
+          "value": 7663596
+        },
+        {
+          "name": "JSHeapTotalSize",
+          "value": 12369920
+        },
+        {
+          "name": "FirstMeaningfulPaint",
+          "value": 0
+        },
+        {
+          "name": "DomContentLoaded",
+          "value": 16973.982733
+        },
+        {
+          "name": "NavigationStart",
+          "value": 16973.948173
+        }
+      ],
+      "functional_interaction_pass": true,
+      "page_errors": []
+    }
+  ],
+  "interactions": [
+    {
+      "index": 0,
+      "ok": true,
+      "actions_ms": {
+        "pan_to_selection": 234.54359399999976,
+        "selection": 786.2785160000003,
+        "pan": 898.7742670000007,
+        "zoom": 1539.283254,
+        "filter": 1089.8682219999992,
+        "pan_to_context": 2250.776694,
+        "overlay_toggle": 326.50759199999993
+      },
+      "long_tasks": [
+        {
+          "startTime": 136.5,
+          "duration": 71
+        },
+        {
+          "startTime": 271.5,
+          "duration": 136
+        },
+        {
+          "startTime": 460.69999999925494,
+          "duration": 65
+        },
+        {
+          "startTime": 540.7999999970198,
+          "duration": 252
+        },
+        {
+          "startTime": 804.8999999985099,
+          "duration": 144
+        },
+        {
+          "startTime": 2112.2999999970198,
+          "duration": 51
+        },
+        {
+          "startTime": 3112.2999999970198,
+          "duration": 51
+        },
+        {
+          "startTime": 4363.599999997765,
+          "duration": 64
+        },
+        {
+          "startTime": 4548.099999997765,
+          "duration": 79
+        },
+        {
+          "startTime": 4644.699999999255,
+          "duration": 51
+        },
+        {
+          "startTime": 4704.5,
+          "duration": 59
+        },
+        {
+          "startTime": 4805.39999999851,
+          "duration": 53
+        },
+        {
+          "startTime": 5065.599999997765,
+          "duration": 60
+        },
+        {
+          "startTime": 5232,
+          "duration": 64
+        },
+        {
+          "startTime": 6434.699999999255,
+          "duration": 51
+        },
+        {
+          "startTime": 6486.89999999851,
+          "duration": 55
+        }
+      ],
+      "new_request_count": 4,
+      "metrics": [
+        {
+          "name": "Timestamp",
+          "value": 16982.942328
+        },
+        {
+          "name": "AudioHandlers",
+          "value": 0
+        },
+        {
+          "name": "AudioWorkletProcessors",
+          "value": 0
+        },
+        {
+          "name": "Documents",
+          "value": 5
+        },
+        {
+          "name": "Frames",
+          "value": 5
+        },
+        {
+          "name": "JSEventListeners",
+          "value": 811
+        },
+        {
+          "name": "LayoutObjects",
+          "value": 866
+        },
+        {
+          "name": "MediaKeySessions",
+          "value": 0
+        },
+        {
+          "name": "MediaKeys",
+          "value": 0
+        },
+        {
+          "name": "Nodes",
+          "value": 770
+        },
+        {
+          "name": "Resources",
+          "value": 14
+        },
+        {
+          "name": "ContextLifecycleStateObservers",
+          "value": 11
+        },
+        {
+          "name": "V8PerContextDatas",
+          "value": 2
+        },
+        {
+          "name": "WorkerGlobalScopes",
+          "value": 1
+        },
+        {
+          "name": "UACSSResources",
+          "value": 0
+        },
+        {
+          "name": "RTCPeerConnections",
+          "value": 0
+        },
+        {
+          "name": "ResourceFetchers",
+          "value": 6
+        },
+        {
+          "name": "AdSubframes",
+          "value": 0
+        },
+        {
+          "name": "DetachedScriptStates",
+          "value": 2
+        },
+        {
+          "name": "ArrayBufferContents",
+          "value": 3004
+        },
+        {
+          "name": "LayoutCount",
+          "value": 21
+        },
+        {
+          "name": "RecalcStyleCount",
+          "value": 125
+        },
+        {
+          "name": "LayoutDuration",
+          "value": 0.039076
+        },
+        {
+          "name": "RecalcStyleDuration",
+          "value": 0.031191
+        },
+        {
+          "name": "DevToolsCommandDuration",
+          "value": 0.231093
+        },
+        {
+          "name": "ScriptDuration",
+          "value": 0.894679
+        },
+        {
+          "name": "V8CompileDuration",
+          "value": 0
+        },
+        {
+          "name": "TaskDuration",
+          "value": 7.368755
+        },
+        {
+          "name": "TaskOtherDuration",
+          "value": 6.172716
+        },
+        {
+          "name": "ThreadTime",
+          "value": 1.899674
+        },
+        {
+          "name": "ProcessTime",
+          "value": 3.7
+        },
+        {
+          "name": "JSHeapUsedSize",
+          "value": 12656020
+        },
+        {
+          "name": "JSHeapTotalSize",
+          "value": 29458432
+        },
+        {
+          "name": "FirstMeaningfulPaint",
+          "value": 0
+        },
+        {
+          "name": "DomContentLoaded",
+          "value": 16975.038328
+        },
+        {
+          "name": "NavigationStart",
+          "value": 16975.007598
+        }
+      ],
+      "page_errors": []
+    },
+    {
+      "index": 1,
+      "ok": true,
+      "actions_ms": {
+        "pan_to_selection": 756.3189569999995,
+        "selection": 118.60591199999908,
+        "pan": 1023.7744390000007,
+        "zoom": 1371.2293289999998,
+        "filter": 450.33064899999954,
+        "pan_to_context": 2650.858497000001,
+        "overlay_toggle": 309.3469019999975
+      },
+      "long_tasks": [
+        {
+          "startTime": 9299.29999999702,
+          "duration": 51
+        },
+        {
+          "startTime": 11027.79999999702,
+          "duration": 51
+        },
+        {
+          "startTime": 13218.599999997765,
+          "duration": 51
+        }
+      ],
+      "new_request_count": 0,
+      "metrics": [
+        {
+          "name": "Timestamp",
+          "value": 16989.640879
+        },
+        {
+          "name": "AudioHandlers",
+          "value": 0
+        },
+        {
+          "name": "AudioWorkletProcessors",
+          "value": 0
+        },
+        {
+          "name": "Documents",
+          "value": 5
+        },
+        {
+          "name": "Frames",
+          "value": 5
+        },
+        {
+          "name": "JSEventListeners",
+          "value": 528
+        },
+        {
+          "name": "LayoutObjects",
+          "value": 502
+        },
+        {
+          "name": "MediaKeySessions",
+          "value": 0
+        },
+        {
+          "name": "MediaKeys",
+          "value": 0
+        },
+        {
+          "name": "Nodes",
+          "value": 486
+        },
+        {
+          "name": "Resources",
+          "value": 12
+        },
+        {
+          "name": "ContextLifecycleStateObservers",
+          "value": 11
+        },
+        {
+          "name": "V8PerContextDatas",
+          "value": 2
+        },
+        {
+          "name": "WorkerGlobalScopes",
+          "value": 1
+        },
+        {
+          "name": "UACSSResources",
+          "value": 0
+        },
+        {
+          "name": "RTCPeerConnections",
+          "value": 0
+        },
+        {
+          "name": "ResourceFetchers",
+          "value": 5
+        },
+        {
+          "name": "AdSubframes",
+          "value": 0
+        },
+        {
+          "name": "DetachedScriptStates",
+          "value": 0
+        },
+        {
+          "name": "ArrayBufferContents",
+          "value": 1415
+        },
+        {
+          "name": "LayoutCount",
+          "value": 28
+        },
+        {
+          "name": "RecalcStyleCount",
+          "value": 254
+        },
+        {
+          "name": "LayoutDuration",
+          "value": 0.041168
+        },
+        {
+          "name": "RecalcStyleDuration",
+          "value": 0.046199
+        },
+        {
+          "name": "DevToolsCommandDuration",
+          "value": 0.407414
+        },
+        {
+          "name": "ScriptDuration",
+          "value": 1.317627
+        },
+        {
+          "name": "V8CompileDuration",
+          "value": 0
+        },
+        {
+          "name": "TaskDuration",
+          "value": 13.495175
+        },
+        {
+          "name": "TaskOtherDuration",
+          "value": 11.682767
+        },
+        {
+          "name": "ThreadTime",
+          "value": 3.070746
+        },
+        {
+          "name": "ProcessTime",
+          "value": 5.86
+        },
+        {
+          "name": "JSHeapUsedSize",
+          "value": 11899332
+        },
+        {
+          "name": "JSHeapTotalSize",
+          "value": 39419904
+        },
+        {
+          "name": "FirstMeaningfulPaint",
+          "value": 16975.555068
+        },
+        {
+          "name": "DomContentLoaded",
+          "value": 16975.038328
+        },
+        {
+          "name": "NavigationStart",
+          "value": 16975.007598
+        }
+      ],
+      "page_errors": []
+    }
+  ],
+  "api": [
+    {
+      "endpoint": "/api/development-records",
+      "concurrency": 1,
+      "requested": 2,
+      "samples": [
+        {
+          "ok": true,
+          "status": 200,
+          "ttfb_ms": 32.88480200000049,
+          "duration_ms": 36.58171500000026,
+          "encoded_body_bytes": 27592,
+          "decoded_body_bytes": 27592,
+          "content_encoding": "identity",
+          "server_timing": null,
+          "error": null
+        },
+        {
+          "ok": true,
+          "status": 200,
+          "ttfb_ms": 21.206323000002158,
+          "duration_ms": 22.04904600000009,
+          "encoded_body_bytes": 27592,
+          "decoded_body_bytes": 27592,
+          "content_encoding": "identity",
+          "server_timing": null,
+          "error": null
+        }
+      ],
+      "completed": 2,
+      "unrun": 0,
+      "failures": 0,
+      "timings": {
+        "count": 2,
+        "samples_ms": [
+          36.58171500000026,
+          22.04904600000009
+        ],
+        "median_ms": 22.04904600000009,
+        "approx_p95_ms": 36.58171500000026
+      }
+    },
+    {
+      "endpoint": "/api/development-records",
+      "concurrency": 5,
+      "requested": 2,
+      "samples": [
+        {
+          "ok": true,
+          "status": 200,
+          "ttfb_ms": 27.479152999996586,
+          "duration_ms": 28.035170999999536,
+          "encoded_body_bytes": 27592,
+          "decoded_body_bytes": 27592,
+          "content_encoding": "identity",
+          "server_timing": null,
+          "error": null
+        },
+        {
+          "ok": true,
+          "status": 200,
+          "ttfb_ms": 28.993757999996888,
+          "duration_ms": 29.444360999998025,
+          "encoded_body_bytes": 27592,
+          "decoded_body_bytes": 27592,
+          "content_encoding": "identity",
+          "server_timing": null,
+          "error": null
+        }
+      ],
+      "completed": 2,
+      "unrun": 0,
+      "failures": 0,
+      "timings": {
+        "count": 2,
+        "samples_ms": [
+          28.035170999999536,
+          29.444360999998025
+        ],
+        "median_ms": 28.035170999999536,
+        "approx_p95_ms": 29.444360999998025
+      }
+    },
+    {
+      "endpoint": "/api/environmental-overlays",
+      "concurrency": 1,
+      "requested": 2,
+      "samples": [
+        {
+          "ok": true,
+          "status": 200,
+          "ttfb_ms": 14.374040999999124,
+          "duration_ms": 14.644124999998894,
+          "encoded_body_bytes": 16883,
+          "decoded_body_bytes": 16883,
+          "content_encoding": "identity",
+          "server_timing": null,
+          "error": null
+        },
+        {
+          "ok": true,
+          "status": 200,
+          "ttfb_ms": 10.411190999999235,
+          "duration_ms": 10.814403000000311,
+          "encoded_body_bytes": 16883,
+          "decoded_body_bytes": 16883,
+          "content_encoding": "identity",
+          "server_timing": null,
+          "error": null
+        }
+      ],
+      "completed": 2,
+      "unrun": 0,
+      "failures": 0,
+      "timings": {
+        "count": 2,
+        "samples_ms": [
+          14.644124999998894,
+          10.814403000000311
+        ],
+        "median_ms": 10.814403000000311,
+        "approx_p95_ms": 14.644124999998894
+      }
+    },
+    {
+      "endpoint": "/api/environmental-overlays",
+      "concurrency": 5,
+      "requested": 2,
+      "samples": [
+        {
+          "ok": true,
+          "status": 200,
+          "ttfb_ms": 16.959782999998424,
+          "duration_ms": 17.563191999997798,
+          "encoded_body_bytes": 16883,
+          "decoded_body_bytes": 16883,
+          "content_encoding": "identity",
+          "server_timing": null,
+          "error": null
+        },
+        {
+          "ok": true,
+          "status": 200,
+          "ttfb_ms": 18.008946000001743,
+          "duration_ms": 18.28688400000101,
+          "encoded_body_bytes": 16883,
+          "decoded_body_bytes": 16883,
+          "content_encoding": "identity",
+          "server_timing": null,
+          "error": null
+        }
+      ],
+      "completed": 2,
+      "unrun": 0,
+      "failures": 0,
+      "timings": {
+        "count": 2,
+        "samples_ms": [
+          17.563191999997798,
+          18.28688400000101
+        ],
+        "median_ms": 17.563191999997798,
+        "approx_p95_ms": 18.28688400000101
+      }
+    }
+  ],
+  "errors": [],
+  "complete": true,
+  "cold_unrun": 0,
+  "interactions_unrun": 0,
+  "browser": "148.0.7778.96",
+  "first_useful": {
+    "count": 2,
+    "samples_ms": [
+      946.6999999992549,
+      742.3000000007451
+    ],
+    "median_ms": 742.3000000007451,
+    "approx_p95_ms": 946.6999999992549
+  },
+  "transfer": [
+    {
+      "index": 0,
+      "categories": {
+        "application_data": {
+          "requests": 4,
+          "completed": 4,
+          "failed": 0,
+          "decoded_body_bytes": 44475,
+          "transfer_bytes": 44921
+        },
+        "application_assets": {
+          "requests": 14,
+          "completed": 13,
+          "failed": 0,
+          "decoded_body_bytes": 1374041,
+          "transfer_bytes": null
+        },
+        "basemap_glyph_sprite": {
+          "requests": 0,
+          "completed": 0,
+          "failed": 0,
+          "decoded_body_bytes": 0,
+          "transfer_bytes": 0
+        }
+      }
+    },
+    {
+      "index": 1,
+      "categories": {
+        "application_data": {
+          "requests": 4,
+          "completed": 4,
+          "failed": 0,
+          "decoded_body_bytes": 44475,
+          "transfer_bytes": 44921
+        },
+        "application_assets": {
+          "requests": 14,
+          "completed": 13,
+          "failed": 0,
+          "decoded_body_bytes": 1374041,
+          "transfer_bytes": null
+        },
+        "basemap_glyph_sprite": {
+          "requests": 0,
+          "completed": 0,
+          "failed": 0,
+          "decoded_body_bytes": 0,
+          "transfer_bytes": 0
+        }
+      }
+    }
+  ],
+  "context_ready": {
+    "count": 2,
+    "samples_ms": [
+      955,
+      747.1999999992549
+    ],
+    "median_ms": 747.1999999992549,
+    "approx_p95_ms": 955
+  },
+  "functional_pass": true
+}

@@ -1,0 +1,1188 @@
+{
+  "host": {
+    "platform": "win32",
+    "release": "10.0.26200",
+    "cpu": "AMD Ryzen 5 2600 Six-Core Processor            ",
+    "logical_cpus": 12,
+    "ram_bytes": 17129902080
+  },
+  "docker": {
+    "cpus": 12,
+    "ram_bytes": 12542230528,
+    "version": "29.8.0"
+  },
+  "containers": {
+    "api": {
+      "id": "0c99d26e089ee0f2fc6183aa663d2504f223ef9840cf4b5165c41477e5a22a71",
+      "state": {
+        "Status": "exited",
+        "Running": false,
+        "Paused": false,
+        "Restarting": false,
+        "OOMKilled": true,
+        "Dead": false,
+        "Pid": 0,
+        "ExitCode": 137,
+        "Error": "",
+        "StartedAt": "2026-09-20T03:48:39.140457503Z",
+        "FinishedAt": "2026-09-20T03:52:47.722548632Z"
+      },
+      "cgroup_memory_peak_bytes": null,
+      "memory_limit_bytes": 1073741824,
+      "memory_swap_limit_bytes": 2147483648,
+      "nano_cpus": 1000000000
+    },
+    "db": {
+      "id": "063a31b41467ae49ef595f8b8389a52e4893c902a651f53473924a00f048588f",
+      "state": {
+        "Status": "running",
+        "Running": true,
+        "Paused": false,
+        "Restarting": false,
+        "OOMKilled": false,
+        "Dead": false,
+        "Pid": 182138,
+        "ExitCode": 0,
+        "Error": "",
+        "StartedAt": "2026-09-20T03:47:22.669171393Z",
+        "FinishedAt": "0001-01-01T00:00:00Z",
+        "Health": {
+          "Status": "healthy",
+          "FailingStreak": 0,
+          "Log": [
+            {
+              "Start": "2026-09-20T03:53:03.800957815Z",
+              "End": "2026-09-20T03:53:03.94335551Z",
+              "ExitCode": 0,
+              "Output": ""
+            },
+            {
+              "Start": "2026-09-20T03:53:05.94454287Z",
+              "End": "2026-09-20T03:53:06.045724031Z",
+              "ExitCode": 0,
+              "Output": ""
+            },
+            {
+              "Start": "2026-09-20T03:53:08.046534019Z",
+              "End": "2026-09-20T03:53:08.136720342Z",
+              "ExitCode": 0,
+              "Output": ""
+            },
+            {
+              "Start": "2026-09-20T03:53:10.138019137Z",
+              "End": "2026-09-20T03:53:10.225752679Z",
+              "ExitCode": 0,
+              "Output": ""
+            },
+            {
+              "Start": "2026-09-20T03:53:12.22725436Z",
+              "End": "2026-09-20T03:53:12.324533083Z",
+              "ExitCode": 0,
+              "Output": ""
+            }
+          ]
+        }
+      },
+      "cgroup_memory_peak_bytes": 602746880,
+      "memory_limit_bytes": 2147483648,
+      "memory_swap_limit_bytes": 4294967296,
+      "nano_cpus": 2000000000
+    }
+  },
+  "samples": [
+    {
+      "at": "2026-09-20T03:48:48.050Z",
+      "code": 0,
+      "ok": true,
+      "measured_services": [
+        "api",
+        "db"
+      ],
+      "rows": [
+        {
+          "BlockIO": "0B / 0B",
+          "CPUPerc": "0.13%",
+          "Container": "0c99d26e089ee0f2fc6183aa663d2504f223ef9840cf4b5165c41477e5a22a71",
+          "ID": "0c99d26e089e",
+          "MemPerc": "8.38%",
+          "MemUsage": "85.82MiB / 1GiB",
+          "Name": "urbanization_t01_9b7f623f00e8-api-1",
+          "NetIO": "1.4MB / 1.14MB",
+          "PIDs": "7"
+        },
+        {
+          "BlockIO": "0B / 299MB",
+          "CPUPerc": "0.04%",
+          "Container": "063a31b41467ae49ef595f8b8389a52e4893c902a651f53473924a00f048588f",
+          "ID": "063a31b41467",
+          "MemPerc": "4.51%",
+          "MemUsage": "92.38MiB / 2GiB",
+          "Name": "urbanization_t01_9b7f623f00e8-db-1",
+          "NetIO": "224MB / 3.99MB",
+          "PIDs": "7"
+        }
+      ]
+    },
+    {
+      "at": "2026-09-20T03:48:54.237Z",
+      "code": 0,
+      "ok": true,
+      "measured_services": [
+        "api",
+        "db"
+      ],
+      "rows": [
+        {
+          "BlockIO": "0B / 0B",
+          "CPUPerc": "0.11%",
+          "Container": "0c99d26e089ee0f2fc6183aa663d2504f223ef9840cf4b5165c41477e5a22a71",
+          "ID": "0c99d26e089e",
+          "MemPerc": "8.38%",
+          "MemUsage": "85.82MiB / 1GiB",
+          "Name": "urbanization_t01_9b7f623f00e8-api-1",
+          "NetIO": "1.4MB / 1.14MB",
+          "PIDs": "7"
+        },
+        {
+          "BlockIO": "0B / 299MB",
+          "CPUPerc": "0.03%",
+          "Container": "063a31b41467ae49ef595f8b8389a52e4893c902a651f53473924a00f048588f",
+          "ID": "063a31b41467",
+          "MemPerc": "4.51%",
+          "MemUsage": "92.38MiB / 2GiB",
+          "Name": "urbanization_t01_9b7f623f00e8-db-1",
+          "NetIO": "224MB / 3.99MB",
+          "PIDs": "7"
+        }
+      ]
+    },
+    {
+      "at": "2026-09-20T03:49:00.422Z",
+      "code": 0,
+      "ok": true,
+      "measured_services": [
+        "api",
+        "db"
+      ],
+      "rows": [
+        {
+          "BlockIO": "0B / 0B",
+          "CPUPerc": "100.29%",
+          "Container": "0c99d26e089ee0f2fc6183aa663d2504f223ef9840cf4b5165c41477e5a22a71",
+          "ID": "0c99d26e089e",
+          "MemPerc": "78.81%",
+          "MemUsage": "807MiB / 1GiB",
+          "Name": "urbanization_t01_9b7f623f00e8-api-1",
+          "NetIO": "114MB / 2.34MB",
+          "PIDs": "8"
+        },
+        {
+          "BlockIO": "0B / 299MB",
+          "CPUPerc": "10.07%",
+          "Container": "063a31b41467ae49ef595f8b8389a52e4893c902a651f53473924a00f048588f",
+          "ID": "063a31b41467",
+          "MemPerc": "4.60%",
+          "MemUsage": "94.27MiB / 2GiB",
+          "Name": "urbanization_t01_9b7f623f00e8-db-1",
+          "NetIO": "224MB / 117MB",
+          "PIDs": "8"
+        }
+      ]
+    },
+    {
+      "at": "2026-09-20T03:49:07.612Z",
+      "code": 0,
+      "ok": true,
+      "measured_services": [
+        "api",
+        "db"
+      ],
+      "rows": [
+        {
+          "BlockIO": "43.5MB / 240MB",
+          "CPUPerc": "13.05%",
+          "Container": "0c99d26e089ee0f2fc6183aa663d2504f223ef9840cf4b5165c41477e5a22a71",
+          "ID": "0c99d26e089e",
+          "MemPerc": "75.28%",
+          "MemUsage": "770.9MiB / 1GiB",
+          "Name": "urbanization_t01_9b7f623f00e8-api-1",
+          "NetIO": "114MB / 2.34MB",
+          "PIDs": "8"
+        },
+        {
+          "BlockIO": "0B / 299MB",
+          "CPUPerc": "0.03%",
+          "Container": "063a31b41467ae49ef595f8b8389a52e4893c902a651f53473924a00f048588f",
+          "ID": "063a31b41467",
+          "MemPerc": "4.60%",
+          "MemUsage": "94.3MiB / 2GiB",
+          "Name": "urbanization_t01_9b7f623f00e8-db-1",
+          "NetIO": "224MB / 117MB",
+          "PIDs": "8"
+        }
+      ]
+    },
+    {
+      "at": "2026-09-20T03:49:13.795Z",
+      "code": 0,
+      "ok": true,
+      "measured_services": [
+        "api",
+        "db"
+      ],
+      "rows": [
+        {
+          "BlockIO": "104MB / 268MB",
+          "CPUPerc": "23.61%",
+          "Container": "0c99d26e089ee0f2fc6183aa663d2504f223ef9840cf4b5165c41477e5a22a71",
+          "ID": "0c99d26e089e",
+          "MemPerc": "100.00%",
+          "MemUsage": "1024MiB / 1GiB",
+          "Name": "urbanization_t01_9b7f623f00e8-api-1",
+          "NetIO": "114MB / 2.34MB",
+          "PIDs": "8"
+        },
+        {
+          "BlockIO": "0B / 299MB",
+          "CPUPerc": "0.02%",
+          "Container": "063a31b41467ae49ef595f8b8389a52e4893c902a651f53473924a00f048588f",
+          "ID": "063a31b41467",
+          "MemPerc": "4.61%",
+          "MemUsage": "94.34MiB / 2GiB",
+          "Name": "urbanization_t01_9b7f623f00e8-db-1",
+          "NetIO": "224MB / 117MB",
+          "PIDs": "8"
+        }
+      ]
+    },
+    {
+      "at": "2026-09-20T03:49:20.984Z",
+      "code": 0,
+      "ok": true,
+      "measured_services": [
+        "api",
+        "db"
+      ],
+      "rows": [
+        {
+          "BlockIO": "153MB / 497MB",
+          "CPUPerc": "84.73%",
+          "Container": "0c99d26e089ee0f2fc6183aa663d2504f223ef9840cf4b5165c41477e5a22a71",
+          "ID": "0c99d26e089e",
+          "MemPerc": "99.98%",
+          "MemUsage": "1024MiB / 1GiB",
+          "Name": "urbanization_t01_9b7f623f00e8-api-1",
+          "NetIO": "114MB / 2.34MB",
+          "PIDs": "8"
+        },
+        {
+          "BlockIO": "0B / 299MB",
+          "CPUPerc": "0.04%",
+          "Container": "063a31b41467ae49ef595f8b8389a52e4893c902a651f53473924a00f048588f",
+          "ID": "063a31b41467",
+          "MemPerc": "4.60%",
+          "MemUsage": "94.19MiB / 2GiB",
+          "Name": "urbanization_t01_9b7f623f00e8-db-1",
+          "NetIO": "224MB / 117MB",
+          "PIDs": "8"
+        }
+      ]
+    },
+    {
+      "at": "2026-09-20T03:49:28.181Z",
+      "code": 0,
+      "ok": true,
+      "measured_services": [
+        "api",
+        "db"
+      ],
+      "rows": [
+        {
+          "BlockIO": "209MB / 584MB",
+          "CPUPerc": "12.17%",
+          "Container": "0c99d26e089ee0f2fc6183aa663d2504f223ef9840cf4b5165c41477e5a22a71",
+          "ID": "0c99d26e089e",
+          "MemPerc": "99.99%",
+          "MemUsage": "1024MiB / 1GiB",
+          "Name": "urbanization_t01_9b7f623f00e8-api-1",
+          "NetIO": "114MB / 2.34MB",
+          "PIDs": "8"
+        },
+        {
+          "BlockIO": "0B / 299MB",
+          "CPUPerc": "0.00%",
+          "Container": "063a31b41467ae49ef595f8b8389a52e4893c902a651f53473924a00f048588f",
+          "ID": "063a31b41467",
+          "MemPerc": "4.61%",
+          "MemUsage": "94.38MiB / 2GiB",
+          "Name": "urbanization_t01_9b7f623f00e8-db-1",
+          "NetIO": "224MB / 117MB",
+          "PIDs": "8"
+        }
+      ]
+    },
+    {
+      "at": "2026-09-20T03:49:35.361Z",
+      "code": 0,
+      "ok": true,
+      "measured_services": [
+        "api",
+        "db"
+      ],
+      "rows": [
+        {
+          "BlockIO": "296MB / 671MB",
+          "CPUPerc": "0.48%",
+          "Container": "0c99d26e089ee0f2fc6183aa663d2504f223ef9840cf4b5165c41477e5a22a71",
+          "ID": "0c99d26e089e",
+          "MemPerc": "99.99%",
+          "MemUsage": "1024MiB / 1GiB",
+          "Name": "urbanization_t01_9b7f623f00e8-api-1",
+          "NetIO": "114MB / 2.34MB",
+          "PIDs": "8"
+        },
+        {
+          "BlockIO": "0B / 299MB",
+          "CPUPerc": "0.03%",
+          "Container": "063a31b41467ae49ef595f8b8389a52e4893c902a651f53473924a00f048588f",
+          "ID": "063a31b41467",
+          "MemPerc": "4.61%",
+          "MemUsage": "94.38MiB / 2GiB",
+          "Name": "urbanization_t01_9b7f623f00e8-db-1",
+          "NetIO": "224MB / 117MB",
+          "PIDs": "8"
+        }
+      ]
+    },
+    {
+      "at": "2026-09-20T03:49:45.183Z",
+      "code": 0,
+      "ok": true,
+      "measured_services": [
+        "api",
+        "db"
+      ],
+      "rows": [
+        {
+          "BlockIO": "341MB / 690MB",
+          "CPUPerc": "10.82%",
+          "Container": "0c99d26e089ee0f2fc6183aa663d2504f223ef9840cf4b5165c41477e5a22a71",
+          "ID": "0c99d26e089e",
+          "MemPerc": "100.00%",
+          "MemUsage": "1GiB / 1GiB",
+          "Name": "urbanization_t01_9b7f623f00e8-api-1",
+          "NetIO": "114MB / 2.34MB",
+          "PIDs": "8"
+        },
+        {
+          "BlockIO": "0B / 299MB",
+          "CPUPerc": "11.00%",
+          "Container": "063a31b41467ae49ef595f8b8389a52e4893c902a651f53473924a00f048588f",
+          "ID": "063a31b41467",
+          "MemPerc": "4.62%",
+          "MemUsage": "94.53MiB / 2GiB",
+          "Name": "urbanization_t01_9b7f623f00e8-db-1",
+          "NetIO": "224MB / 117MB",
+          "PIDs": "8"
+        }
+      ]
+    },
+    {
+      "at": "2026-09-20T03:49:51.363Z",
+      "code": 0,
+      "ok": true,
+      "measured_services": [
+        "api",
+        "db"
+      ],
+      "rows": [
+        {
+          "BlockIO": "373MB / 727MB",
+          "CPUPerc": "9.73%",
+          "Container": "0c99d26e089ee0f2fc6183aa663d2504f223ef9840cf4b5165c41477e5a22a71",
+          "ID": "0c99d26e089e",
+          "MemPerc": "99.98%",
+          "MemUsage": "1024MiB / 1GiB",
+          "Name": "urbanization_t01_9b7f623f00e8-api-1",
+          "NetIO": "114MB / 2.34MB",
+          "PIDs": "8"
+        },
+        {
+          "BlockIO": "0B / 300MB",
+          "CPUPerc": "0.00%",
+          "Container": "063a31b41467ae49ef595f8b8389a52e4893c902a651f53473924a00f048588f",
+          "ID": "063a31b41467",
+          "MemPerc": "4.61%",
+          "MemUsage": "94.39MiB / 2GiB",
+          "Name": "urbanization_t01_9b7f623f00e8-db-1",
+          "NetIO": "224MB / 117MB",
+          "PIDs": "8"
+        }
+      ]
+    },
+    {
+      "at": "2026-09-20T03:50:01.660Z",
+      "code": 0,
+      "ok": true,
+      "measured_services": [
+        "api",
+        "db"
+      ],
+      "rows": [
+        {
+          "BlockIO": "416MB / 777MB",
+          "CPUPerc": "13.97%",
+          "Container": "0c99d26e089ee0f2fc6183aa663d2504f223ef9840cf4b5165c41477e5a22a71",
+          "ID": "0c99d26e089e",
+          "MemPerc": "100.00%",
+          "MemUsage": "1024MiB / 1GiB",
+          "Name": "urbanization_t01_9b7f623f00e8-api-1",
+          "NetIO": "114MB / 2.34MB",
+          "PIDs": "8"
+        },
+        {
+          "BlockIO": "0B / 300MB",
+          "CPUPerc": "6.28%",
+          "Container": "063a31b41467ae49ef595f8b8389a52e4893c902a651f53473924a00f048588f",
+          "ID": "063a31b41467",
+          "MemPerc": "4.66%",
+          "MemUsage": "95.51MiB / 2GiB",
+          "Name": "urbanization_t01_9b7f623f00e8-db-1",
+          "NetIO": "224MB / 117MB",
+          "PIDs": "9"
+        }
+      ]
+    },
+    {
+      "at": "2026-09-20T03:50:07.861Z",
+      "code": 0,
+      "ok": true,
+      "measured_services": [
+        "api",
+        "db"
+      ],
+      "rows": [
+        {
+          "BlockIO": "464MB / 816MB",
+          "CPUPerc": "12.91%",
+          "Container": "0c99d26e089ee0f2fc6183aa663d2504f223ef9840cf4b5165c41477e5a22a71",
+          "ID": "0c99d26e089e",
+          "MemPerc": "99.98%",
+          "MemUsage": "1024MiB / 1GiB",
+          "Name": "urbanization_t01_9b7f623f00e8-api-1",
+          "NetIO": "114MB / 2.34MB",
+          "PIDs": "8"
+        },
+        {
+          "BlockIO": "0B / 300MB",
+          "CPUPerc": "9.29%",
+          "Container": "063a31b41467ae49ef595f8b8389a52e4893c902a651f53473924a00f048588f",
+          "ID": "063a31b41467",
+          "MemPerc": "4.61%",
+          "MemUsage": "94.43MiB / 2GiB",
+          "Name": "urbanization_t01_9b7f623f00e8-db-1",
+          "NetIO": "224MB / 117MB",
+          "PIDs": "8"
+        }
+      ]
+    },
+    {
+      "at": "2026-09-20T03:50:14.051Z",
+      "code": 0,
+      "ok": true,
+      "measured_services": [
+        "api",
+        "db"
+      ],
+      "rows": [
+        {
+          "BlockIO": "519MB / 868MB",
+          "CPUPerc": "15.64%",
+          "Container": "0c99d26e089ee0f2fc6183aa663d2504f223ef9840cf4b5165c41477e5a22a71",
+          "ID": "0c99d26e089e",
+          "MemPerc": "99.98%",
+          "MemUsage": "1024MiB / 1GiB",
+          "Name": "urbanization_t01_9b7f623f00e8-api-1",
+          "NetIO": "114MB / 2.34MB",
+          "PIDs": "8"
+        },
+        {
+          "BlockIO": "0B / 300MB",
+          "CPUPerc": "8.77%",
+          "Container": "063a31b41467ae49ef595f8b8389a52e4893c902a651f53473924a00f048588f",
+          "ID": "063a31b41467",
+          "MemPerc": "4.62%",
+          "MemUsage": "94.67MiB / 2GiB",
+          "Name": "urbanization_t01_9b7f623f00e8-db-1",
+          "NetIO": "224MB / 117MB",
+          "PIDs": "8"
+        }
+      ]
+    },
+    {
+      "at": "2026-09-20T03:50:21.246Z",
+      "code": 0,
+      "ok": true,
+      "measured_services": [
+        "api",
+        "db"
+      ],
+      "rows": [
+        {
+          "BlockIO": "640MB / 975MB",
+          "CPUPerc": "15.56%",
+          "Container": "0c99d26e089ee0f2fc6183aa663d2504f223ef9840cf4b5165c41477e5a22a71",
+          "ID": "0c99d26e089e",
+          "MemPerc": "100.00%",
+          "MemUsage": "1024MiB / 1GiB",
+          "Name": "urbanization_t01_9b7f623f00e8-api-1",
+          "NetIO": "114MB / 2.34MB",
+          "PIDs": "8"
+        },
+        {
+          "BlockIO": "0B / 300MB",
+          "CPUPerc": "0.00%",
+          "Container": "063a31b41467ae49ef595f8b8389a52e4893c902a651f53473924a00f048588f",
+          "ID": "063a31b41467",
+          "MemPerc": "4.61%",
+          "MemUsage": "94.39MiB / 2GiB",
+          "Name": "urbanization_t01_9b7f623f00e8-db-1",
+          "NetIO": "224MB / 117MB",
+          "PIDs": "8"
+        }
+      ]
+    },
+    {
+      "at": "2026-09-20T03:50:28.460Z",
+      "code": 0,
+      "ok": true,
+      "measured_services": [
+        "api",
+        "db"
+      ],
+      "rows": [
+        {
+          "BlockIO": "761MB / 1.09GB",
+          "CPUPerc": "14.91%",
+          "Container": "0c99d26e089ee0f2fc6183aa663d2504f223ef9840cf4b5165c41477e5a22a71",
+          "ID": "0c99d26e089e",
+          "MemPerc": "99.99%",
+          "MemUsage": "1024MiB / 1GiB",
+          "Name": "urbanization_t01_9b7f623f00e8-api-1",
+          "NetIO": "114MB / 2.34MB",
+          "PIDs": "8"
+        },
+        {
+          "BlockIO": "0B / 300MB",
+          "CPUPerc": "10.61%",
+          "Container": "063a31b41467ae49ef595f8b8389a52e4893c902a651f53473924a00f048588f",
+          "ID": "063a31b41467",
+          "MemPerc": "4.63%",
+          "MemUsage": "94.73MiB / 2GiB",
+          "Name": "urbanization_t01_9b7f623f00e8-db-1",
+          "NetIO": "224MB / 117MB",
+          "PIDs": "8"
+        }
+      ]
+    },
+    {
+      "at": "2026-09-20T03:50:35.653Z",
+      "code": 0,
+      "ok": true,
+      "measured_services": [
+        "api",
+        "db"
+      ],
+      "rows": [
+        {
+          "BlockIO": "863MB / 1.19GB",
+          "CPUPerc": "18.80%",
+          "Container": "0c99d26e089ee0f2fc6183aa663d2504f223ef9840cf4b5165c41477e5a22a71",
+          "ID": "0c99d26e089e",
+          "MemPerc": "99.99%",
+          "MemUsage": "1024MiB / 1GiB",
+          "Name": "urbanization_t01_9b7f623f00e8-api-1",
+          "NetIO": "114MB / 2.34MB",
+          "PIDs": "8"
+        },
+        {
+          "BlockIO": "0B / 300MB",
+          "CPUPerc": "0.01%",
+          "Container": "063a31b41467ae49ef595f8b8389a52e4893c902a651f53473924a00f048588f",
+          "ID": "063a31b41467",
+          "MemPerc": "4.62%",
+          "MemUsage": "94.54MiB / 2GiB",
+          "Name": "urbanization_t01_9b7f623f00e8-db-1",
+          "NetIO": "224MB / 117MB",
+          "PIDs": "8"
+        }
+      ]
+    },
+    {
+      "at": "2026-09-20T03:50:41.864Z",
+      "code": 0,
+      "ok": true,
+      "measured_services": [
+        "api",
+        "db"
+      ],
+      "rows": [
+        {
+          "BlockIO": "1.03GB / 1.35GB",
+          "CPUPerc": "14.34%",
+          "Container": "0c99d26e089ee0f2fc6183aa663d2504f223ef9840cf4b5165c41477e5a22a71",
+          "ID": "0c99d26e089e",
+          "MemPerc": "99.98%",
+          "MemUsage": "1024MiB / 1GiB",
+          "Name": "urbanization_t01_9b7f623f00e8-api-1",
+          "NetIO": "114MB / 2.34MB",
+          "PIDs": "8"
+        },
+        {
+          "BlockIO": "0B / 300MB",
+          "CPUPerc": "0.00%",
+          "Container": "063a31b41467ae49ef595f8b8389a52e4893c902a651f53473924a00f048588f",
+          "ID": "063a31b41467",
+          "MemPerc": "4.62%",
+          "MemUsage": "94.55MiB / 2GiB",
+          "Name": "urbanization_t01_9b7f623f00e8-db-1",
+          "NetIO": "224MB / 117MB",
+          "PIDs": "8"
+        }
+      ]
+    },
+    {
+      "at": "2026-09-20T03:50:49.070Z",
+      "code": 0,
+      "ok": true,
+      "measured_services": [
+        "api",
+        "db"
+      ],
+      "rows": [
+        {
+          "BlockIO": "1.17GB / 1.49GB",
+          "CPUPerc": "17.25%",
+          "Container": "0c99d26e089ee0f2fc6183aa663d2504f223ef9840cf4b5165c41477e5a22a71",
+          "ID": "0c99d26e089e",
+          "MemPerc": "99.99%",
+          "MemUsage": "1024MiB / 1GiB",
+          "Name": "urbanization_t01_9b7f623f00e8-api-1",
+          "NetIO": "114MB / 2.34MB",
+          "PIDs": "8"
+        },
+        {
+          "BlockIO": "0B / 300MB",
+          "CPUPerc": "6.89%",
+          "Container": "063a31b41467ae49ef595f8b8389a52e4893c902a651f53473924a00f048588f",
+          "ID": "063a31b41467",
+          "MemPerc": "4.62%",
+          "MemUsage": "94.69MiB / 2GiB",
+          "Name": "urbanization_t01_9b7f623f00e8-db-1",
+          "NetIO": "224MB / 117MB",
+          "PIDs": "8"
+        }
+      ]
+    },
+    {
+      "at": "2026-09-20T03:50:55.275Z",
+      "code": 0,
+      "ok": true,
+      "measured_services": [
+        "api",
+        "db"
+      ],
+      "rows": [
+        {
+          "BlockIO": "1.26GB / 1.58GB",
+          "CPUPerc": "19.49%",
+          "Container": "0c99d26e089ee0f2fc6183aa663d2504f223ef9840cf4b5165c41477e5a22a71",
+          "ID": "0c99d26e089e",
+          "MemPerc": "99.99%",
+          "MemUsage": "1024MiB / 1GiB",
+          "Name": "urbanization_t01_9b7f623f00e8-api-1",
+          "NetIO": "114MB / 2.34MB",
+          "PIDs": "8"
+        },
+        {
+          "BlockIO": "0B / 300MB",
+          "CPUPerc": "0.00%",
+          "Container": "063a31b41467ae49ef595f8b8389a52e4893c902a651f53473924a00f048588f",
+          "ID": "063a31b41467",
+          "MemPerc": "4.62%",
+          "MemUsage": "94.54MiB / 2GiB",
+          "Name": "urbanization_t01_9b7f623f00e8-db-1",
+          "NetIO": "224MB / 117MB",
+          "PIDs": "8"
+        }
+      ]
+    },
+    {
+      "at": "2026-09-20T03:51:01.479Z",
+      "code": 0,
+      "ok": true,
+      "measured_services": [
+        "api",
+        "db"
+      ],
+      "rows": [
+        {
+          "BlockIO": "1.32GB / 1.63GB",
+          "CPUPerc": "15.01%",
+          "Container": "0c99d26e089ee0f2fc6183aa663d2504f223ef9840cf4b5165c41477e5a22a71",
+          "ID": "0c99d26e089e",
+          "MemPerc": "100.00%",
+          "MemUsage": "1024MiB / 1GiB",
+          "Name": "urbanization_t01_9b7f623f00e8-api-1",
+          "NetIO": "114MB / 2.34MB",
+          "PIDs": "8"
+        },
+        {
+          "BlockIO": "0B / 300MB",
+          "CPUPerc": "0.00%",
+          "Container": "063a31b41467ae49ef595f8b8389a52e4893c902a651f53473924a00f048588f",
+          "ID": "063a31b41467",
+          "MemPerc": "4.62%",
+          "MemUsage": "94.55MiB / 2GiB",
+          "Name": "urbanization_t01_9b7f623f00e8-db-1",
+          "NetIO": "224MB / 117MB",
+          "PIDs": "8"
+        }
+      ]
+    },
+    {
+      "at": "2026-09-20T03:51:07.653Z",
+      "code": 0,
+      "ok": true,
+      "measured_services": [
+        "api",
+        "db"
+      ],
+      "rows": [
+        {
+          "BlockIO": "1.4GB / 1.69GB",
+          "CPUPerc": "6.39%",
+          "Container": "0c99d26e089ee0f2fc6183aa663d2504f223ef9840cf4b5165c41477e5a22a71",
+          "ID": "0c99d26e089e",
+          "MemPerc": "99.98%",
+          "MemUsage": "1024MiB / 1GiB",
+          "Name": "urbanization_t01_9b7f623f00e8-api-1",
+          "NetIO": "114MB / 2.34MB",
+          "PIDs": "8"
+        },
+        {
+          "BlockIO": "0B / 300MB",
+          "CPUPerc": "0.00%",
+          "Container": "063a31b41467ae49ef595f8b8389a52e4893c902a651f53473924a00f048588f",
+          "ID": "063a31b41467",
+          "MemPerc": "4.62%",
+          "MemUsage": "94.57MiB / 2GiB",
+          "Name": "urbanization_t01_9b7f623f00e8-db-1",
+          "NetIO": "224MB / 117MB",
+          "PIDs": "8"
+        }
+      ]
+    },
+    {
+      "at": "2026-09-20T03:51:13.875Z",
+      "code": 0,
+      "ok": true,
+      "measured_services": [
+        "api",
+        "db"
+      ],
+      "rows": [
+        {
+          "BlockIO": "1.45GB / 1.73GB",
+          "CPUPerc": "11.37%",
+          "Container": "0c99d26e089ee0f2fc6183aa663d2504f223ef9840cf4b5165c41477e5a22a71",
+          "ID": "0c99d26e089e",
+          "MemPerc": "99.98%",
+          "MemUsage": "1024MiB / 1GiB",
+          "Name": "urbanization_t01_9b7f623f00e8-api-1",
+          "NetIO": "114MB / 2.34MB",
+          "PIDs": "8"
+        },
+        {
+          "BlockIO": "0B / 300MB",
+          "CPUPerc": "0.00%",
+          "Container": "063a31b41467ae49ef595f8b8389a52e4893c902a651f53473924a00f048588f",
+          "ID": "063a31b41467",
+          "MemPerc": "4.62%",
+          "MemUsage": "94.59MiB / 2GiB",
+          "Name": "urbanization_t01_9b7f623f00e8-db-1",
+          "NetIO": "224MB / 117MB",
+          "PIDs": "8"
+        }
+      ]
+    },
+    {
+      "at": "2026-09-20T03:51:21.060Z",
+      "code": 0,
+      "ok": true,
+      "measured_services": [
+        "api",
+        "db"
+      ],
+      "rows": [
+        {
+          "BlockIO": "1.51GB / 1.79GB",
+          "CPUPerc": "7.26%",
+          "Container": "0c99d26e089ee0f2fc6183aa663d2504f223ef9840cf4b5165c41477e5a22a71",
+          "ID": "0c99d26e089e",
+          "MemPerc": "99.98%",
+          "MemUsage": "1024MiB / 1GiB",
+          "Name": "urbanization_t01_9b7f623f00e8-api-1",
+          "NetIO": "114MB / 2.34MB",
+          "PIDs": "8"
+        },
+        {
+          "BlockIO": "0B / 300MB",
+          "CPUPerc": "0.00%",
+          "Container": "063a31b41467ae49ef595f8b8389a52e4893c902a651f53473924a00f048588f",
+          "ID": "063a31b41467",
+          "MemPerc": "4.62%",
+          "MemUsage": "94.55MiB / 2GiB",
+          "Name": "urbanization_t01_9b7f623f00e8-db-1",
+          "NetIO": "224MB / 117MB",
+          "PIDs": "8"
+        }
+      ]
+    },
+    {
+      "at": "2026-09-20T03:51:28.267Z",
+      "code": 0,
+      "ok": true,
+      "measured_services": [
+        "api",
+        "db"
+      ],
+      "rows": [
+        {
+          "BlockIO": "1.58GB / 1.84GB",
+          "CPUPerc": "6.87%",
+          "Container": "0c99d26e089ee0f2fc6183aa663d2504f223ef9840cf4b5165c41477e5a22a71",
+          "ID": "0c99d26e089e",
+          "MemPerc": "100.00%",
+          "MemUsage": "1GiB / 1GiB",
+          "Name": "urbanization_t01_9b7f623f00e8-api-1",
+          "NetIO": "114MB / 2.34MB",
+          "PIDs": "8"
+        },
+        {
+          "BlockIO": "0B / 300MB",
+          "CPUPerc": "5.07%",
+          "Container": "063a31b41467ae49ef595f8b8389a52e4893c902a651f53473924a00f048588f",
+          "ID": "063a31b41467",
+          "MemPerc": "4.78%",
+          "MemUsage": "97.9MiB / 2GiB",
+          "Name": "urbanization_t01_9b7f623f00e8-db-1",
+          "NetIO": "224MB / 117MB",
+          "PIDs": "11"
+        }
+      ]
+    },
+    {
+      "at": "2026-09-20T03:51:35.318Z",
+      "code": 0,
+      "ok": true,
+      "measured_services": [
+        "api",
+        "db"
+      ],
+      "rows": [
+        {
+          "BlockIO": "1.65GB / 1.91GB",
+          "CPUPerc": "12.78%",
+          "Container": "0c99d26e089ee0f2fc6183aa663d2504f223ef9840cf4b5165c41477e5a22a71",
+          "ID": "0c99d26e089e",
+          "MemPerc": "99.98%",
+          "MemUsage": "1024MiB / 1GiB",
+          "Name": "urbanization_t01_9b7f623f00e8-api-1",
+          "NetIO": "114MB / 2.34MB",
+          "PIDs": "8"
+        },
+        {
+          "BlockIO": "0B / 300MB",
+          "CPUPerc": "0.00%",
+          "Container": "063a31b41467ae49ef595f8b8389a52e4893c902a651f53473924a00f048588f",
+          "ID": "063a31b41467",
+          "MemPerc": "4.62%",
+          "MemUsage": "94.57MiB / 2GiB",
+          "Name": "urbanization_t01_9b7f623f00e8-db-1",
+          "NetIO": "224MB / 117MB",
+          "PIDs": "8"
+        }
+      ]
+    },
+    {
+      "at": "2026-09-20T03:51:43.029Z",
+      "code": 0,
+      "ok": true,
+      "measured_services": [
+        "api",
+        "db"
+      ],
+      "rows": [
+        {
+          "BlockIO": "1.71GB / 1.97GB",
+          "CPUPerc": "11.67%",
+          "Container": "0c99d26e089ee0f2fc6183aa663d2504f223ef9840cf4b5165c41477e5a22a71",
+          "ID": "0c99d26e089e",
+          "MemPerc": "99.98%",
+          "MemUsage": "1024MiB / 1GiB",
+          "Name": "urbanization_t01_9b7f623f00e8-api-1",
+          "NetIO": "114MB / 2.34MB",
+          "PIDs": "8"
+        },
+        {
+          "BlockIO": "0B / 300MB",
+          "CPUPerc": "9.21%",
+          "Container": "063a31b41467ae49ef595f8b8389a52e4893c902a651f53473924a00f048588f",
+          "ID": "063a31b41467",
+          "MemPerc": "4.62%",
+          "MemUsage": "94.66MiB / 2GiB",
+          "Name": "urbanization_t01_9b7f623f00e8-db-1",
+          "NetIO": "224MB / 117MB",
+          "PIDs": "8"
+        }
+      ]
+    },
+    {
+      "at": "2026-09-20T03:51:49.216Z",
+      "code": 0,
+      "ok": true,
+      "measured_services": [
+        "api",
+        "db"
+      ],
+      "rows": [
+        {
+          "BlockIO": "1.78GB / 2.02GB",
+          "CPUPerc": "10.59%",
+          "Container": "0c99d26e089ee0f2fc6183aa663d2504f223ef9840cf4b5165c41477e5a22a71",
+          "ID": "0c99d26e089e",
+          "MemPerc": "99.99%",
+          "MemUsage": "1024MiB / 1GiB",
+          "Name": "urbanization_t01_9b7f623f00e8-api-1",
+          "NetIO": "114MB / 2.34MB",
+          "PIDs": "8"
+        },
+        {
+          "BlockIO": "0B / 300MB",
+          "CPUPerc": "8.74%",
+          "Container": "063a31b41467ae49ef595f8b8389a52e4893c902a651f53473924a00f048588f",
+          "ID": "063a31b41467",
+          "MemPerc": "4.63%",
+          "MemUsage": "94.79MiB / 2GiB",
+          "Name": "urbanization_t01_9b7f623f00e8-db-1",
+          "NetIO": "224MB / 117MB",
+          "PIDs": "8"
+        }
+      ]
+    },
+    {
+      "at": "2026-09-20T03:51:55.839Z",
+      "code": 0,
+      "ok": true,
+      "measured_services": [
+        "api",
+        "db"
+      ],
+      "rows": [
+        {
+          "BlockIO": "1.86GB / 2.11GB",
+          "CPUPerc": "12.96%",
+          "Container": "0c99d26e089ee0f2fc6183aa663d2504f223ef9840cf4b5165c41477e5a22a71",
+          "ID": "0c99d26e089e",
+          "MemPerc": "99.97%",
+          "MemUsage": "1024MiB / 1GiB",
+          "Name": "urbanization_t01_9b7f623f00e8-api-1",
+          "NetIO": "114MB / 2.34MB",
+          "PIDs": "8"
+        },
+        {
+          "BlockIO": "0B / 300MB",
+          "CPUPerc": "8.22%",
+          "Container": "063a31b41467ae49ef595f8b8389a52e4893c902a651f53473924a00f048588f",
+          "ID": "063a31b41467",
+          "MemPerc": "4.62%",
+          "MemUsage": "94.7MiB / 2GiB",
+          "Name": "urbanization_t01_9b7f623f00e8-db-1",
+          "NetIO": "224MB / 117MB",
+          "PIDs": "8"
+        }
+      ]
+    },
+    {
+      "at": "2026-09-20T03:52:03.088Z",
+      "code": 0,
+      "ok": true,
+      "measured_services": [
+        "api",
+        "db"
+      ],
+      "rows": [
+        {
+          "BlockIO": "1.93GB / 2.16GB",
+          "CPUPerc": "21.97%",
+          "Container": "0c99d26e089ee0f2fc6183aa663d2504f223ef9840cf4b5165c41477e5a22a71",
+          "ID": "0c99d26e089e",
+          "MemPerc": "99.99%",
+          "MemUsage": "1024MiB / 1GiB",
+          "Name": "urbanization_t01_9b7f623f00e8-api-1",
+          "NetIO": "114MB / 2.34MB",
+          "PIDs": "8"
+        },
+        {
+          "BlockIO": "0B / 300MB",
+          "CPUPerc": "0.00%",
+          "Container": "063a31b41467ae49ef595f8b8389a52e4893c902a651f53473924a00f048588f",
+          "ID": "063a31b41467",
+          "MemPerc": "4.63%",
+          "MemUsage": "94.84MiB / 2GiB",
+          "Name": "urbanization_t01_9b7f623f00e8-db-1",
+          "NetIO": "224MB / 117MB",
+          "PIDs": "8"
+        }
+      ]
+    },
+    {
+      "at": "2026-09-20T03:52:09.284Z",
+      "code": 0,
+      "ok": true,
+      "measured_services": [
+        "api",
+        "db"
+      ],
+      "rows": [
+        {
+          "BlockIO": "2.05GB / 2.28GB",
+          "CPUPerc": "21.37%",
+          "Container": "0c99d26e089ee0f2fc6183aa663d2504f223ef9840cf4b5165c41477e5a22a71",
+          "ID": "0c99d26e089e",
+          "MemPerc": "99.99%",
+          "MemUsage": "1024MiB / 1GiB",
+          "Name": "urbanization_t01_9b7f623f00e8-api-1",
+          "NetIO": "114MB / 2.34MB",
+          "PIDs": "8"
+        },
+        {
+          "BlockIO": "0B / 300MB",
+          "CPUPerc": "0.00%",
+          "Container": "063a31b41467ae49ef595f8b8389a52e4893c902a651f53473924a00f048588f",
+          "ID": "063a31b41467",
+          "MemPerc": "4.63%",
+          "MemUsage": "94.85MiB / 2GiB",
+          "Name": "urbanization_t01_9b7f623f00e8-db-1",
+          "NetIO": "224MB / 117MB",
+          "PIDs": "8"
+        }
+      ]
+    },
+    {
+      "at": "2026-09-20T03:52:16.474Z",
+      "code": 0,
+      "ok": true,
+      "measured_services": [
+        "api",
+        "db"
+      ],
+      "rows": [
+        {
+          "BlockIO": "2.16GB / 2.38GB",
+          "CPUPerc": "16.41%",
+          "Container": "0c99d26e089ee0f2fc6183aa663d2504f223ef9840cf4b5165c41477e5a22a71",
+          "ID": "0c99d26e089e",
+          "MemPerc": "99.98%",
+          "MemUsage": "1024MiB / 1GiB",
+          "Name": "urbanization_t01_9b7f623f00e8-api-1",
+          "NetIO": "114MB / 2.34MB",
+          "PIDs": "8"
+        },
+        {
+          "BlockIO": "0B / 300MB",
+          "CPUPerc": "8.94%",
+          "Container": "063a31b41467ae49ef595f8b8389a52e4893c902a651f53473924a00f048588f",
+          "ID": "063a31b41467",
+          "MemPerc": "4.63%",
+          "MemUsage": "94.91MiB / 2GiB",
+          "Name": "urbanization_t01_9b7f623f00e8-db-1",
+          "NetIO": "224MB / 117MB",
+          "PIDs": "8"
+        }
+      ]
+    },
+    {
+      "at": "2026-09-20T03:52:22.667Z",
+      "code": 0,
+      "ok": true,
+      "measured_services": [
+        "api",
+        "db"
+      ],
+      "rows": [
+        {
+          "BlockIO": "2.31GB / 2.49GB",
+          "CPUPerc": "17.24%",
+          "Container": "0c99d26e089ee0f2fc6183aa663d2504f223ef9840cf4b5165c41477e5a22a71",
+          "ID": "0c99d26e089e",
+          "MemPerc": "99.99%",
+          "MemUsage": "1024MiB / 1GiB",
+          "Name": "urbanization_t01_9b7f623f00e8-api-1",
+          "NetIO": "114MB / 2.34MB",
+          "PIDs": "8"
+        },
+        {
+          "BlockIO": "0B / 300MB",
+          "CPUPerc": "9.15%",
+          "Container": "063a31b41467ae49ef595f8b8389a52e4893c902a651f53473924a00f048588f",
+          "ID": "063a31b41467",
+          "MemPerc": "4.63%",
+          "MemUsage": "94.85MiB / 2GiB",
+          "Name": "urbanization_t01_9b7f623f00e8-db-1",
+          "NetIO": "224MB / 117MB",
+          "PIDs": "8"
+        }
+      ]
+    },
+    {
+      "at": "2026-09-20T03:52:28.850Z",
+      "code": 0,
+      "ok": true,
+      "measured_services": [
+        "api",
+        "db"
+      ],
+      "rows": [
+        {
+          "BlockIO": "2.36GB / 2.95GB",
+          "CPUPerc": "77.97%",
+          "Container": "0c99d26e089ee0f2fc6183aa663d2504f223ef9840cf4b5165c41477e5a22a71",
+          "ID": "0c99d26e089e",
+          "MemPerc": "99.99%",
+          "MemUsage": "1024MiB / 1GiB",
+          "Name": "urbanization_t01_9b7f623f00e8-api-1",
+          "NetIO": "229MB / 5.83MB",
+          "PIDs": "9"
+        },
+        {
+          "BlockIO": "0B / 300MB",
+          "CPUPerc": "9.12%",
+          "Container": "063a31b41467ae49ef595f8b8389a52e4893c902a651f53473924a00f048588f",
+          "ID": "063a31b41467",
+          "MemPerc": "4.72%",
+          "MemUsage": "96.68MiB / 2GiB",
+          "Name": "urbanization_t01_9b7f623f00e8-db-1",
+          "NetIO": "226MB / 232MB",
+          "PIDs": "9"
+        }
+      ]
+    },
+    {
+      "error": "docker exceeded its 15000ms timeout"
+    }
+  ],
+  "successful_stats_samples": 33,
+  "note": "Docker stats are sampled, not exact peaks. cgroup memory.peak is a container-lifetime peak including warmup. Unavailable peaks stay null."
+}

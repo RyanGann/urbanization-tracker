@@ -1,0 +1,289 @@
+{
+  "host": {
+    "platform": "win32",
+    "release": "10.0.26200",
+    "cpu": "AMD Ryzen 5 2600 Six-Core Processor            ",
+    "logical_cpus": 12,
+    "ram_bytes": 17129902080
+  },
+  "docker": {
+    "cpus": 12,
+    "ram_bytes": 12542230528,
+    "version": "29.8.0"
+  },
+  "containers": {
+    "api": {
+      "id": "93d65049ea00ca240c596c1c97ca43ddc3cfb15962a6739bc14e7c80323b6e2a",
+      "state": {
+        "Status": "exited",
+        "Running": false,
+        "Paused": false,
+        "Restarting": false,
+        "OOMKilled": true,
+        "Dead": false,
+        "Pid": 0,
+        "ExitCode": 137,
+        "Error": "",
+        "StartedAt": "2026-09-20T03:19:14.127392515Z",
+        "FinishedAt": "2026-09-20T03:20:04.294180839Z"
+      },
+      "cgroup_memory_peak_bytes": null,
+      "memory_limit_bytes": 1073741824,
+      "nano_cpus": 1000000000
+    },
+    "db": {
+      "id": "bb3a09be4505096523292b95cfc5bede0d0378291762a96a33adffdefd2977af",
+      "state": {
+        "Status": "running",
+        "Running": true,
+        "Paused": false,
+        "Restarting": false,
+        "OOMKilled": false,
+        "Dead": false,
+        "Pid": 148206,
+        "ExitCode": 0,
+        "Error": "",
+        "StartedAt": "2026-09-20T03:17:08.719410403Z",
+        "FinishedAt": "0001-01-01T00:00:00Z",
+        "Health": {
+          "Status": "healthy",
+          "FailingStreak": 0,
+          "Log": [
+            {
+              "Start": "2026-09-20T03:20:06.03608667Z",
+              "End": "2026-09-20T03:20:06.198477992Z",
+              "ExitCode": 0,
+              "Output": ""
+            },
+            {
+              "Start": "2026-09-20T03:20:08.195855742Z",
+              "End": "2026-09-20T03:20:08.294799973Z",
+              "ExitCode": 0,
+              "Output": ""
+            },
+            {
+              "Start": "2026-09-20T03:20:10.296020845Z",
+              "End": "2026-09-20T03:20:10.405147784Z",
+              "ExitCode": 0,
+              "Output": ""
+            },
+            {
+              "Start": "2026-09-20T03:20:12.406205313Z",
+              "End": "2026-09-20T03:20:12.512291412Z",
+              "ExitCode": 0,
+              "Output": ""
+            },
+            {
+              "Start": "2026-09-20T03:20:14.512993432Z",
+              "End": "2026-09-20T03:20:14.779741209Z",
+              "ExitCode": 0,
+              "Output": ""
+            }
+          ]
+        }
+      },
+      "cgroup_memory_peak_bytes": 603439104,
+      "memory_limit_bytes": 2147483648,
+      "nano_cpus": 2000000000
+    }
+  },
+  "samples": [
+    {
+      "at": "2026-09-20T03:19:24.867Z",
+      "code": 0,
+      "rows": [
+        {
+          "BlockIO": "0B / 0B",
+          "CPUPerc": "0.21%",
+          "Container": "93d65049ea00ca240c596c1c97ca43ddc3cfb15962a6739bc14e7c80323b6e2a",
+          "ID": "93d65049ea00",
+          "MemPerc": "8.38%",
+          "MemUsage": "85.84MiB / 1GiB",
+          "Name": "urbanization_t01_fbab3ab16a45-api-1",
+          "NetIO": "1.4MB / 1.13MB",
+          "PIDs": "7"
+        },
+        {
+          "BlockIO": "81.9kB / 288MB",
+          "CPUPerc": "0.03%",
+          "Container": "bb3a09be4505096523292b95cfc5bede0d0378291762a96a33adffdefd2977af",
+          "ID": "bb3a09be4505",
+          "MemPerc": "4.51%",
+          "MemUsage": "92.35MiB / 2GiB",
+          "Name": "urbanization_t01_fbab3ab16a45-db-1",
+          "NetIO": "224MB / 4.01MB",
+          "PIDs": "7"
+        }
+      ]
+    },
+    {
+      "at": "2026-09-20T03:19:32.051Z",
+      "code": 0,
+      "rows": [
+        {
+          "BlockIO": "0B / 0B",
+          "CPUPerc": "0.15%",
+          "Container": "93d65049ea00ca240c596c1c97ca43ddc3cfb15962a6739bc14e7c80323b6e2a",
+          "ID": "93d65049ea00",
+          "MemPerc": "8.38%",
+          "MemUsage": "85.84MiB / 1GiB",
+          "Name": "urbanization_t01_fbab3ab16a45-api-1",
+          "NetIO": "1.4MB / 1.13MB",
+          "PIDs": "7"
+        },
+        {
+          "BlockIO": "81.9kB / 288MB",
+          "CPUPerc": "11.87%",
+          "Container": "bb3a09be4505096523292b95cfc5bede0d0378291762a96a33adffdefd2977af",
+          "ID": "bb3a09be4505",
+          "MemPerc": "4.51%",
+          "MemUsage": "92.37MiB / 2GiB",
+          "Name": "urbanization_t01_fbab3ab16a45-db-1",
+          "NetIO": "224MB / 4.01MB",
+          "PIDs": "7"
+        }
+      ]
+    },
+    {
+      "at": "2026-09-20T03:19:38.267Z",
+      "code": 0,
+      "rows": [
+        {
+          "BlockIO": "0B / 0B",
+          "CPUPerc": "100.08%",
+          "Container": "93d65049ea00ca240c596c1c97ca43ddc3cfb15962a6739bc14e7c80323b6e2a",
+          "ID": "93d65049ea00",
+          "MemPerc": "84.65%",
+          "MemUsage": "866.8MiB / 1GiB",
+          "Name": "urbanization_t01_fbab3ab16a45-api-1",
+          "NetIO": "114MB / 2.29MB",
+          "PIDs": "8"
+        },
+        {
+          "BlockIO": "81.9kB / 288MB",
+          "CPUPerc": "12.10%",
+          "Container": "bb3a09be4505096523292b95cfc5bede0d0378291762a96a33adffdefd2977af",
+          "ID": "bb3a09be4505",
+          "MemPerc": "4.62%",
+          "MemUsage": "94.52MiB / 2GiB",
+          "Name": "urbanization_t01_fbab3ab16a45-db-1",
+          "NetIO": "224MB / 117MB",
+          "PIDs": "8"
+        }
+      ]
+    },
+    {
+      "at": "2026-09-20T03:19:45.497Z",
+      "code": 0,
+      "rows": [
+        {
+          "BlockIO": "57.3kB / 1.07GB",
+          "CPUPerc": "4.37%",
+          "Container": "93d65049ea00ca240c596c1c97ca43ddc3cfb15962a6739bc14e7c80323b6e2a",
+          "ID": "93d65049ea00",
+          "MemPerc": "99.99%",
+          "MemUsage": "1024MiB / 1GiB",
+          "Name": "urbanization_t01_fbab3ab16a45-api-1",
+          "NetIO": "114MB / 2.29MB",
+          "PIDs": "8"
+        },
+        {
+          "BlockIO": "81.9kB / 288MB",
+          "CPUPerc": "10.60%",
+          "Container": "bb3a09be4505096523292b95cfc5bede0d0378291762a96a33adffdefd2977af",
+          "ID": "bb3a09be4505",
+          "MemPerc": "4.81%",
+          "MemUsage": "98.48MiB / 2GiB",
+          "Name": "urbanization_t01_fbab3ab16a45-db-1",
+          "NetIO": "224MB / 117MB",
+          "PIDs": "12"
+        }
+      ]
+    },
+    {
+      "at": "2026-09-20T03:19:51.696Z",
+      "code": 0,
+      "rows": [
+        {
+          "BlockIO": "57.3kB / 1.07GB",
+          "CPUPerc": "0.00%",
+          "Container": "93d65049ea00ca240c596c1c97ca43ddc3cfb15962a6739bc14e7c80323b6e2a",
+          "ID": "93d65049ea00",
+          "MemPerc": "100.00%",
+          "MemUsage": "1GiB / 1GiB",
+          "Name": "urbanization_t01_fbab3ab16a45-api-1",
+          "NetIO": "114MB / 2.29MB",
+          "PIDs": "8"
+        },
+        {
+          "BlockIO": "81.9kB / 288MB",
+          "CPUPerc": "0.00%",
+          "Container": "bb3a09be4505096523292b95cfc5bede0d0378291762a96a33adffdefd2977af",
+          "ID": "bb3a09be4505",
+          "MemPerc": "4.62%",
+          "MemUsage": "94.54MiB / 2GiB",
+          "Name": "urbanization_t01_fbab3ab16a45-db-1",
+          "NetIO": "224MB / 117MB",
+          "PIDs": "8"
+        }
+      ]
+    },
+    {
+      "at": "2026-09-20T03:19:59.183Z",
+      "code": 0,
+      "rows": [
+        {
+          "BlockIO": "111kB / 1.07GB",
+          "CPUPerc": "0.03%",
+          "Container": "93d65049ea00ca240c596c1c97ca43ddc3cfb15962a6739bc14e7c80323b6e2a",
+          "ID": "93d65049ea00",
+          "MemPerc": "80.40%",
+          "MemUsage": "823.3MiB / 1GiB",
+          "Name": "urbanization_t01_fbab3ab16a45-api-1",
+          "NetIO": "114MB / 2.3MB",
+          "PIDs": "1"
+        },
+        {
+          "BlockIO": "81.9kB / 289MB",
+          "CPUPerc": "12.38%",
+          "Container": "bb3a09be4505096523292b95cfc5bede0d0378291762a96a33adffdefd2977af",
+          "ID": "bb3a09be4505",
+          "MemPerc": "4.41%",
+          "MemUsage": "90.34MiB / 2GiB",
+          "Name": "urbanization_t01_fbab3ab16a45-db-1",
+          "NetIO": "224MB / 117MB",
+          "PIDs": "6"
+        }
+      ]
+    },
+    {
+      "at": "2026-09-20T03:20:13.909Z",
+      "code": 0,
+      "rows": [
+        {
+          "BlockIO": "0B / 0B",
+          "CPUPerc": "0.00%",
+          "Container": "93d65049ea00ca240c596c1c97ca43ddc3cfb15962a6739bc14e7c80323b6e2a",
+          "ID": "93d65049ea00",
+          "MemPerc": "0.00%",
+          "MemUsage": "0B / 0B",
+          "Name": "urbanization_t01_fbab3ab16a45-api-1",
+          "NetIO": "0B / 0B",
+          "PIDs": "0"
+        },
+        {
+          "BlockIO": "81.9kB / 289MB",
+          "CPUPerc": "0.01%",
+          "Container": "bb3a09be4505096523292b95cfc5bede0d0378291762a96a33adffdefd2977af",
+          "ID": "bb3a09be4505",
+          "MemPerc": "4.41%",
+          "MemUsage": "90.38MiB / 2GiB",
+          "Name": "urbanization_t01_fbab3ab16a45-db-1",
+          "NetIO": "224MB / 117MB",
+          "PIDs": "6"
+        }
+      ]
+    }
+  ],
+  "note": "Docker stats are sampled, not exact peaks. cgroup memory.peak is a container-lifetime peak including warmup. Unavailable peaks stay null."
+}

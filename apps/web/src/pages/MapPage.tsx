@@ -16,6 +16,7 @@ import {
   formatArea,
   uniqueFlagTypes
 } from "../utils/records";
+import { performanceMark } from "../utils/performance";
 
 const INITIAL_STATUSES: DevelopmentStatus[] = ["layout", "preliminary", "final", "issued_permit"];
 const INITIAL_CONFIDENCE: ConfidenceLevel[] = ["high", "medium", "low"];
@@ -69,6 +70,9 @@ export function MapPage() {
   useEffect(() => {
     if (recordsQuery.isError) setSelectedRecord(null);
   }, [recordsQuery.isError]);
+  useEffect(() => {
+    if (recordsQuery.isSuccess) performanceMark("list-ready");
+  }, [recordsQuery.isSuccess]);
 
   const resetFilters = () => {
     setStatuses(INITIAL_STATUSES);

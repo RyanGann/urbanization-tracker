@@ -1,0 +1,105 @@
+{
+  "schema_version": 1,
+  "generator": {
+    "name": "p01-performance-fixture",
+    "version": 2,
+    "settings": {
+      "dense_polygon_points": "950-1110",
+      "development_grid": "80x17",
+      "overlay_grid": "80x52"
+    }
+  },
+  "profile": "A",
+  "seed": 1369948382,
+  "development_records": 32,
+  "environmental_features": 16,
+  "environmental_coordinate_pairs": 572,
+  "geometry_cases": [
+    "dense-line",
+    "holes",
+    "multipolygon",
+    "polygon",
+    "tile-boundary-touch"
+  ],
+  "source_coverage": {
+    "synthetic": true,
+    "disclaimer": "Fixture coverage metadata is synthetic and does not claim completeness for any real source.",
+    "sources": [
+      {
+        "id": "p01-synthetic-complete",
+        "status": "complete",
+        "scope_id": "p01-a-complete-scope",
+        "expected_features": 16,
+        "fetched_features": 16,
+        "note": "All generated features for this synthetic source are present."
+      },
+      {
+        "id": "p01-synthetic-partial",
+        "status": "partial",
+        "scope_id": "p01-a-partial-scope",
+        "expected_features": 24,
+        "fetched_features": 16,
+        "note": "Eight synthetic source features are intentionally outside this fixture."
+      }
+    ]
+  },
+  "expected": {
+    "first_development": {
+      "public_id": "p01-a-development-0000",
+      "title": "P01 A development 0",
+      "centroid": [
+        -86.66,
+        34.85
+      ]
+    },
+    "visible_geometry_cases": [
+      "dense-line",
+      "holes",
+      "multipolygon",
+      "polygon",
+      "tile-boundary-touch"
+    ],
+    "enabled_overlay_id": "wetlands"
+  },
+  "overlay_probes": [
+    {
+      "overlay_id": "wetlands",
+      "overlay_name": "P01 A rendered context",
+      "feature_id": "p01-environment-1",
+      "coordinate": [
+        -86.8548,
+        34.615
+      ]
+    }
+  ],
+  "diagnostics": {
+    "quarantined_invalid": [
+      {
+        "id": "p01-invalid-self-intersection",
+        "reason": "self-intersecting-ring"
+      }
+    ],
+    "touching_tile_boundaries": [
+      {
+        "id": "p01-tile-boundary-touch",
+        "reason": "published polygon deliberately touches a real slippy-map tile west edge",
+        "boundary": "west",
+        "published_feature_id": "p01-environment-2",
+        "zoom": 12,
+        "tile_x": 1061,
+        "coordinate": [
+          -86.748046875,
+          34.75
+        ]
+      }
+    ],
+    "unsupported_unlocated_records": [
+      {
+        "id": "p01-unlocated-diagnostic",
+        "reason": "published source record has no usable geometry or centroid; excluded from development_records"
+      }
+    ]
+  },
+  "bytes_utf8": 46545,
+  "sha256": "cc7114c31fa8dbce0374279ccc4b4eabb8bebf021513719781c8ba7312c1edc3"
+}

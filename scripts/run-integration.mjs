@@ -4,11 +4,12 @@ import { mkdir, readFile, rm, writeFile } from "node:fs/promises";
 import { spawn } from "node:child_process";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
+import { preparePerformance, enableMeasurementLimits, captureDatabase, startResourceSampling } from "./performance/integration.mjs";
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const composeFile = join(root, "compose.integration.yml");
 const fixturePath = join(root, "apps", "api", "tests", "integration", "fixture.json");
-const supportedSuites = new Set(["api", "live"]);
+const supportedSuites = new Set(["api", "live", "performance"]);
 const requestedArgs = process.argv.slice(2);
 let interrupted = false;
 const activeChildren = new Set();
@@ -27,7 +28,8 @@ for (const signal of ["SIGINT", "SIGTERM"]) {
 
 function usage(message) {
   if (message) console.error(`Error: ${message}`);
-  console.error("Usage: node scripts/run-integration.mjs --suite api|live [--scenario c01-data-modes] [--keep-on-failure]");
+  console.error("Usage: node scripts/run-integration.mjs --suite api|live|performance [--scenario functional|representative|snapshot|c01-data-modes] [--snapshot-dir DISPOSABLE_COPY] [--profile desktop|mobile] [--smoke] [--keep-on-failure]");
+
   process.exitCode = 2;
 }
 
@@ -35,14 +37,15 @@ function parseArgs(argv) {
   const options = { keepOnFailure: false, assertFailure: false, isolationCheck: false, child: false };
   for (let index = 0; index < argv.length; index += 1) {
     const argument = argv[index];
-    if (argument === "--suite" || argument === "--scenario") {
+    if (argument === "--suite" || argument === "--scenario" || argument === "--profile" || argument === "--snapshot-dir") {
       const value = argv[index + 1];
       if (!value || value.startsWith("--")) throw new Error(`${argument} requires a value`);
-      options[argument.slice(2)] = value;
+      options[argument === "--snapshot-dir" ? "snapshotDir" : argument.slice(2)] = value;
       index += 1;
     } else if (argument === "--keep-on-failure") options.keepOnFailure = true;
     else if (argument === "--assert-failure") options.assertFailure = true;
     else if (argument === "--isolation-check") options.isolationCheck = true;
+    else if (argument === "--smoke") options.smoke = true;
     else if (argument === "--child") options.child = true;
     else throw new Error(`Unknown option ${argument}`);
   }
@@ -50,11 +53,18 @@ function parseArgs(argv) {
   if (!supportedSuites.has(options.suite)) {
     throw new Error(`Suite '${options.suite}' is not implemented by T01`);
   }
-  if (options.scenario && options.scenario !== "c01-data-modes") {
-    throw new Error(`Scenario '${options.scenario}' is not implemented`);
-  }
-  if (options.scenario === "c01-data-modes" && (options.suite !== "api" || options.assertFailure || options.isolationCheck || options.child)) {
-    throw new Error("--scenario c01-data-modes requires the top-level api suite without assertion or isolation flags");
+  if (options.suite === "performance") {
+    options.scenario ??= options.snapshotDir ? "snapshot" : "representative";
+    options.profile ??= "desktop";
+    if (!["functional", "representative", "snapshot"].includes(options.scenario)) throw new Error("Performance scenario must be functional, representative or snapshot");
+    if ((options.scenario === "snapshot") !== !!options.snapshotDir) throw new Error("Snapshot scenario requires --snapshot-dir; other scenarios forbid it");
+    if (!["desktop", "mobile"].includes(options.profile)) throw new Error("Performance profile must be desktop or mobile");
+  } else {
+    if (options.profile || options.smoke || options.snapshotDir) throw new Error("Performance options require --suite performance");
+    if (options.scenario && options.scenario !== "c01-data-modes") throw new Error(`Scenario '${options.scenario}' is not implemented`);
+    if (options.scenario === "c01-data-modes" && (options.suite !== "api" || options.assertFailure || options.isolationCheck || options.child)) {
+      throw new Error("--scenario c01-data-modes requires the top-level api suite without assertion or isolation flags");
+    }
   }
   if (options.assertFailure && options.suite !== "api") {
     throw new Error("--assert-failure is only supported with --suite api");
@@ -208,7 +218,7 @@ async function assertApi(apiUrl, reviewerToken, fixture, assertFailure) {
   });
   const store = await authorized.json();
   const collection = store.collections?.find((item) => item.name === "development_records");
-  if (!authorized.ok || store.backend !== "postgres" || collection?.database_count !== 1) {
+  if (!authorized.ok || store.backend !== "postgres" || collection?.database_count !== (fixture.count ?? 1)) {
     throw new Error("reviewer request did not observe the Postgres processed-store fixture");
   }
 }
@@ -282,21 +292,36 @@ async function runSuite(options) {
   let imageIds = {};
   const scenarioArtifacts = {};
   const commitSha = (await run("git", ["rev-parse", "HEAD"], { log })).output.trim();
+  const workingTreeDirty = !!(await run("git", ["status", "--porcelain"], { log })).output.trim();
+  console.log(JSON.stringify({ run_id: runId, project, suite: options.suite, artifact_directory: artifactDir }));
 
   await mkdir(artifactDir, { recursive: true });
+  const performance = options.suite === "performance" ? await preparePerformance({ options, root, artifactDir, run, log }) : null;
+  if (performance) {
+    compose.push("-f", performance.override);
+    Object.assign(fixture, { id: performance.manifest.expected.first_development.public_id, title: performance.manifest.expected.first_development.title, count: performance.manifest.development_records });
+  }
+  let stopSampling;
   if (options.scenario === "c01-data-modes") {
     // Create the bind-mount source as the host user before Compose starts the API.
     // Otherwise Docker creates it as root and the runner cannot write C01 fixtures on Linux CI.
     await mkdir(join(artifactDir, "c01-data"), { recursive: true });
   }
+
   await writeFile(envFile, [
     `INTEGRATION_ARTIFACT_DIR=${artifactDir.replaceAll("\\", "/")}`,
     `INTEGRATION_REVIEWER_TOKEN=${reviewerToken}`,
     `INTEGRATION_FIXTURE_TITLE=${fixture.title}`,
+    `P01_PERFORMANCE_MARKS=${!!performance}`,
+    `P01_PERFORMANCE_PROFILE=${options.profile ?? "desktop"}`,
+    `P01_PERFORMANCE_SCENARIO=${options.scenario ?? "functional"}`,
+    `P01_SMOKE=${!!options.smoke}`,
+    "P01_OUTPUT=/artifacts/performance/browser.json",
     "INTEGRATION_DATA_MODE=live",
     "INTEGRATION_PHASE3_STORE_BACKEND=postgres",
     "INTEGRATION_PROCESSED_STORE_BACKEND=postgres",
     "INTEGRATION_INGESTION_DATA_DIR=/var/empty-data"
+
   ].join("\n") + "\n", { encoding: "utf8", mode: 0o600 });
   await writeFile(cleanupEnv, [
     `INTEGRATION_ARTIFACT_DIR=${artifactDir.replaceAll("\\", "/")}`,
@@ -320,11 +345,11 @@ async function runSuite(options) {
     ],
     cleanup: {
       command: "docker",
-      args: ["compose", "--project-name", project, "--project-directory", root, "--env-file", cleanupEnv, "-f", composeFile, "down", "--volumes", "--remove-orphans"]
+      args: ["compose", "--project-name", project, "--project-directory", root, "--env-file", cleanupEnv, "-f", composeFile, ...(performance ? ["-f", performance.override] : []), "down", "--volumes", "--remove-orphans"]
     },
     instruction: "Inspect every listed resource label before running the exact cleanup arguments."
   }, null, 2) + "\n", "utf8");
-  const fixtureHash = createHash("sha256").update(await readFile(fixturePath)).digest("hex");
+  const fixtureHash = performance?.manifest.sha256 ?? createHash("sha256").update(await readFile(fixturePath)).digest("hex");
 
   const runC01HttpAssertions = async (phase) => {
     const resultPath = `/c01-data/results/${phase}.json`;
@@ -428,11 +453,13 @@ async function runSuite(options) {
   };
 
   try {
-    const requiresBrowser = options.suite === "live" || options.scenario === "c01-data-modes";
-    await run("docker", [...compose, "build", "api", ...(requiresBrowser ? ["web", "browser"] : [])], { log, timeoutMs: 300_000 });
+    await run("docker", [...compose, "build", "api", ...((options.suite !== "api" || options.scenario === "c01-data-modes") ? ["web", "browser"] : [])], { log, timeoutMs: 300_000 });
     await run("docker", [...compose, "up", "--detach", "db", "mail"], { log, timeoutMs: 300_000 });
     await waitForDatabase(compose, log);
     await run("docker", [...compose, "run", "--rm", "--no-deps", "api", "alembic", "upgrade", "head"], { log });
+    if (options.scenario !== "c01-data-modes") await run("docker", [...compose, "run", "--rm", "--no-deps", "--volume", `${join(root, "apps", "api", "tests", "integration").replaceAll("\\", "/")}:/integration:ro`, "--env", `INTEGRATION_FIXTURE_ID=${fixture.id}`, "--env", `INTEGRATION_FIXTURE_TITLE=${fixture.title}`, ...(performance ? ["--volume", `${artifactDir.replaceAll("\\", "/")}:/performance:ro`, "--env", "INTEGRATION_FIXTURE_PATH=/performance/fixture.json", "--env", "INTEGRATION_PRESERVE_IDS=1", "--env", "P01_VALIDATE_GEOMETRY=1"] : []), "api", "python", "/integration/seed_integration.py"], { log, timeoutMs: 600_000 });
+    if (performance) await enableMeasurementLimits(performance);
+
     await run("docker", [...compose, "up", "--detach", "api"], { log });
     await run("docker", [...compose, "up", "--detach", "api-gateway"], { log });
     apiUrl = await publishedPort(compose, "api-gateway", 8000, log);
@@ -442,17 +469,21 @@ async function runSuite(options) {
     if (options.scenario === "c01-data-modes") {
       await runC01DataModes();
     } else {
-      await run("docker", [...compose, "run", "--rm", "--no-deps", "--volume", `${join(root, "apps", "api", "tests", "integration").replaceAll("\\", "/")}:/integration:ro`, "--env", `INTEGRATION_FIXTURE_ID=${fixture.id}`, "--env", `INTEGRATION_FIXTURE_TITLE=${fixture.title}`, "api", "python", "/integration/seed_integration.py"], { log });
       await assertApi(apiUrl, reviewerToken, fixture, options.assertFailure);
       await run("docker", [...compose, "restart", "api"], { log });
       apiUrl = await publishedPort(compose, "api-gateway", 8000, log);
       await waitForHealth(apiUrl);
       await assertApi(apiUrl, reviewerToken, fixture, false);
+      if (performance) {
+        await captureDatabase({ compose, run, log, artifactDir });
+        stopSampling = await startResourceSampling({ compose, run, log, artifactDir });
+      }
     }
-    if (options.suite === "live") {
+    if (options.suite !== "api") {
+
       await run("docker", [...compose, "up", "--detach", "web"], { log, timeoutMs: 300_000 });
       await waitForWeb(compose, log);
-      await run("docker", [...compose, "run", "--rm", "browser"], { log, timeoutMs: 300_000 });
+      await run("docker", [...compose, "run", "--rm", ...(performance ? ["--entrypoint", "node"] : []), "browser", ...(performance ? ["e2e/performance-baseline.mjs"] : [])], { log, timeoutMs: performance ? 14_400_000 : 300_000 });
     }
   } catch (error) {
     failed = true;
@@ -460,6 +491,7 @@ async function runSuite(options) {
     throw error;
   } finally {
     let artifactError;
+    if (stopSampling) { try { await stopSampling(); } catch (error) { artifactError = error; } }
     let cleanupError;
     let cleanupResult = "not_attempted";
     let cleanupFailure = null;
@@ -506,7 +538,9 @@ async function runSuite(options) {
       run_id: runId,
       project,
       suite: options.suite,
+      performance: performance ? { fixture: performance.manifest, profile: options.profile, smoke: !!options.smoke, resource_limits: { api_cpus: 1, api_memory_gib: 1, db_cpus: 2, db_memory_gib: 2 } } : null,
       scenario: options.scenario ?? null,
+
       api_url: apiUrl,
       fixture_sha256: fixtureHash,
       fixture,
@@ -522,6 +556,7 @@ async function runSuite(options) {
       outcome: failed || finalError ? "failed" : "passed",
       failure: manifestFailure,
       commit_sha: commitSha,
+      working_tree_dirty: workingTreeDirty,
       images: {
         database: "postgis/postgis:16-3.4",
         mail: "axllent/mailpit:v1.27.1",
