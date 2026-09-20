@@ -1,6 +1,6 @@
 # U00 — Make current map filters show the intended records
 
-Status: **Planned; not implemented.** Prepared September 19, 2026.
+Execution status: [plan.json](plan.json), entry `U00`. Prepared September 19, 2026.
 
 | Field | Assignment |
 | --- | --- |

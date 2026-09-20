@@ -1,6 +1,6 @@
 # Agent dispatch and lead-review rules
 
-Prepared September 19, 2026. This package defines future implementation. No coding agent has been dispatched by the planning task, no guide is implemented, and no deployment or real-email action is authorized by these documents alone.
+Prepared September 19, 2026. This package defines implementation scope. Current assignment/completion status is recorded in [plan.json](plan.json). No deployment or real-email action is authorized by these documents alone.
 
 ## Start here
 

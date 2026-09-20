@@ -1,6 +1,6 @@
 # E04 — Show a two-year land-cover and imperviousness comparison
 
-Status: **Planned; no application implementation in this guide.** Baseline: `dbdaf099f31bc0444fe202aaf2ee65b3c9268d34`. Prepared September 19, 2026.
+Execution status: [plan.json](plan.json), entry `E04`. Guide baseline: `dbdaf099f31bc0444fe202aaf2ee65b3c9268d34`. Prepared September 19, 2026.
 
 | Field | Assignment |
 | --- | --- |

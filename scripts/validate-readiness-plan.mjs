@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-import { existsSync, readFileSync, readdirSync } from "node:fs";
+import { existsSync, readFileSync, readdirSync, statSync } from "node:fs";
 import { dirname, isAbsolute, join, relative, resolve, sep } from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -78,7 +78,10 @@ export function validateReadinessPlan(root = repositoryRoot, manifest) {
     if (guide.implementation_pr != null && !/^https:\/\/github\.com\/[^/]+\/[^/]+\/pull\/\d+$/.test(guide.implementation_pr)) {
       errors.push(`${guide.id}: invalid implementation PR URL`);
     }
-    if (guide.evidence != null) localPath(planDir, guide.evidence, `${guide.id} evidence`);
+    if (guide.evidence != null) {
+      const evidenceFile = localPath(planDir, guide.evidence, `${guide.id} evidence`);
+      if (evidenceFile && !statSync(evidenceFile).isFile()) errors.push(`${guide.id}: evidence must be a regular file`);
+    }
     if (guide.status === "complete") {
       if (!guide.implementation_pr || !guide.evidence) errors.push(`${guide.id}: completion requires PR and evidence`);
       for (const dependency of deps) {

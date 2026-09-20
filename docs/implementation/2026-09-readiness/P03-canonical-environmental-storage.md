@@ -1,6 +1,6 @@
 # P03 — Import versioned environmental geometry into indexed PostGIS storage
 
-Status: **Planned; no application implementation in this guide.** Baseline: `dbdaf099f31bc0444fe202aaf2ee65b3c9268d34`. Prepared September 19, 2026.
+Execution status: [plan.json](plan.json), entry `P03`. Guide baseline: `dbdaf099f31bc0444fe202aaf2ee65b3c9268d34`. Prepared September 19, 2026.
 
 | Field | Assignment |
 | --- | --- |

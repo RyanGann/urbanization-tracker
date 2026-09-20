@@ -2,7 +2,7 @@
 
 Prepared September 19, 2026 from the [project review](../../reviews/2026-09-19-project-review.md) and code at `dbdaf099f31bc0444fe202aaf2ee65b3c9268d34`.
 
-**Recommendation: finish a dependable Huntsville pilot on the current stack, with real API/PostGIS tests and bounded map delivery.** This package contains **38 PR-sized guides**, including **nine performance PRs**, shared contracts, an execution order and acceptance gates. All work is **planned**. This task created documentation, not application fixes, deployments or passing results for new tests.
+**Recommendation: finish a dependable Huntsville pilot on the current stack, with real API/PostGIS tests and bounded map delivery.** This package contains **38 PR-sized guides**, including **nine performance PRs**, shared contracts, an execution order and acceptance gates. Current implementation status, PRs and evidence are recorded only in [plan.json](plan.json). The guides describe scope and acceptance criteria; their presence does not establish completed implementation.
 
 The full roadmap includes later environmental goals and an optional 3D experiment. It is not a requirement to finish all 38 PRs before seeing improvement: U00 fixes filter visibility early, and P02 removes the startup geometry download early. The user has the existing site open in the side browser; this planning task has not revalidated browser automation or changed that running preview.
 
@@ -154,4 +154,4 @@ Run `node scripts/validate-readiness-plan.mjs` from the repository root after ch
 
 Validation passed for the baseline of 38 guides, including nine performance guides. Whitespace checks passed.
 
-Application tests were not rerun for these documentation-only changes. The previously reviewed checks remain historical evidence; live API, new performance budgets and launch acceptance are still work for the implementation PRs.
+Application CI runs independently of plan validation. Live API, performance-budget and launch-acceptance results belong in each implementation PR's evidence report; the original project-review checks are historical evidence.
