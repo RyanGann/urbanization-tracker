@@ -11,7 +11,8 @@ The runner generates an exact Compose project ID, dynamic loopback ports, a per-
 sentinel and `tmp/integration/<run-id>/` evidence. It migrates an empty PostGIS database,
 seeds the processed PostgreSQL store before starting FastAPI, proves reviewer authentication,
 restarts the API and reads the same record again. The browser suite uses a production-built
-web image and does not intercept application API requests.
+web image, waits for its private localhost healthcheck, and does not intercept application API
+requests.
 
 `--keep-on-failure` retains only that generated project and writes a token-free `cleanup.env`
 beside the evidence. Before its first Compose operation it also writes token-free
