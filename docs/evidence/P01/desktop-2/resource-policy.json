@@ -1,0 +1,7 @@
+{
+  "memory_swap_limit_bytes": 2147483648,
+  "source": "docker inspect HostConfig",
+  "memory_limit_bytes": 1073741824,
+  "observed_at": "2026-09-20T03:34:18.8710463Z",
+  "note": "Captured while second desktop run was active; no resource limit changed."
+}

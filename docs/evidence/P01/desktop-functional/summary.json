@@ -1,0 +1,71 @@
+{
+  "schema_version": 1,
+  "source": {
+    "run_id": "2026-09-20T03-25-07-068Z-09c3fcce",
+    "commit_sha": "294a995d0de2f8b4278fcb938816e24591eedd7b",
+    "working_tree_dirty": false,
+    "profile": "desktop",
+    "fixture_profile": "A",
+    "fixture_sha256": "cc7114c31fa8dbce0374279ccc4b4eabb8bebf021513719781c8ba7312c1edc3"
+  },
+  "result": {
+    "outcome": "passed",
+    "failure": null,
+    "cleanup_result": "removed",
+    "cleanup_failure": null,
+    "complete": true,
+    "functional_pass": true,
+    "errors": []
+  },
+  "workload": {
+    "cold": {
+      "requested": 2,
+      "completed": 2,
+      "unrun": 0,
+      "failed": 0
+    },
+    "interactions": {
+      "requested": 2,
+      "completed": 2,
+      "unrun": 0,
+      "failed": 0
+    },
+    "api": {
+      "requested": 8,
+      "completed": 8,
+      "unrun": 0
+    },
+    "totals": {
+      "requested": 12,
+      "completed": 12,
+      "unrun": 0
+    }
+  },
+  "resources": {
+    "configured_limits": {
+      "api_cpus": 1,
+      "api_memory_gib": 1,
+      "db_cpus": 2,
+      "db_memory_gib": 2
+    },
+    "policy": null,
+    "containers": {
+      "api": {
+        "oom_killed": false,
+        "exit_code": 0,
+        "memory_limit_bytes": 1073741824,
+        "memory_swap_limit_bytes": null,
+        "nano_cpus": 1000000000,
+        "cgroup_memory_peak_bytes": 78352384
+      },
+      "db": {
+        "oom_killed": false,
+        "exit_code": 0,
+        "memory_limit_bytes": 2147483648,
+        "memory_swap_limit_bytes": null,
+        "nano_cpus": 2000000000,
+        "cgroup_memory_peak_bytes": 255553536
+      }
+    }
+  }
+}

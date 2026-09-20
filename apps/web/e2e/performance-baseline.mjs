@@ -26,7 +26,7 @@ const report = {
     first_useful_ms: 'Navigation start to parsed records + committed list + known rendered selectable feature visible without scrolling',
     context_ready_ms: 'Navigation start to known enabled environmental feature rendered and visible without scrolling',
     api_encoded_body_bytes: 'Actual streamed body bytes before decompression, excluding HTTP headers/framing',
-    browser_transfer_bytes: 'CDP loadingFinished encodedDataLength; includes protocol transfer overhead, separate from body metrics',
+    browser_transfer_bytes: 'CDP loadingFinished encodedDataLength; MapLibre worker fallback uses Playwright request.sizes responseBodySize plus responseHeadersSize, separate from decoded body bytes',
     catalog: 'Not implemented; current endpoint returns full geometry', tiles: 'Not implemented',
     approx_p95: 'Nearest-rank estimate; cold browser sample count is small',
     fail_fast: 'Two failed cold loads or two failed API requests stop that scenario; unrun samples remain explicit'
@@ -277,7 +277,7 @@ finally {
       const rows = (sample.network ?? []).filter((row) => row.category === category);
       return [category, { requests: rows.length, completed: rows.filter((row) => row.complete).length,
         failed: rows.filter((row) => row.failed || row.status >= 400).length,
-        decoded_body_bytes: rows.reduce((sum, row) => sum + (row.decoded_body_bytes ?? 0), 0),
+        decoded_body_bytes: rows.every((row) => Number.isFinite(row.decoded_body_bytes)) ? rows.reduce((sum, row) => sum + row.decoded_body_bytes, 0) : null,
         transfer_bytes: rows.every((row) => Number.isFinite(row.transfer_bytes)) ? rows.reduce((sum, row) => sum + row.transfer_bytes, 0) : null }];
     }))
   }));

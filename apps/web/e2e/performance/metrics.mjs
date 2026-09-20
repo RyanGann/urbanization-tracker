@@ -5,7 +5,56 @@ import { createBrotliDecompress, createGunzip, createInflate } from 'node:zlib';
 export function summary(values) {
   const sorted = values.filter(Number.isFinite).sort((a, b) => a - b);
   const percentile = (p) => sorted.length ? sorted[Math.max(0, Math.ceil(sorted.length * p) - 1)] : null;
-  return { count: sorted.length, samples_ms: values, median_ms: percentile(.5), approx_p95_ms: percentile(.95) };
+  const median = sorted.length
+    ? sorted.length % 2
+      ? sorted[(sorted.length - 1) / 2]
+      : (sorted[sorted.length / 2 - 1] + sorted[sorted.length / 2]) / 2
+    : null;
+  return { count: sorted.length, samples_ms: values, median_ms: median, approx_p95_ms: percentile(.95) };
+}
+
+function categoryForUrl(url) {
+  const path = new URL(url).pathname;
+  if (path.startsWith('/api/')) return 'application_data';
+  return /glyph|sprite|\.pbf|tiles\//.test(path) ? 'basemap_glyph_sprite' : 'application_assets';
+}
+
+function isMapLibreWorkerUrl(url) {
+  return /\/assets\/maplibre-gl-worker(?:-[^/?]+)?\.js$/.test(new URL(url).pathname);
+}
+
+export async function applyCompletedRequestSizes(rows, request) {
+  const url = request.url();
+  if (!isMapLibreWorkerUrl(url)) return false;
+  if (![...rows.values()].some((row) => row.url === url && !row.complete)) return false;
+  const response = await request.response();
+  if (!response) return false;
+  let sizes;
+  try {
+    sizes = await request.sizes();
+  } catch {
+    return false;
+  }
+  // CDP can finish between Playwright's event and sizes(); preserve that richer row.
+  const matching = [...rows.values()].reverse().find((row) => row.url === url && !row.complete);
+  if (!matching) return false;
+  const bodyBytes = Number.isFinite(sizes.responseBodySize) ? sizes.responseBodySize : null;
+  const headerBytes = Number.isFinite(sizes.responseHeadersSize) ? sizes.responseHeadersSize : null;
+  // Playwright request.sizes reports encoded response body and response headers, never decoded body bytes.
+  Object.assign(matching, {
+    type: matching.type ?? 'Worker',
+    status: matching.status ?? response.status(),
+    category: matching.category ?? categoryForUrl(url),
+    decoded_body_bytes: null,
+    encoded_chunk_bytes: null,
+    encoded_body_bytes: bodyBytes,
+    response_headers_bytes: headerBytes,
+    transfer_bytes: bodyBytes !== null && headerBytes !== null ? bodyBytes + headerBytes : null,
+    transfer_source: 'playwright.request.sizes.responseBodySize+responseHeadersSize',
+    complete: true,
+    failed: false
+  });
+  return true;
 }
 
 // Count actual streamed body bytes, not Content-Length or a decoded fetch buffer.
@@ -71,14 +120,20 @@ export async function trackNetwork(context, page, mobile) {
   });
   const rows = new Map();
   cdp.on('Network.requestWillBeSent', ({ requestId, request }) => {
-    rows.set(requestId, { url: request.url, category: new URL(request.url).pathname.startsWith('/api/') ? 'application_data' : 'application_assets', complete: false, failed: false });
+    rows.set(requestId, {
+      url: request.url,
+      category: categoryForUrl(request.url),
+      decoded_body_bytes: null,
+      encoded_chunk_bytes: null,
+      transfer_bytes: null,
+      complete: false,
+      failed: false
+    });
   });
   cdp.on('Network.responseReceived', ({ requestId, type, response }) => {
-    const url = new URL(response.url);
     rows.set(requestId, {
       url: response.url, type, status: response.status,
-      category: url.pathname.startsWith('/api/') ? 'application_data' :
-        /glyph|sprite|\.pbf|tiles\//.test(url.pathname) ? 'basemap_glyph_sprite' : 'application_assets',
+      category: categoryForUrl(response.url),
       from_cache: !!(response.fromDiskCache || response.fromServiceWorker || response.fromPrefetchCache),
       decoded_body_bytes: 0, encoded_chunk_bytes: 0, transfer_bytes: null,
       complete: false, failed: false, server_timing: response.headers['server-timing'] ?? response.headers['Server-Timing'] ?? null
@@ -95,6 +150,9 @@ export async function trackNetwork(context, page, mobile) {
   cdp.on('Network.loadingFailed', ({ requestId, errorText }) => {
     const row = rows.get(requestId) ?? { request_id: requestId };
     Object.assign(row, { failed: true, complete: false, error: errorText }); rows.set(requestId, row);
+  });
+  page.on('requestfinished', (request) => {
+    void applyCompletedRequestSizes(rows, request).catch(() => {});
   });
   return { rows, cdp };
 }

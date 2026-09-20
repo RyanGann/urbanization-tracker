@@ -2,7 +2,81 @@ import assert from 'node:assert/strict';
 import { createServer } from 'node:http';
 import { gzipSync } from 'node:zlib';
 import test from 'node:test';
-import { sampleHttp, summary } from './metrics.mjs';
+import { applyCompletedRequestSizes, sampleHttp, summary } from './metrics.mjs';
+
+test('summarizes empty, odd, and even timing samples with a conventional median', () => {
+  assert.deepEqual(summary([]), {
+    count: 0, samples_ms: [], median_ms: null, approx_p95_ms: null
+  });
+  assert.equal(summary([9, 1, 5]).median_ms, 5);
+  assert.equal(summary([8, 2, 6, 4]).median_ms, 5);
+});
+
+test('fills an incomplete worker request from completed Playwright request sizes', async () => {
+  const rows = new Map([['cdp-worker', {
+    url: 'http://web/assets/maplibre-gl-worker.js', category: 'application_assets',
+    decoded_body_bytes: null, encoded_chunk_bytes: null, transfer_bytes: null,
+    complete: false, failed: false
+  }]]);
+  const request = {
+    url: () => 'http://web/assets/maplibre-gl-worker.js',
+    response: async () => ({ status: () => 200 }),
+    sizes: async () => ({ responseBodySize: 509_455, responseHeadersSize: 224 })
+  };
+  assert.equal(await applyCompletedRequestSizes(rows, request), true);
+  assert.equal(rows.size, 1);
+  assert.deepEqual(rows.get('cdp-worker'), {
+    url: 'http://web/assets/maplibre-gl-worker.js', category: 'application_assets', type: 'Worker', status: 200,
+    decoded_body_bytes: null, encoded_chunk_bytes: null, encoded_body_bytes: 509_455, transfer_bytes: 509_679,
+    response_headers_bytes: 224, transfer_source: 'playwright.request.sizes.responseBodySize+responseHeadersSize', complete: true, failed: false
+  });
+});
+
+test('leaves an incomplete row untouched when completed request sizes fail', async () => {
+  const row = { url: 'http://web/assets/maplibre-gl-worker.js', complete: false, failed: false };
+  const rows = new Map([['cdp-worker', row]]);
+  const request = {
+    url: () => row.url,
+    response: async () => ({ status: () => 200 }),
+    sizes: async () => { throw new Error('sizes unavailable'); }
+  };
+  assert.equal(await applyCompletedRequestSizes(rows, request), false);
+  assert.equal(rows.get('cdp-worker'), row);
+  assert.equal(row.complete, false);
+});
+
+test('does not overwrite a request already completed by CDP', async () => {
+  const row = { url: 'http://web/assets/maplibre-gl-worker.js', complete: true, failed: false, transfer_bytes: 77 };
+  const rows = new Map([['cdp-worker', row]]);
+  const request = {
+    url: () => row.url,
+    response: async () => ({ status: () => 200 }),
+    sizes: async () => ({ responseBodySize: 509_455, responseHeadersSize: 224 })
+  };
+  assert.equal(await applyCompletedRequestSizes(rows, request), false);
+  assert.equal(rows.size, 1);
+  assert.equal(rows.get('cdp-worker'), row);
+});
+
+test('preserves a CDP completion racing request sizes and ignores non-worker requests', async () => {
+  const worker = { url: 'http://web/assets/maplibre-gl-worker.js', complete: false, failed: false };
+  const rows = new Map([['cdp-worker', worker]]);
+  const request = {
+    url: () => worker.url,
+    response: async () => ({ status: () => 200 }),
+    sizes: async () => {
+      worker.complete = true;
+      worker.transfer_bytes = 88;
+      return { responseBodySize: 509_455, responseHeadersSize: 224 };
+    }
+  };
+  assert.equal(await applyCompletedRequestSizes(rows, request), false);
+  assert.deepEqual(worker, { url: request.url(), complete: true, failed: false, transfer_bytes: 88 });
+  const other = { url: 'http://web/assets/main.js', complete: false, failed: false };
+  assert.equal(await applyCompletedRequestSizes(new Map([['cdp-main', other]]), {
+    ...request, url: () => other.url
+  }), false);
+});
 
 test('counts chunked compressed body bytes independently of Content-Length', async () => {
   const body = Buffer.from('actual body '.repeat(2000));
@@ -30,5 +104,4 @@ test('fails bounded hung responses without inventing successful latency', async 
     assert.equal(result.ok, false); assert.match(result.error, /exceeded/);
     assert.equal(result.decoded_body_bytes, 7);
   } finally { server.closeAllConnections(); await new Promise((resolve) => server.close(resolve)); }
-  assert.equal(summary([]).approx_p95_ms, null);
 });

@@ -1,0 +1,182 @@
+{
+  "note": "Legacy JSON collection reads. Plans exclude network transfer, JSON decoding and Python serialization.",
+  "database": {
+    "database_bytes": 54211043,
+    "postgres_version": "PostgreSQL 16.4 (Debian 16.4-1.pgdg110+2) on x86_64-pc-linux-gnu, compiled by gcc (Debian 10.2.1-6) 10.2.1 20210110, 64-bit",
+    "postgis_version": "3.4 USE_GEOS=1 USE_PROJ=1 USE_STATS=1"
+  },
+  "collections": [
+    {
+      "collection_name": "development_records",
+      "rows": 1324
+    },
+    {
+      "collection_name": "environmental_overlays",
+      "rows": 1
+    },
+    {
+      "collection_name": "source_health",
+      "rows": 1
+    }
+  ],
+  "development_plan": [
+    {
+      "Plan": {
+        "Node Type": "Sort",
+        "Parallel Aware": false,
+        "Async Capable": false,
+        "Startup Cost": 260.23,
+        "Total Cost": 263.54,
+        "Plan Rows": 1324,
+        "Plan Width": 959,
+        "Actual Startup Time": 2.377,
+        "Actual Total Time": 2.475,
+        "Actual Rows": 1324,
+        "Actual Loops": 1,
+        "Sort Key": [
+          "sort_order",
+          "id"
+        ],
+        "Sort Method": "quicksort",
+        "Sort Space Used": 1329,
+        "Sort Space Type": "Memory",
+        "Shared Hit Blocks": 178,
+        "Shared Read Blocks": 0,
+        "Shared Dirtied Blocks": 0,
+        "Shared Written Blocks": 0,
+        "Local Hit Blocks": 0,
+        "Local Read Blocks": 0,
+        "Local Dirtied Blocks": 0,
+        "Local Written Blocks": 0,
+        "Temp Read Blocks": 0,
+        "Temp Written Blocks": 0,
+        "Plans": [
+          {
+            "Node Type": "Seq Scan",
+            "Parent Relationship": "Outer",
+            "Parallel Aware": false,
+            "Async Capable": false,
+            "Relation Name": "processed_collection_items",
+            "Alias": "processed_collection_items",
+            "Startup Cost": 0,
+            "Total Cost": 191.57,
+            "Plan Rows": 1324,
+            "Plan Width": 959,
+            "Actual Startup Time": 0.012,
+            "Actual Total Time": 0.581,
+            "Actual Rows": 1324,
+            "Actual Loops": 1,
+            "Filter": "((collection_name)::text = 'development_records'::text)",
+            "Rows Removed by Filter": 2,
+            "Shared Hit Blocks": 175,
+            "Shared Read Blocks": 0,
+            "Shared Dirtied Blocks": 0,
+            "Shared Written Blocks": 0,
+            "Local Hit Blocks": 0,
+            "Local Read Blocks": 0,
+            "Local Dirtied Blocks": 0,
+            "Local Written Blocks": 0,
+            "Temp Read Blocks": 0,
+            "Temp Written Blocks": 0
+          }
+        ]
+      },
+      "Planning": {
+        "Shared Hit Blocks": 125,
+        "Shared Read Blocks": 0,
+        "Shared Dirtied Blocks": 0,
+        "Shared Written Blocks": 0,
+        "Local Hit Blocks": 0,
+        "Local Read Blocks": 0,
+        "Local Dirtied Blocks": 0,
+        "Local Written Blocks": 0,
+        "Temp Read Blocks": 0,
+        "Temp Written Blocks": 0
+      },
+      "Planning Time": 0.548,
+      "Triggers": [],
+      "Execution Time": 2.854
+    }
+  ],
+  "overlay_plan": [
+    {
+      "Plan": {
+        "Node Type": "Sort",
+        "Parallel Aware": false,
+        "Async Capable": false,
+        "Startup Cost": 8.3,
+        "Total Cost": 8.31,
+        "Plan Rows": 1,
+        "Plan Width": 959,
+        "Actual Startup Time": 0.079,
+        "Actual Total Time": 0.08,
+        "Actual Rows": 1,
+        "Actual Loops": 1,
+        "Sort Key": [
+          "sort_order",
+          "id"
+        ],
+        "Sort Method": "quicksort",
+        "Sort Space Used": 25,
+        "Sort Space Type": "Memory",
+        "Shared Hit Blocks": 6,
+        "Shared Read Blocks": 0,
+        "Shared Dirtied Blocks": 0,
+        "Shared Written Blocks": 0,
+        "Local Hit Blocks": 0,
+        "Local Read Blocks": 0,
+        "Local Dirtied Blocks": 0,
+        "Local Written Blocks": 0,
+        "Temp Read Blocks": 0,
+        "Temp Written Blocks": 0,
+        "Plans": [
+          {
+            "Node Type": "Index Scan",
+            "Parent Relationship": "Outer",
+            "Parallel Aware": false,
+            "Async Capable": false,
+            "Scan Direction": "Forward",
+            "Index Name": "ix_processed_collection_items_collection_name",
+            "Relation Name": "processed_collection_items",
+            "Alias": "processed_collection_items",
+            "Startup Cost": 0.28,
+            "Total Cost": 8.29,
+            "Plan Rows": 1,
+            "Plan Width": 959,
+            "Actual Startup Time": 0.032,
+            "Actual Total Time": 0.033,
+            "Actual Rows": 1,
+            "Actual Loops": 1,
+            "Index Cond": "((collection_name)::text = 'environmental_overlays'::text)",
+            "Rows Removed by Index Recheck": 0,
+            "Shared Hit Blocks": 3,
+            "Shared Read Blocks": 0,
+            "Shared Dirtied Blocks": 0,
+            "Shared Written Blocks": 0,
+            "Local Hit Blocks": 0,
+            "Local Read Blocks": 0,
+            "Local Dirtied Blocks": 0,
+            "Local Written Blocks": 0,
+            "Temp Read Blocks": 0,
+            "Temp Written Blocks": 0
+          }
+        ]
+      },
+      "Planning": {
+        "Shared Hit Blocks": 125,
+        "Shared Read Blocks": 0,
+        "Shared Dirtied Blocks": 0,
+        "Shared Written Blocks": 0,
+        "Local Hit Blocks": 0,
+        "Local Read Blocks": 0,
+        "Local Dirtied Blocks": 0,
+        "Local Written Blocks": 0,
+        "Temp Read Blocks": 0,
+        "Temp Written Blocks": 0
+      },
+      "Planning Time": 0.59,
+      "Triggers": [],
+      "Execution Time": 0.132
+    }
+  ]
+}
