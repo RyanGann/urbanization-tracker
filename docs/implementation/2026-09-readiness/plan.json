@@ -1,0 +1,685 @@
+{
+  "schema_version": 1,
+  "prepared_at": "2026-09-19",
+  "baseline_sha": "dbdaf099f31bc0444fe202aaf2ee65b3c9268d34",
+  "scope": "Implementation roadmap; per-guide status, PRs and evidence record progress. This manifest does not authorize deployment.",
+  "shared_documents": [
+    "README.md",
+    "CONTRACTS.md",
+    "PERFORMANCE.md",
+    "TESTING.md",
+    "DISPATCH.md"
+  ],
+  "initial_ready": [
+    "T01",
+    "S01"
+  ],
+  "recommended_initial_sequence": [
+    "T01",
+    "S01",
+    "C01",
+    "P01",
+    "U00",
+    "C02",
+    "P02"
+  ],
+  "guides": [
+    {
+      "id": "T01",
+      "title": "Run integration tests against the real API and PostGIS",
+      "path": "T01-real-api-postgis-harness.md",
+      "status": "planned",
+      "track": "Foundation",
+      "gate": "G0",
+      "depends_on": [],
+      "review": "Lead review",
+      "pr_boundary": "One harness PR; regression scenarios are added by their owning PRs.",
+      "implementation_pr": null,
+      "evidence": null
+    },
+    {
+      "id": "S01",
+      "title": "Patch frontend dependencies and verify map compatibility",
+      "path": "S01-frontend-dependency-update.md",
+      "status": "planned",
+      "track": "Security",
+      "gate": "G0",
+      "depends_on": [],
+      "review": "Routine with visual review",
+      "pr_boundary": "One dependency/migration PR; no feature redesign.",
+      "implementation_pr": null,
+      "evidence": null
+    },
+    {
+      "id": "C01",
+      "title": "Distinguish live data, demo fixtures, empty collections, and unavailable stores",
+      "path": "C01-explicit-data-modes.md",
+      "status": "planned",
+      "track": "Correctness",
+      "gate": "G0",
+      "depends_on": [
+        "T01"
+      ],
+      "review": "Routine coding agent",
+      "pr_boundary": "One API/configuration/UI state PR.",
+      "implementation_pr": null,
+      "evidence": null
+    },
+    {
+      "id": "C02",
+      "title": "Introduce shared transactions and safe item mutations",
+      "path": "C02-transactional-store-foundation.md",
+      "status": "planned",
+      "track": "Correctness",
+      "gate": "G1",
+      "depends_on": [
+        "T01",
+        "C01"
+      ],
+      "review": "Lead review",
+      "pr_boundary": "One storage foundation PR; migrate callers in the explicitly dependent PRs.",
+      "implementation_pr": null,
+      "evidence": null
+    },
+    {
+      "id": "C03",
+      "title": "Preserve source identity and merge ingestion batches safely",
+      "path": "C03-stable-source-identity.md",
+      "status": "planned",
+      "track": "Correctness",
+      "gate": "G1",
+      "depends_on": [
+        "C02"
+      ],
+      "review": "Lead review",
+      "pr_boundary": "One source identity and canonical batch-merge PR.",
+      "implementation_pr": null,
+      "evidence": null
+    },
+    {
+      "id": "D01",
+      "title": "Fetch a declared pilot scope completely and report source coverage",
+      "path": "D01-source-scope-pagination-canaries.md",
+      "status": "planned",
+      "track": "Data quality",
+      "gate": "G1",
+      "depends_on": [
+        "C03",
+        "T01"
+      ],
+      "review": "Lead review",
+      "pr_boundary": "One ingestion coverage PR across the current ArcGIS connectors; no new sources.",
+      "implementation_pr": null,
+      "evidence": null
+    },
+    {
+      "id": "C04",
+      "title": "Retain agenda documents and reviewer decisions across refreshes",
+      "path": "C04-agenda-revision-retention.md",
+      "status": "planned",
+      "track": "Correctness",
+      "gate": "G1",
+      "depends_on": [
+        "C02",
+        "C03"
+      ],
+      "review": "Lead review",
+      "pr_boundary": "One agenda identity/merge PR.",
+      "implementation_pr": null,
+      "evidence": null
+    },
+    {
+      "id": "C05",
+      "title": "Make review actions explicit, durable, and revision checked",
+      "path": "C05-review-action-policy.md",
+      "status": "planned",
+      "track": "Correctness",
+      "gate": "G1",
+      "depends_on": [
+        "C02",
+        "C04"
+      ],
+      "review": "Routine with lead review",
+      "pr_boundary": "One review API/UI policy PR.",
+      "implementation_pr": null,
+      "evidence": null
+    },
+    {
+      "id": "C06",
+      "title": "Publish canonical changes and durable history in one transaction",
+      "path": "C06-publication-events-history.md",
+      "status": "planned",
+      "track": "Correctness",
+      "gate": "G1",
+      "depends_on": [
+        "C03",
+        "C04",
+        "C05",
+        "S02"
+      ],
+      "review": "Lead review",
+      "pr_boundary": "One publication service/events PR; matching and mail are separate.",
+      "implementation_pr": null,
+      "evidence": null
+    },
+    {
+      "id": "S02",
+      "title": "Validate geometry and limit public write abuse",
+      "path": "S02-public-input-validation.md",
+      "status": "planned",
+      "track": "Security",
+      "gate": "G1",
+      "depends_on": [
+        "C02"
+      ],
+      "review": "Lead review",
+      "pr_boundary": "One public API input/limits PR.",
+      "implementation_pr": null,
+      "evidence": null
+    },
+    {
+      "id": "C07",
+      "title": "Generate future-change watch alerts through a durable outbox",
+      "path": "C07-publication-watch-matcher.md",
+      "status": "planned",
+      "track": "Correctness",
+      "gate": "G1",
+      "depends_on": [
+        "C06",
+        "S02"
+      ],
+      "review": "Lead review",
+      "pr_boundary": "One matcher/outbox PR; delivery stays disabled.",
+      "implementation_pr": null,
+      "evidence": null
+    },
+    {
+      "id": "S03",
+      "title": "Confirm watch subscriptions and make unsubscribe links work",
+      "path": "S03-watch-confirmation-unsubscribe.md",
+      "status": "planned",
+      "track": "Security",
+      "gate": "G1",
+      "depends_on": [
+        "C07",
+        "S02",
+        "C08"
+      ],
+      "review": "Routine with lead review",
+      "pr_boundary": "One subscription lifecycle API/UI PR.",
+      "implementation_pr": null,
+      "evidence": null
+    },
+    {
+      "id": "C08",
+      "title": "Deliver outbox messages with leases, retries, and clear failure states",
+      "path": "C08-delivery-leases-retries.md",
+      "status": "planned",
+      "track": "Correctness",
+      "gate": "G1",
+      "depends_on": [
+        "C07"
+      ],
+      "review": "Lead review",
+      "pr_boundary": "One delivery-worker hardening PR.",
+      "implementation_pr": null,
+      "evidence": null
+    },
+    {
+      "id": "P01",
+      "title": "Establish a reproducible map performance baseline",
+      "path": "P01-performance-baseline.md",
+      "status": "planned",
+      "track": "Performance",
+      "gate": "G0",
+      "depends_on": [
+        "T01"
+      ],
+      "review": "Routine coding agent",
+      "pr_boundary": "One measurement/fixture PR; no optimization yet.",
+      "implementation_pr": null,
+      "evidence": null
+    },
+    {
+      "id": "P02",
+      "title": "Serve a small layer catalog and stop eager bulk overlay downloads",
+      "path": "P02-layer-catalog-startup-relief.md",
+      "status": "planned",
+      "track": "Performance",
+      "gate": "G1",
+      "depends_on": [
+        "P01",
+        "C01"
+      ],
+      "review": "Routine coding agent",
+      "pr_boundary": "One immediate startup-relief PR; tiles remain a later step.",
+      "implementation_pr": null,
+      "evidence": null
+    },
+    {
+      "id": "P03",
+      "title": "Import versioned environmental geometry into indexed PostGIS storage",
+      "path": "P03-canonical-environmental-storage.md",
+      "status": "planned",
+      "track": "Performance",
+      "gate": "G1",
+      "depends_on": [
+        "T01",
+        "C02",
+        "P02"
+      ],
+      "review": "Lead review",
+      "pr_boundary": "One additive schema/import PR; no tile endpoint or display simplification.",
+      "implementation_pr": null,
+      "evidence": null
+    },
+    {
+      "id": "P04",
+      "title": "Prepare display geometry and activate complete layer versions atomically",
+      "path": "P04-environmental-display-derivatives.md",
+      "status": "planned",
+      "track": "Performance",
+      "gate": "G1",
+      "depends_on": [
+        "P03"
+      ],
+      "review": "Lead review",
+      "pr_boundary": "One spatial display-preprocessing/activation PR.",
+      "implementation_pr": null,
+      "evidence": null
+    },
+    {
+      "id": "P05",
+      "title": "Serve bounded, cached environmental vector tiles",
+      "path": "P05-versioned-vector-tile-api.md",
+      "status": "planned",
+      "track": "Performance",
+      "gate": "G1",
+      "depends_on": [
+        "P04"
+      ],
+      "review": "Lead review",
+      "pr_boundary": "One read-only tile API PR.",
+      "implementation_pr": null,
+      "evidence": null
+    },
+    {
+      "id": "P06",
+      "title": "Render catalog-driven vector overlays without bulk GeoJSON",
+      "path": "P06-vector-overlay-client.md",
+      "status": "planned",
+      "track": "Performance",
+      "gate": "G2",
+      "depends_on": [
+        "P02",
+        "P05",
+        "S01"
+      ],
+      "review": "Routine coding agent",
+      "pr_boundary": "One environmental map-client PR.",
+      "implementation_pr": null,
+      "evidence": null
+    },
+    {
+      "id": "P07",
+      "title": "Add an indexed viewport query for development summaries",
+      "path": "P07-bounded-development-map-api.md",
+      "status": "planned",
+      "track": "Performance",
+      "gate": "G1",
+      "depends_on": [
+        "C06",
+        "U00"
+      ],
+      "review": "Lead review",
+      "pr_boundary": "One derived map-index/API PR; the canonical public record remains unchanged.",
+      "implementation_pr": null,
+      "evidence": null
+    },
+    {
+      "id": "P08",
+      "title": "Query developments by viewport and avoid redundant map work",
+      "path": "P08-viewport-map-client.md",
+      "status": "planned",
+      "track": "Performance",
+      "gate": "G2",
+      "depends_on": [
+        "P07",
+        "S01"
+      ],
+      "review": "Routine coding agent",
+      "pr_boundary": "One development map/list client PR.",
+      "implementation_pr": null,
+      "evidence": null
+    },
+    {
+      "id": "P09",
+      "title": "Enforce map payload and performance budgets in CI",
+      "path": "P09-performance-regression-gates.md",
+      "status": "planned",
+      "track": "Performance",
+      "gate": "G2",
+      "depends_on": [
+        "P06",
+        "P08",
+        "U01",
+        "U02"
+      ],
+      "review": "Routine coding agent",
+      "pr_boundary": "One performance-regression CI PR.",
+      "implementation_pr": null,
+      "evidence": null
+    },
+    {
+      "id": "U01",
+      "title": "Make filters complete and map state shareable",
+      "path": "U01-filters-shareable-state-coverage.md",
+      "status": "planned",
+      "track": "Usability",
+      "gate": "G2",
+      "depends_on": [
+        "P06",
+        "P08",
+        "D01",
+        "U00"
+      ],
+      "review": "Routine coding agent",
+      "pr_boundary": "One filter/state/disclosure UI PR.",
+      "implementation_pr": null,
+      "evidence": null
+    },
+    {
+      "id": "U02",
+      "title": "Add a contextual basemap and local record search",
+      "path": "U02-basemap-record-search.md",
+      "status": "planned",
+      "track": "Usability",
+      "gate": "G2",
+      "depends_on": [
+        "P08",
+        "S01"
+      ],
+      "review": "Routine with visual review",
+      "pr_boundary": "One map orientation/search PR.",
+      "implementation_pr": null,
+      "evidence": null
+    },
+    {
+      "id": "U03",
+      "title": "Replace shared coordinate inputs with explicit location selection",
+      "path": "U03-participation-location-picker.md",
+      "status": "planned",
+      "track": "Usability",
+      "gate": "G2",
+      "depends_on": [
+        "S02",
+        "U02"
+      ],
+      "review": "Routine with visual review",
+      "pr_boundary": "One participation UX PR.",
+      "implementation_pr": null,
+      "evidence": null
+    },
+    {
+      "id": "U04",
+      "title": "Let reviewers validate and correct a candidate location",
+      "path": "U04-reviewer-geometry-correction.md",
+      "status": "planned",
+      "track": "Usability",
+      "gate": "G1",
+      "depends_on": [
+        "C05",
+        "S02",
+        "U02",
+        "C06"
+      ],
+      "review": "Lead review",
+      "pr_boundary": "One reviewer geometry-editing PR.",
+      "implementation_pr": null,
+      "evidence": null
+    },
+    {
+      "id": "C09",
+      "title": "Merge confirmed duplicates without losing URLs or provenance",
+      "path": "C09-manual-duplicate-resolution.md",
+      "status": "planned",
+      "track": "Correctness",
+      "gate": "G1",
+      "depends_on": [
+        "C06",
+        "U04",
+        "C07"
+      ],
+      "review": "Lead review",
+      "pr_boundary": "One manual merge preview/apply PR; no automatic matching engine.",
+      "implementation_pr": null,
+      "evidence": null
+    },
+    {
+      "id": "D02",
+      "title": "Calculate environmental screening from complete canonical geometry",
+      "path": "D02-authoritative-spatial-screening.md",
+      "status": "planned",
+      "track": "Data quality",
+      "gate": "G1",
+      "depends_on": [
+        "D01",
+        "P04",
+        "C06"
+      ],
+      "review": "Lead review",
+      "pr_boundary": "One screening-engine replacement PR for existing wetlands/floodplain rules.",
+      "implementation_pr": null,
+      "evidence": null
+    },
+    {
+      "id": "O01",
+      "title": "Upload and verify ingestion artifacts before activating data",
+      "path": "O01-durable-artifact-uploads.md",
+      "status": "planned",
+      "track": "Operations",
+      "gate": "G1",
+      "depends_on": [
+        "C02"
+      ],
+      "review": "Lead review",
+      "pr_boundary": "One artifact-storage adapter/manifest PR.",
+      "implementation_pr": null,
+      "evidence": null
+    },
+    {
+      "id": "O02",
+      "title": "Update hosted configuration and readiness checks for the new contracts",
+      "path": "O02-deployment-guardrails.md",
+      "status": "planned",
+      "track": "Operations",
+      "gate": "G3",
+      "depends_on": [
+        "S01",
+        "C01",
+        "P05",
+        "P07",
+        "O01",
+        "S03"
+      ],
+      "review": "Lead review",
+      "pr_boundary": "One configuration/preflight PR; no deployment action.",
+      "implementation_pr": null,
+      "evidence": null
+    },
+    {
+      "id": "O04",
+      "title": "Prepare code-license, data-use, and public disclosure decisions",
+      "path": "O04-release-data-use-decisions.md",
+      "status": "planned",
+      "track": "Operations",
+      "gate": "G3",
+      "depends_on": [
+        "D01",
+        "P02"
+      ],
+      "review": "Owner decision after prepared evidence",
+      "pr_boundary": "One documentation/configuration inventory PR.",
+      "implementation_pr": null,
+      "evidence": null
+    },
+    {
+      "id": "O03",
+      "title": "Rehearse migration, recovery, and resident/reviewer workflows",
+      "path": "O03-restricted-alpha-rehearsal.md",
+      "status": "planned",
+      "track": "Operations",
+      "gate": "G3",
+      "depends_on": [
+        "C08",
+        "C09",
+        "U03",
+        "D02",
+        "P09",
+        "O02",
+        "O04",
+        "D01"
+      ],
+      "review": "Lead review",
+      "pr_boundary": "One acceptance-runbook and evidence PR; fix discovered defects in focused follow-ups.",
+      "implementation_pr": null,
+      "evidence": null
+    },
+    {
+      "id": "E01",
+      "title": "Add one authoritative protected-land or refuge layer",
+      "path": "E01-first-protected-land-layer.md",
+      "status": "planned",
+      "track": "Environmental expansion",
+      "gate": "G4",
+      "depends_on": [
+        "O03",
+        "P04",
+        "D02"
+      ],
+      "review": "Lead review",
+      "pr_boundary": "One source adapter/configuration PR for one dataset.",
+      "implementation_pr": null,
+      "evidence": null
+    },
+    {
+      "id": "E02",
+      "title": "Choose a comparable land-cover product and lock a small fixture",
+      "path": "E02-land-cover-source-spike.md",
+      "status": "planned",
+      "track": "Environmental expansion",
+      "gate": "G4",
+      "depends_on": [
+        "O03"
+      ],
+      "review": "Lead review",
+      "pr_boundary": "One bounded research/fixture PR, at most three working days.",
+      "implementation_pr": null,
+      "evidence": null
+    },
+    {
+      "id": "E03",
+      "title": "Build versioned pilot raster tiles and comparison summaries",
+      "path": "E03-pilot-raster-artifacts.md",
+      "status": "planned",
+      "track": "Environmental expansion",
+      "gate": "G4",
+      "depends_on": [
+        "E02",
+        "O01",
+        "P05"
+      ],
+      "review": "Lead review",
+      "pr_boundary": "One offline raster build/serve PR for the two selected years only.",
+      "implementation_pr": null,
+      "evidence": null
+    },
+    {
+      "id": "E04",
+      "title": "Show a two-year land-cover and imperviousness comparison",
+      "path": "E04-land-cover-comparison-ui.md",
+      "status": "planned",
+      "track": "Environmental expansion",
+      "gate": "G4",
+      "depends_on": [
+        "E03",
+        "U01"
+      ],
+      "review": "Routine with visual review",
+      "pr_boundary": "One comparison UI PR using the prepared raster products.",
+      "implementation_pr": null,
+      "evidence": null
+    },
+    {
+      "id": "X01",
+      "title": "Evaluate God’s Eye View with one bounded integration experiment",
+      "path": "X01-gods-eye-view-spike.md",
+      "status": "planned",
+      "track": "Optional experiment",
+      "gate": "Optional",
+      "depends_on": [
+        "O03",
+        "P09"
+      ],
+      "review": "Lead review",
+      "pr_boundary": "Separate experimental branch; maximum five working days.",
+      "implementation_pr": null,
+      "evidence": null
+    },
+    {
+      "id": "U00",
+      "title": "Make current map filters show the intended records",
+      "path": "U00-immediate-filter-correctness.md",
+      "status": "planned",
+      "track": "Usability",
+      "gate": "G1",
+      "depends_on": [
+        "C01"
+      ],
+      "review": "Routine coding agent",
+      "pr_boundary": "One small correctness PR on current endpoints; do this before the larger map refactor.",
+      "implementation_pr": null,
+      "evidence": null
+    }
+  ],
+  "topological_order": [
+    "S01",
+    "T01",
+    "C01",
+    "P01",
+    "C02",
+    "P02",
+    "U00",
+    "C03",
+    "O01",
+    "P03",
+    "S02",
+    "C04",
+    "D01",
+    "P04",
+    "C05",
+    "O04",
+    "P05",
+    "C06",
+    "P06",
+    "C07",
+    "D02",
+    "P07",
+    "C08",
+    "P08",
+    "S03",
+    "U01",
+    "U02",
+    "O02",
+    "P09",
+    "U03",
+    "U04",
+    "C09",
+    "O03",
+    "E01",
+    "E02",
+    "X01",
+    "E03",
+    "E04"
+  ]
+}
