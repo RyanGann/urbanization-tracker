@@ -14,6 +14,8 @@ import type { DevelopmentRecord, EnvironmentalOverlay } from "../types";
 import { statusLabel } from "../utils/records";
 
 maplibregl.setWorkerUrl(maplibreWorkerUrl);
+const exposeMapForTests =
+  import.meta.env.DEV || import.meta.env.VITE_ENABLE_MAP_TEST_HOOK === "true";
 
 interface DevelopmentMapProps {
   records: DevelopmentRecord[];
@@ -264,7 +266,7 @@ export function DevelopmentMap({
       "bottom-right"
     );
     map.once("load", () => setMapReady(true));
-    if (import.meta.env.DEV) {
+    if (exposeMapForTests) {
       (
         window as typeof window & {
           __urbanizationTrackerMap?: MapLibreMap;
@@ -280,7 +282,7 @@ export function DevelopmentMap({
 
     return () => {
       popupRef.current?.remove();
-      if (import.meta.env.DEV) {
+      if (exposeMapForTests) {
         delete (
           window as typeof window & {
             __urbanizationTrackerMap?: MapLibreMap;
