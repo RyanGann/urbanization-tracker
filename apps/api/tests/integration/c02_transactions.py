@@ -10,11 +10,16 @@ from typing import Any
 from urllib.error import HTTPError
 from urllib.request import Request, urlopen
 
-from sqlalchemy import text
+from sqlalchemy import func, select, text
 
-from app.db import engine
+from app.db import SessionLocal, engine
+from app.models import Phase3CollectionItem
 from app.phase3_store import create_public_submission, create_watch_area
-from app.transactional_store import CANONICAL_MUTATION_LOCK_KEY, CANONICAL_MUTATION_LOCK_NAMESPACE
+from app.transactional_store import (
+    CANONICAL_MUTATION_LOCK_KEY,
+    CANONICAL_MUTATION_LOCK_NAMESPACE,
+    CollectionUnitOfWork,
+)
 
 
 def request_json(
@@ -89,9 +94,41 @@ def concurrent_posts(
     return [result for result in results if result is not None]
 
 
+def assert_postgres_item_upsert() -> None:
+    """Prove the real unique constraint updates one item without replacing siblings."""
+    collection_name = "c02_uow_item_upsert"
+    first_payload = {"title": "first"}
+    second_payload = {"title": "second"}
+    updated_first_payload = {"title": "first updated"}
+
+    # SessionLocal uses autoflush=False in production.  Exercise that exact setting
+    # against PostgreSQL rather than relying only on the SQLite helper unit test.
+    with SessionLocal.begin() as session:
+        unit_of_work = CollectionUnitOfWork(session)
+        with unit_of_work.canonical_mutation():
+            unit_of_work.upsert_phase3(collection_name, "first", first_payload)
+            unit_of_work.upsert_phase3(collection_name, "second", second_payload)
+            unit_of_work.upsert_phase3(collection_name, "first", updated_first_payload)
+
+    with SessionLocal() as session:
+        unit_of_work = CollectionUnitOfWork(session)
+        rows = unit_of_work.list_phase3(collection_name)
+        first_row_count = session.scalar(
+            select(func.count(Phase3CollectionItem.id)).where(
+                Phase3CollectionItem.collection_name == collection_name,
+                Phase3CollectionItem.item_id == "first",
+            )
+        )
+    if rows != [updated_first_payload, second_payload] or first_row_count != 1:
+        raise AssertionError(
+            "item upsert did not preserve one updated row and its unrelated sibling order"
+        )
+
+
 def assert_creation_phase(
     api_url: str, reviewer_token: str, fixture_id: str, result_path: Path
 ) -> list[str]:
+    assert_postgres_item_upsert()
     prefix = result_path.parent.name.replace("-data", "")
     submission_titles = [
         f"{prefix} concurrent submission one",
@@ -298,6 +335,7 @@ def assert_creation_phase(
                 "alert_ids": alert_ids,
                 "fixture_id": fixture_id,
                 "checks": [
+                    "postgres-item-upsert:one-row-and-sibling-order-preserved",
                     "concurrent-submissions:both-receipts-and-staged-rows",
                     "concurrent-watches:both-receipts",
                     "concurrent-watches:initial-alerts",

@@ -10,7 +10,7 @@ from __future__ import annotations
 import copy
 from collections.abc import Iterator
 from contextlib import contextmanager
-from typing import Any, Literal
+from typing import Any, Literal, cast
 
 from sqlalchemy import delete, func, select, text
 from sqlalchemy.exc import DBAPIError
@@ -94,22 +94,28 @@ class CollectionUnitOfWork:
 
     def _list(self, kind: CollectionKind, collection_name: str) -> list[dict[str, Any]]:
         model = self._model(kind)
-        rows = self.session.scalars(
-            select(model)
-            .where(model.collection_name == collection_name)
-            .order_by(model.sort_order, model.id)
-        ).all()
+        rows = cast(
+            list[Phase3CollectionItem | ProcessedCollectionItem],
+            self.session.scalars(
+                select(model)
+                .where(model.collection_name == collection_name)
+                .order_by(model.sort_order, model.id)
+            ).all(),
+        )
         return [copy.deepcopy(row.payload_json) for row in rows]
 
     def _get(
         self, kind: CollectionKind, collection_name: str, item_id: str
     ) -> dict[str, Any] | None:
         model = self._model(kind)
-        row = self.session.scalar(
-            select(model).where(
-                model.collection_name == collection_name,
-                model.item_id == item_id,
-            )
+        row = cast(
+            Phase3CollectionItem | ProcessedCollectionItem | None,
+            self.session.scalar(
+                select(model).where(
+                    model.collection_name == collection_name,
+                    model.item_id == item_id,
+                )
+            ),
         )
         return copy.deepcopy(row.payload_json) if row is not None else None
 
@@ -117,11 +123,14 @@ class CollectionUnitOfWork:
         self, kind: CollectionKind, collection_name: str, item_id: str, payload: dict[str, Any]
     ) -> None:
         model = self._model(kind)
-        row = self.session.scalar(
-            select(model).where(
-                model.collection_name == collection_name,
-                model.item_id == item_id,
-            )
+        row = cast(
+            Phase3CollectionItem | ProcessedCollectionItem | None,
+            self.session.scalar(
+                select(model).where(
+                    model.collection_name == collection_name,
+                    model.item_id == item_id,
+                )
+            ),
         )
         if row is not None:
             row.payload_json = copy.deepcopy(payload)
@@ -135,7 +144,7 @@ class CollectionUnitOfWork:
             model(
                 collection_name=collection_name,
                 item_id=item_id,
-                sort_order=int(next_sort_order) + 1,
+                sort_order=int(-1 if next_sort_order is None else next_sort_order) + 1,
                 payload_json=copy.deepcopy(payload),
             )
         )
