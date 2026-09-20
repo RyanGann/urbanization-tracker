@@ -33,7 +33,9 @@ def validate_with_postgis(fixture: dict) -> None:
             if not valid:
                 invalid.append(index)
     if invalid:
-        raise RuntimeError(f"PostGIS geometry validation failed for feature indexes: {invalid[:10]}")
+        raise RuntimeError(
+            f"PostGIS geometry validation failed for feature indexes: {invalid[:10]}"
+        )
     quarantined = fixture.get("fixture_diagnostics", {}).get("quarantined_invalid", [])
     quarantined_invalid_checked = False
     if quarantined:
@@ -43,9 +45,14 @@ def validate_with_postgis(fixture: dict) -> None:
                 {"geometry": json.dumps(quarantined[0]["geometry"])},
             )
         if diagnostic_valid is not False:
-            raise RuntimeError("P01 quarantined invalid diagnostic unexpectedly passed PostGIS validity")
+            raise RuntimeError(
+                "P01 quarantined invalid diagnostic unexpectedly passed PostGIS validity"
+            )
         quarantined_invalid_checked = True
-    print(json.dumps({"postgis_geometry_valid": len(geometries), "postgis_quarantined_invalid": quarantined_invalid_checked}))
+    print(json.dumps({
+        "postgis_geometry_valid": len(geometries),
+        "postgis_quarantined_invalid": quarantined_invalid_checked,
+    }))
 
 
 def main() -> None:

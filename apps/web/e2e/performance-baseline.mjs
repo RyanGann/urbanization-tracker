@@ -79,6 +79,28 @@ async function mapInView(page) {
   await page.locator('.maplibregl-canvas').scrollIntoViewIfNeeded();
   await renderedDevelopment(page, true);
 }
+async function panToCoordinate(page, coordinate) {
+  const closePopup = page.locator(".maplibregl-popup-close-button");
+  if (await closePopup.count()) await closePopup.first().click();
+  const canvas = page.locator('.maplibregl-canvas');
+  await canvas.scrollIntoViewIfNeeded();
+  const viewport = page.viewportSize();
+  for (let attempt = 0; attempt < 24; attempt++) {
+    const state = await probe(page, coordinate, []);
+    const box = await canvas.boundingBox();
+    if (!state || !box) throw new Error('Map unavailable during physical pan');
+    const left = Math.max(0, box.x), top = Math.max(0, box.y);
+    const right = Math.min(viewport.width, box.x + box.width), bottom = Math.min(viewport.height, box.y + box.height);
+    if (state.visible && state.point.x > left + 25 && state.point.x < right - 25 && state.point.y > top + 25 && state.point.y < bottom - 25) return;
+    const x = (left + right) / 2, y = (top + bottom) / 2;
+    const dx = Math.max(-(right - left) * .3, Math.min((right - left) * .3, x - state.point.x));
+    const dy = Math.max(-(bottom - top) * .3, Math.min((bottom - top) * .3, y - state.point.y));
+    await page.mouse.move(x, y); await page.mouse.down();
+    await page.mouse.move(x + dx, y + dy, { steps: 8 }); await page.mouse.up();
+    await until(async () => !(await probe(page, coordinate, [])).moving, 'physical camera pan settles');
+  }
+  throw new Error('Known coordinate could not be reached by physical map panning');
+}
 async function newPage(browser) {
   const context = await browser.newContext({ viewport: report.settings.viewport, isMobile: mobile, deviceScaleFactor: 1 });
   const page = await context.newPage();
@@ -151,6 +173,7 @@ async function warmInteractions(browser) {
       const sample = { index, ok: false, actions_ms: {} };
       const measure = async (name, action) => { const start = performance.now(); await action(); sample.actions_ms[name] = performance.now() - start; };
       try {
+        await measure('pan_to_selection', () => panToCoordinate(page, record.centroid));
         await measure('selection', async () => {
           await page.locator('button.record-row').filter({ hasText: record.title }).click();
           await mapInView(page); await physicalSelect(page);
@@ -177,12 +200,22 @@ async function warmInteractions(browser) {
           await filter.check();
           await until(async () => await page.locator('button.record-row').count() === before, 'filter restores results');
         });
+        await measure('pan_to_context', () => panToCoordinate(page, overlay.coordinate));
+        await until(async () => (await probe(page, overlay.coordinate, overlayLayers)).features.some((feature) => String(feature.id) === String(overlay.feature_id)), 'known context rendered before toggle');
         await measure('overlay_toggle', async () => {
           const toggle = page.getByRole('checkbox', { name: overlay.overlay_name, exact: true });
           await toggle.uncheck();
-          await until(async () => (await probe(page, overlay.coordinate, overlayLayers)).visibility.filter((v) => v === 'none').length === overlayLayers.length, 'overlay disabled');
+          await page.locator(".maplibregl-canvas").scrollIntoViewIfNeeded();
+          await until(async () => {
+            const state = await probe(page, overlay.coordinate, overlayLayers);
+            return state.visible && state.visibility.filter((value) => value === 'none').length === overlayLayers.length && !state.features.some((feature) => String(feature.id) === String(overlay.feature_id));
+          }, 'known overlay feature disappears');
           await toggle.check();
-          await until(async () => (await probe(page, overlay.coordinate, overlayLayers)).visibility.filter((v) => v === 'visible').length === overlayLayers.length, 'overlay enabled');
+          await page.locator(".maplibregl-canvas").scrollIntoViewIfNeeded();
+          await until(async () => {
+            const state = await probe(page, overlay.coordinate, overlayLayers);
+            return state.visible && state.visibility.filter((value) => value === 'visible').length === overlayLayers.length && state.features.some((feature) => String(feature.id) === String(overlay.feature_id));
+          }, 'known overlay feature reappears');
         });
         const longTasks = await page.evaluate(() => window.__p01LongTasks);
         sample.long_tasks = longTasks.slice(previousLongTaskCount);

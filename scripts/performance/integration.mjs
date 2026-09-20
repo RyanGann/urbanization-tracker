@@ -27,7 +27,7 @@ export async function captureDatabase({ compose, run, log, artifactDir }) {
     development_plan: "EXPLAIN (ANALYZE, BUFFERS, FORMAT JSON) SELECT * FROM processed_collection_items WHERE collection_name = 'development_records' ORDER BY sort_order, id;",
     overlay_plan: "EXPLAIN (ANALYZE, BUFFERS, FORMAT JSON) SELECT * FROM processed_collection_items WHERE collection_name = 'environmental_overlays' ORDER BY sort_order, id;"
   };
-  const result = { note: 'Legacy JSONB collection reads. Plans exclude network transfer, JSON decoding and Python serialization.' };
+  const result = { note: 'Legacy JSON collection reads. Plans exclude network transfer, JSON decoding and Python serialization.' };
   for (const [name, sql] of Object.entries(queries)) {
     const output = await run('docker', [...compose, 'exec', '-T', 'db', 'psql', '-U', 'integration', '-d', 'integration', '-Atqc', sql], { log });
     result[name] = JSON.parse(output.output);
@@ -37,13 +37,30 @@ export async function captureDatabase({ compose, run, log, artifactDir }) {
 
 export async function startResourceSampling({ compose, run, log, artifactDir }) {
   const ids = {};
-  for (const service of ['api', 'db']) ids[service] = (await run('docker', [...compose, 'ps', '-q', service], { log })).output.trim();
+  for (const service of ['api', 'db']) {
+    ids[service] = (await run('docker', [...compose, 'ps', '-q', service], { log })).output.trim();
+    if (!ids[service]) throw new Error(`could not resolve container id for ${service} before resource sampling`);
+  }
   const samples = [];
+  const matchesContainer = (row, id) => Boolean(id) && [row?.ID, row?.Container].some((value) => typeof value === 'string'
+    && value.length > 0 && (value.startsWith(id) || id.startsWith(value)));
   let stopped = false, wake;
   const task = (async () => {
     while (!stopped) {
       const result = await run('docker', ['stats', '--no-stream', '--format', '{{json .}}', ...Object.values(ids)], { allowFailure: true, timeoutMs: 15_000, ignoreInterrupt: true });
-      samples.push({ at: new Date().toISOString(), code: result.code, rows: result.output.trim().split(/\r?\n/).filter(Boolean).map((line) => { try { return JSON.parse(line); } catch { return { error: line }; } }) });
+      const rows = result.output.trim().split(/\r?\n/).filter(Boolean).map((line) => {
+        try { return JSON.parse(line); } catch { return { error: line }; }
+      });
+      const measuredServices = Object.entries(ids)
+        .filter(([, id]) => rows.some((row) => matchesContainer(row, id)))
+        .map(([service]) => service);
+      samples.push({
+        at: new Date().toISOString(),
+        code: result.code,
+        ok: result.code === 0 && rows.length > 0 && measuredServices.length === Object.keys(ids).length,
+        measured_services: measuredServices,
+        rows
+      });
       await writeFile(join(artifactDir, 'resources.partial.json'), JSON.stringify(samples, null, 2) + '\n');
       if (!stopped) await new Promise((resolve) => { wake = resolve; const timer = setTimeout(resolve, 5000); wake = () => { clearTimeout(timer); resolve(); }; });
     }
@@ -67,7 +84,11 @@ export async function startResourceSampling({ compose, run, log, artifactDir }) 
       host: { platform: os.platform(), release: os.release(), cpu: os.cpus()[0]?.model, logical_cpus: os.cpus().length, ram_bytes: os.totalmem() },
       docker: { cpus: dockerInfo.NCPU ?? null, ram_bytes: dockerInfo.MemTotal ?? null, version: dockerInfo.ServerVersion ?? null },
       running_container_names: background.output.trim().split(/\r?\n/), containers, samples,
+      successful_stats_samples: samples.filter((sample) => sample.ok).length,
       note: 'Docker stats are sampled, not exact peaks. cgroup memory.peak is a container-lifetime peak including warmup. Unavailable peaks stay null.'
     }, null, 2) + '\n');
+    if (!samples.some((sample) => sample.ok)) {
+      throw new Error('docker stats produced no successful nonempty sample for measured api and db containers');
+    }
   };
 }
