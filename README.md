@@ -31,7 +31,7 @@ The September review found correctness, performance, and usability gaps before a
 public alpha. The repository includes Postgres-backed stores, ingestion, review, monitoring,
 and deployment tooling, but their presence does not establish end-to-end readiness.
 
-Current verification passes API and web lint/typechecking, 60 API tests, 4 web unit tests, the web
+The September review verified API and web lint/typechecking, 60 API tests, 4 web unit tests, the web
 production build, and 3 Chromium end-to-end smoke tests. The latest local ingestion snapshot was
 captured on 2026-06-19; it is useful as a development artifact but should not be treated as current
 public data.
@@ -40,7 +40,8 @@ The active plan covers durable record/review/publication behavior, real API/Post
 map delivery, public input and subscription flows, and an isolated deployment/recovery rehearsal.
 See the [September project review](docs/reviews/2026-09-19-project-review.md)
 and [PR-sized implementation handoffs](docs/implementation/2026-09-readiness/README.md).
-All new handoffs are planned; the documentation does not claim these fixes are implemented.
+Current handoff status, implementation PRs and evidence are recorded in the
+[execution manifest](docs/implementation/2026-09-readiness/plan.json).
 
 ## Planning Documents
 

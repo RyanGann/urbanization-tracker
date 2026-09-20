@@ -9,7 +9,7 @@ Execution status: [plan.json](plan.json), entry `E04`. Guide baseline: `dbdaf099
 | Review | Routine with visual review |
 | PR boundary | One comparison UI PR using the prepared raster products. |
 
-Read the shared [contracts](CONTRACTS.md), [testing instructions](TESTING.md) and [handoff rules](DISPATCH.md) first. New endpoints, settings, tables and runner commands below are **proposed work**, not existing capabilities.
+Read the shared [contracts](CONTRACTS.md), [testing instructions](TESTING.md) and [handoff rules](DISPATCH.md) first. The steps below define this guide's scope; use its manifest entry and evidence to determine current capability.
 
 ## Problem and intended result
 

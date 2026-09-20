@@ -1,6 +1,6 @@
 # Shared implementation contracts
 
-Prepared September 19, 2026. **These are proposed interfaces, not features already implemented.** The PR guides own their implementation. Changes to these contracts require lead review and updates to every affected guide, schema and test. Keep the React/MapLibre + FastAPI + PostgreSQL/PostGIS architecture. Do not add Redis/Celery, a second tile service or a God’s Eye View dependency to solve the current pilot.
+Prepared September 19, 2026. **These contracts define implementation scope; current status and evidence are in [plan.json](plan.json).** The PR guides own their implementation. Changes to these contracts require lead review and updates to every affected guide, schema and test. Keep the React/MapLibre + FastAPI + PostgreSQL/PostGIS architecture. Do not add Redis/Celery, a second tile service or a God’s Eye View dependency to solve the current pilot.
 
 ## 1. Data modes, availability and errors — C01, U00
 

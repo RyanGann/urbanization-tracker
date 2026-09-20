@@ -9,7 +9,7 @@ Execution status: [plan.json](plan.json), entry `P09`. Guide baseline: `dbdaf099
 | Review | Routine coding agent |
 | PR boundary | One performance-regression CI PR. |
 
-Read the shared [contracts](CONTRACTS.md), [testing instructions](TESTING.md) and [handoff rules](DISPATCH.md) first. The [performance plan](PERFORMANCE.md) fixes the architecture, budgets and measurement protocol for this PR. New endpoints, settings, tables and runner commands below are **proposed work**, not existing capabilities.
+Read the shared [contracts](CONTRACTS.md), [testing instructions](TESTING.md) and [handoff rules](DISPATCH.md) first. The [performance plan](PERFORMANCE.md) fixes the architecture, budgets and measurement protocol for this PR. The steps below define this guide's scope; use its manifest entry and evidence to determine current capability.
 
 ## Problem and intended result
 

@@ -1,6 +1,6 @@
 # Real API, upstream and acceptance testing
 
-Prepared September 19, 2026. **This describes the harness to implement in T01 and scenarios to add in their owning PRs. New runner commands below do not exist yet.** The September review already ran 60 backend tests, four web unit tests and three mocked Chromium smoke tests; those results do not establish the new integration checks.
+Prepared September 19, 2026. **T01 owns the harness; each guide owns its regression scenarios. Consult [plan.json](plan.json) and the owning PR's evidence before assuming a command or scenario is available.** The September review already ran 60 backend tests, four web unit tests and three mocked Chromium smoke tests; those results do not establish the new integration checks.
 
 ## Test layers and when they run
 
