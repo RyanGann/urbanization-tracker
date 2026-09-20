@@ -227,23 +227,25 @@ export function MapPage() {
           {!catalogQuery.isLoading && !catalogQuery.isError && catalogLayers.length > 0 ? (
             <div className="layer-list">
               {catalogLayers.map((layer) => {
-                const preparing = layer.delivery_status === "processing";
-                const ready = layer.delivery_status === "ready";
+                // P06 connects catalog entries to MapLibre vector sources. Preserve the
+                // catalog preference now, but do not claim a layer is rendered first.
+                const rendererAvailable = false;
+                const preparing = ["processing", "ready"].includes(layer.delivery_status);
                 return (
                   <div key={layer.id}>
                     <label className="check-row">
                       <input
                         type="checkbox"
-                        checked={ready && visibleOverlayIds.includes(layer.id)}
-                        disabled={!ready}
+                        checked={rendererAvailable && visibleOverlayIds.includes(layer.id)}
+                        disabled={!rendererAvailable}
                         onChange={() =>
                           setVisibleOverlayIds((current) => toggleValue(current, layer.id))
                         }
                       />
                       <span>{layer.title}</span>
                     </label>
-                    {preparing ? <p className="muted" role="status" aria-live="polite">Tiles are being prepared for this layer.</p> : null}
-                    {!preparing && !ready ? (
+                    {preparing ? <p className="muted" role="status" aria-live="polite">{layer.delivery_status === "ready" ? "Environmental map rendering is being prepared for this layer." : "Tiles are being prepared for this layer."}</p> : null}
+                    {!preparing ? (
                       <p className="muted">This layer is currently unavailable.</p>
                     ) : null}
                     <p className="muted">{layer.attribution}</p>
