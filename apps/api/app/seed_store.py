@@ -41,12 +41,12 @@ def reset_seed_state(*, force_seed: bool = True) -> None:
     _active_data_mode = "demo"
     from app.phase3_store import reset_phase3_state
 
-    reset_phase3_state(force_memory=force_seed)
+    reset_phase3_state(force_memory=get_settings().data_mode == "demo")
 
 
 def _ensure_loaded() -> None:
     if get_settings().data_mode == "demo" and _active_data_mode != "demo":
-        reset_seed_state(force_seed=False)
+        reset_seed_state(force_seed=True)
 
 
 def _load_processed_records() -> list[dict[str, Any]] | None:
@@ -70,10 +70,32 @@ def _load_processed_overlays() -> list[dict[str, Any]] | None:
     return result.require_ready(collection="environmental_overlays")
 
 
+def _validated_development_records(records: list[dict[str, Any]]) -> list[DevelopmentRecord]:
+    try:
+        return [DevelopmentRecord.model_validate(record) for record in records]
+    except ValidationError as exc:
+        raise DataUnavailableError(
+            collection="development_records", availability=Availability.UNAVAILABLE
+        ) from exc
+
+
 def development_records_availability() -> Availability:
     if get_settings().data_mode == "demo":
         return Availability.READY
-    return read_processed_list_result("development_records").availability
+    result = read_processed_list_result("development_records")
+    if result.availability is not Availability.READY:
+        return result.availability
+    try:
+        _validated_development_records(result.items or [])
+    except DataUnavailableError:
+        return Availability.UNAVAILABLE
+    from app.phase3_store import list_phase3_development_records
+
+    try:
+        _validated_development_records(list_phase3_development_records())
+    except DataUnavailableError:
+        return Availability.UNAVAILABLE
+    return Availability.READY
 
 
 def load_source_health() -> dict[str, Any]:
@@ -127,6 +149,7 @@ def list_development_records(
     from app.phase3_store import list_phase3_development_records
 
     records.extend(list_phase3_development_records())
+    records = [record.model_dump() for record in _validated_development_records(records)]
 
     if statuses:
         status_set = set(statuses)
@@ -172,6 +195,7 @@ def get_development_record(public_id: str) -> DevelopmentRecord | None:
     from app.phase3_store import list_phase3_development_records
 
     records.extend(list_phase3_development_records())
+    records = [record.model_dump() for record in _validated_development_records(records)]
     for record in records:
         if record["public_id"] == public_id:
             try:

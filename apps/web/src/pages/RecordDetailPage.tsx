@@ -2,7 +2,7 @@ import { useQuery } from "@tanstack/react-query";
 import { ArrowLeft, ExternalLink, MapPin } from "lucide-react";
 import { Link, useParams } from "react-router-dom";
 
-import { fetchDevelopmentRecord, fetchRecordVersions } from "../api";
+import { ApiError, fetchDevelopmentRecord, fetchRecordVersions } from "../api";
 import { StatusBadge } from "../components/StatusBadge";
 import { developmentTypeLabel, formatArea, statusLabel } from "../utils/records";
 
@@ -30,6 +30,21 @@ export function RecordDetailPage() {
     return (
       <main className="page-shell">
         <p className="muted">Loading record...</p>
+      </main>
+    );
+  }
+
+  if (recordQuery.error instanceof ApiError && recordQuery.error.status === 503) {
+    return (
+      <main className="page-shell">
+        <Link className="back-link" to="/">
+          <ArrowLeft size={16} aria-hidden />
+          Back to map
+        </Link>
+        <section className="panel empty-state">
+          <h1>Development data is unavailable</h1>
+          <p>Try again after canonical data initialization completes.</p>
+        </section>
       </main>
     );
   }

@@ -82,3 +82,16 @@ def test_demo_is_explicit_and_labelled(monkeypatch) -> None:
     assert status.json()["availability"] == "ready"
     assert records.json()["data_mode"] == "demo"
     assert records.json()["records"]
+
+
+def test_live_invalid_record_schema_is_unavailable_in_status_and_reads(monkeypatch, tmp_path) -> None:
+    processed = configure_live_artifacts(monkeypatch, tmp_path)
+    processed.mkdir()
+    (processed / "development_records.json").write_text("[{}]", encoding="utf-8")
+
+    status = client.get("/api/dataset-status")
+    records = client.get("/api/development-records")
+
+    assert status.json()["availability"] == "unavailable"
+    assert records.status_code == 503
+    assert records.json()["detail"]["code"] == "data_unavailable"
