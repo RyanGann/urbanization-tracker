@@ -3,6 +3,8 @@ import { expect, test } from "@playwright/test";
 const statuses = ["Layout", "Preliminary", "Final", "Issued permit", "Completed", "Proposed"];
 
 test("U00 filters keep real list, map query, and selection state aligned", async ({ page }) => {
+  test.skip(process.env.U00_FILTERS !== "1", "U00 scenario is opt-in");
+
   const recordsResponse = page.waitForResponse(
     (response) =>
       new URL(response.url()).pathname === "/api/development-records" && response.status() === 200

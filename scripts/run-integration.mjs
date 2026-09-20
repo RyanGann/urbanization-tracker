@@ -403,7 +403,7 @@ async function runSuite(options) {
   };
 
   const runU00BrowserAssertions = async () => {
-    await run("docker", [...compose, "run", "--rm", "browser", "--grep", "U00 filters"], {
+    await run("docker", [...compose, "run", "--rm", "--env", "U00_FILTERS=1", "browser", "--grep", "U00 filters"], {
       log,
       timeoutMs: 300_000
     });

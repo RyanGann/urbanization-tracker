@@ -79,6 +79,9 @@ jobs:
       - name: Run real API and browser smoke
         run: node scripts/run-integration.mjs --suite live
 
+      - name: Run U00 real filter scenario
+        run: node scripts/run-integration.mjs --suite live --scenario u00-filters
+
       - name: Check explicit live and demo data modes
         run: node scripts/run-integration.mjs --suite api --scenario c01-data-modes
 
