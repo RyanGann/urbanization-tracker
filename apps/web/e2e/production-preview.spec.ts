@@ -1,4 +1,4 @@
-import { expect, test } from "@playwright/test";
+import { expect, test, type Page } from "@playwright/test";
 
 const seedRecord = {
   public_id: "hsv-production-record",
@@ -27,19 +27,46 @@ const seedRecord = {
   proximity_flags: []
 };
 
-test("production preview loads the worker and selects a rendered map point", async ({
+const polygonRecord = {
+  ...seedRecord,
+  public_id: "hsv-production-polygon",
+  title: "Production Preview Polygon",
+  geometry: {
+    type: "Polygon",
+    coordinates: [[
+      [-86.53, 34.70],
+      [-86.51, 34.70],
+      [-86.51, 34.72],
+      [-86.53, 34.72],
+      [-86.53, 34.70]
+    ]]
+  }
+};
+polygonRecord.centroid = [-86.52, 34.71];
+
+async function clickCanvasCenter(page: Page) {
+  const canvas = page.locator(".maplibregl-canvas");
+  const box = await canvas.boundingBox();
+  if (!box) throw new Error("Map canvas has no bounding box");
+  for (let attempt = 0; attempt < 5; attempt += 1) {
+    await canvas.click({ position: { x: box.width / 2, y: box.height / 2 }, force: true });
+    if (await page.locator(".maplibregl-popup").count()) return;
+    await page.waitForTimeout(200);
+  }
+  throw new Error("Map canvas click did not open a popup");
+}
+
+test("production preview loads the worker and selects rendered map point and polygon", async ({
   page
 }, testInfo) => {
   const workerResponses: number[] = [];
   page.on("response", (response) => {
-    if (response.url().includes("maplibre-gl-worker")) {
-      workerResponses.push(response.status());
-    }
+    if (response.url().includes("maplibre-gl-worker")) workerResponses.push(response.status());
   });
   await page.route("**/api/development-records**", async (route) => {
     await route.fulfill({
       contentType: "application/json",
-      body: JSON.stringify({ records: [seedRecord] })
+      body: JSON.stringify({ records: [seedRecord, polygonRecord] })
     });
   });
   await page.route("**/api/environmental-overlays", async (route) => {
@@ -48,38 +75,25 @@ test("production preview loads the worker and selects a rendered map point", asy
 
   await page.goto("/");
   await expect(page.getByText(seedRecord.title)).toBeVisible();
+  await expect(page.getByText(polygonRecord.title)).toBeVisible();
   await expect(page.locator(".maplibregl-canvas")).toBeVisible();
+  await expect(page.getByTestId("development-map")).toHaveAttribute("data-feature-count", "2");
   await expect.poll(() => workerResponses, { timeout: 15_000 }).toContain(200);
-  await expect
-    .poll(
-      () =>
-        page.evaluate(() => {
-          const map = (window as typeof window & { __urbanizationTrackerMap?: any })
-            .__urbanizationTrackerMap;
-          return map
-            ?.queryRenderedFeatures(undefined, { layers: ["development-points"] })[0]?.properties
-            ?.public_id;
-        }),
-      { timeout: 15_000 }
-    )
-    .toBe(seedRecord.public_id);
+  await expect(page.evaluate(() => (window as typeof window & {
+    __urbanizationTrackerMap?: unknown;
+  }).__urbanizationTrackerMap)).resolves.toBeUndefined();
 
-  const point = await page.evaluate(() => {
-    const map = (window as typeof window & { __urbanizationTrackerMap?: any })
-      .__urbanizationTrackerMap;
-    const projected = map.project([-86.58, 34.73]);
-    return { x: projected.x, y: projected.y };
-  });
-  await page.locator(".maplibregl-canvas").click({ position: point, force: true });
-  if ((await page.locator(".maplibregl-popup").count()) === 0) {
-    await page.evaluate((mapPoint) => {
-      const map = (window as typeof window & { __urbanizationTrackerMap?: any })
-        .__urbanizationTrackerMap;
-      const features = map.queryRenderedFeatures(mapPoint, { layers: ["development-points"] });
-      map.fire("click", { point: mapPoint, lngLat: map.unproject(mapPoint), features });
-    }, point);
-  }
+  await page.getByRole("button", { name: /Production Preview Subdivision/ }).click();
+  await page.waitForTimeout(1_250);
+  await clickCanvasCenter(page);
   await expect(page.locator(".maplibregl-popup")).toContainText(seedRecord.title);
   await expect(page.getByRole("heading", { name: seedRecord.title })).toBeVisible();
+
+  await page.locator(".maplibregl-popup-close-button").click();
+  await page.getByRole("button", { name: /Production Preview Polygon/ }).click();
+  await page.waitForTimeout(1_250);
+  await clickCanvasCenter(page);
+  await expect(page.locator(".maplibregl-popup")).toContainText(polygonRecord.title);
+  await expect(page.getByRole("heading", { name: polygonRecord.title })).toBeVisible();
   await page.screenshot({ path: testInfo.outputPath("production-map-selected.png"), fullPage: true });
 });

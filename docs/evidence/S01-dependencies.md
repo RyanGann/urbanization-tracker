@@ -2,7 +2,7 @@
 
 Base: `dbdaf099f31bc0444fe202aaf2ee65b3c9268d34`  
 Implementation: `9bd5b2da59ac890e5d2273de50d0a75c7d5a8e02`  
-Evidence run: September 19, 2026, Windows, Node 20 host and Node 22 Docker runtime.
+Evidence run: September 19, 2026, Windows, Node 20 host and Node 22.23.2 supported runtime.
 
 ## Resolved versions and advisory disposition
 
@@ -13,7 +13,9 @@ Evidence run: September 19, 2026, Windows, Node 20 host and Node 22 Docker runti
 
 The production audit before the update reported one critical MapLibre advisory and three moderate router advisories. The audit after the update reports zero production vulnerabilities. Maintainer references: [MapLibre GHSA-jrc7-96c5-q579](https://github.com/advisories/GHSA-jrc7-96c5-q579), [React Router GHSA-wrjc-x8rr-h8h6](https://github.com/advisories/GHSA-wrjc-x8rr-h8h6), [React Router GHSA-337j-9hxr-rhxg](https://github.com/advisories/GHSA-337j-9hxr-rhxg), and [React Router GHSA-jjmj-jmhj-qwj2](https://github.com/advisories/GHSA-jjmj-jmhj-qwj2).
 
-MapLibre v6 is ESM-only, so `DevelopmentMap.tsx` uses a namespace import and the documented Vite `maplibre-gl-worker.mjs?worker&url` plus `setWorkerUrl` setup. The root Node engine and Render static build runtime are pinned to Node 22 because the resolved MapLibre style-spec dependency requires Node 22. The test-only map inspection hook is enabled only when `VITE_ENABLE_MAP_TEST_HOOK=true`; normal builds do not expose it.
+MapLibre v6 is ESM-only, so `DevelopmentMap.tsx` uses a namespace import and the documented Vite `maplibre-gl-worker.mjs?worker&url` plus `setWorkerUrl` setup. The root Node engine and Render static build runtime are pinned to Node 22 because the resolved MapLibre style-spec dependency requires Node 22. The map inspection hook remains DEV-only; the production build and production browser check expose no map global.
+
+The browser check also found that MapLibre's `.maplibregl-map` rule overrode the earlier map container sizing rule, leaving the map parent at zero height in the production preview. The scoped `.map-stage > .map-canvas` rule restores the intended full-height interactive canvas without changing map behavior or route splitting.
 
 ## Bundle measurements
 
@@ -35,18 +37,21 @@ The larger map chunk is the expected MapLibre v4-to-v6 dependency change. Route-
 - `npm run typecheck:web` — passed.
 - `npm run test:web` — passed, 1 file / 4 tests.
 - `npm run build:web` — passed; Vite transformed 1,649 modules and emitted the worker asset.
-- `docker run ... node:22-alpine ... npm ci --ignore-scripts && npm run typecheck:web && npm run test:web && npm run build:web` — passed under Node `v22.23.2`; 4 unit tests passed and the build completed.
-- `npm --workspace apps/web run e2e` — passed, 3 Chromium tests.
-- `VITE_ENABLE_MAP_TEST_HOOK=true npm run build:web` followed by `npm --workspace apps/web run e2e:production` — passed, 1 production-preview Chromium test in 12.9 seconds. The test observed a 200 response for `maplibre-gl-worker`, found the rendered point through `queryRenderedFeatures`, clicked the projected canvas point, and verified the popup and selected detail.
-- `git diff --check` — passed before the evidence follow-up commit.
+- `node --version` — `v22.23.2` in the supported-runtime check.
+- `npm ci --ignore-scripts`, `npm run typecheck:web`, `npm run test:web`, and `npm run build:web` — passed under Node `v22.23.2`; 4 unit tests passed and the build completed.
+- `npm --workspace apps/web run e2e -- --workers=1` — passed, 3 mocked Chromium tests. The map test retained unsafe attribution markup checks, legitimate attribution, route remount, point selection, and polygon selection.
+- `npm --workspace apps/web run e2e:production` — passed, 1 normal production-preview Chromium test in 7.7 seconds. It observed a 200 worker response, confirmed the production map hook was absent, physically clicked the post-transition canvas center for a point and a separated polygon, and verified each popup and selected detail panel.
+- `git diff --check` — passed.
 
 Production-preview browser artifacts:
 
-- Screenshot: `apps/web/test-results/production-preview-product-642c7-elects-a-rendered-map-point-chromium/production-map-selected.png`
-- Trace: `apps/web/test-results/production-preview-product-642c7-elects-a-rendered-map-point-chromium/trace.zip`
+- Screenshot: `apps/web/test-results/production-preview/production-preview-product-4a48d-dered-map-point-and-polygon-chromium/production-map-selected.png`
+- Trace: `apps/web/test-results/production-preview/production-preview-product-4a48d-dered-map-point-and-polygon-chromium/trace.zip`
 
 The existing Chromium fixture also injects consecutive unsafe attribution attributes (`onload` and `ontoggle`), verifies they are removed while the legitimate `Example source` link remains, and checks selection and popup behavior after navigating away and back to the map.
 
+The final production screenshot shows the rendered point, polygon, popup, navigation control, attribution, and selected polygon detail panel after the physical pointer checks.
+
 ## Unrun or externally owned checks
 
-The GitHub PR/CI run, full T01 integration harness, and production deployment were not run in this worktree. No live basemap or external source was contacted; map data and attribution inputs are local Playwright fixtures. The automatic reviewer rejected the attempted `git push -u origin codex/s01-dependency-update` as an export authorization concern; publication is being handled by the lead agent.
+The GitHub PR/CI run, full T01 integration harness, and production deployment were not run in this worktree. No live basemap or external source was contacted; map data and attribution inputs are local Playwright fixtures. Publication and CI are owned by the lead agent.

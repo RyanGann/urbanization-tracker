@@ -1,4 +1,4 @@
-import { expect, test } from "@playwright/test";
+import { expect, test, type Page } from "@playwright/test";
 
 const seedRecord = {
   public_id: "hsv-test-record",
@@ -30,11 +30,40 @@ const seedRecord = {
   proximity_flags: []
 };
 
+const polygonRecord = {
+  ...seedRecord,
+  public_id: "hsv-test-polygon",
+  title: "Seed Test Polygon",
+  geometry: {
+    type: "Polygon",
+    coordinates: [[
+      [-86.53, 34.70],
+      [-86.51, 34.70],
+      [-86.51, 34.72],
+      [-86.53, 34.72],
+      [-86.53, 34.70]
+    ]]
+  }
+};
+polygonRecord.centroid = [-86.52, 34.71];
+
+async function clickCanvasCenter(page: Page) {
+  const canvas = page.locator(".maplibregl-canvas");
+  const box = await canvas.boundingBox();
+  if (!box) throw new Error("Map canvas has no bounding box");
+  for (let attempt = 0; attempt < 5; attempt += 1) {
+    await canvas.click({ position: { x: box.width / 2, y: box.height / 2 }, force: true });
+    if (await page.locator(".maplibregl-popup").count()) return;
+    await page.waitForTimeout(200);
+  }
+  throw new Error("Map canvas click did not open a popup");
+}
+
 test("map shell renders seed records with mocked API", async ({ page }) => {
   await page.route("**/api/development-records**", async (route) => {
     await route.fulfill({
       contentType: "application/json",
-      body: JSON.stringify({ records: [seedRecord] })
+      body: JSON.stringify({ records: [seedRecord, polygonRecord] })
     });
   });
   await page.route("**/api/environmental-overlays", async (route) => {
@@ -61,7 +90,7 @@ test("map shell renders seed records with mocked API", async ({ page }) => {
   await expect(page.getByText("Seed Test Subdivision")).toBeVisible({ timeout: 15_000 });
   await expect(page.getByTestId("development-map")).toBeVisible();
   await expect(page.locator(".maplibregl-canvas")).toBeVisible();
-  await expect(page.getByTestId("development-map")).toHaveAttribute("data-feature-count", "1");
+  await expect(page.getByTestId("development-map")).toHaveAttribute("data-feature-count", "2");
 
   await expect
     .poll(
@@ -92,10 +121,8 @@ test("map shell renders seed records with mocked API", async ({ page }) => {
     map.addControl(fixtureAttribution, "bottom-right");
     testWindow.__urbanizationTrackerFixtureAttribution = fixtureAttribution;
     const feature = map.queryRenderedFeatures(undefined, { layers: ["development-points"] })[0];
-    const point = map.project([-86.58, 34.73]);
     return {
       featureId: feature?.properties?.public_id,
-      mapPoint: { x: point.x, y: point.y },
       attributionHtml: fixtureAttribution._container?.innerHTML ?? "",
       unsafeExecuted: testWindow.__unsafeAttributionExecuted,
       attributionCount: document.querySelectorAll(".maplibregl-ctrl-attrib").length
@@ -106,15 +133,9 @@ test("map shell renders seed records with mocked API", async ({ page }) => {
   expect(renderedFeature.attributionHtml).not.toMatch(/onload|ontoggle/);
   expect(renderedFeature.unsafeExecuted).toBeUndefined();
   expect(renderedFeature.attributionCount).toBe(2);
-  await page.locator(".maplibregl-canvas").click({ position: renderedFeature.mapPoint, force: true });
-  if (await page.locator(".maplibregl-popup").count() === 0) {
-    await page.evaluate((mapPoint) => {
-      const map = (window as typeof window & { __urbanizationTrackerMap?: any })
-        .__urbanizationTrackerMap;
-      const features = map.queryRenderedFeatures(mapPoint, { layers: ["development-points"] });
-      map.fire("click", { point: mapPoint, lngLat: map.unproject(mapPoint), features });
-    }, renderedFeature.mapPoint);
-  }
+  await page.getByRole("button", { name: /Seed Test Subdivision/ }).click();
+  await page.waitForTimeout(1_250);
+  await clickCanvasCenter(page);
   await expect(page.getByRole("heading", { name: seedRecord.title })).toBeVisible();
   await expect(page.locator(".maplibregl-popup")).toContainText(seedRecord.title);
   await page.evaluate(() => {
@@ -151,25 +172,21 @@ test("map shell renders seed records with mocked API", async ({ page }) => {
     const testWindow = window as typeof window & { __urbanizationTrackerMap?: any };
     const map = testWindow.__urbanizationTrackerMap;
     const feature = map.queryRenderedFeatures(undefined, { layers: ["development-points"] })[0];
-    const point = map.project([-86.58, 34.73]);
     return {
-      featureId: feature?.properties?.public_id,
-      mapPoint: { x: point.x, y: point.y }
+      featureId: feature?.properties?.public_id
     };
   });
   expect(remountedFeature.featureId).toBe(seedRecord.public_id);
-  await page
-    .locator(".maplibregl-canvas")
-    .click({ position: remountedFeature.mapPoint, force: true });
-  if (await page.locator(".maplibregl-popup").count() === 0) {
-    await page.evaluate((mapPoint) => {
-      const map = (window as typeof window & { __urbanizationTrackerMap?: any })
-        .__urbanizationTrackerMap;
-      const features = map.queryRenderedFeatures(mapPoint, { layers: ["development-points"] });
-      map.fire("click", { point: mapPoint, lngLat: map.unproject(mapPoint), features });
-    }, remountedFeature.mapPoint);
-  }
+  await page.getByRole("button", { name: /Seed Test Subdivision/ }).click();
+  await page.waitForTimeout(1_250);
+  await clickCanvasCenter(page);
   await expect(page.locator(".maplibregl-popup")).toContainText(seedRecord.title);
+
+  await page.locator(".maplibregl-popup-close-button").click();
+  await page.getByRole("button", { name: /Seed Test Polygon/ }).click();
+  await page.waitForTimeout(1_250);
+  await clickCanvasCenter(page);
+  await expect(page.locator(".maplibregl-popup")).toContainText(polygonRecord.title);
 });
 
 test("direct participate and record routes load their page bundles", async ({ page }) => {
