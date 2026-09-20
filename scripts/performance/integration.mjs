@@ -52,7 +52,7 @@ export async function startResourceSampling({ compose, run, log, artifactDir }) 
         try { return JSON.parse(line); } catch { return { error: line }; }
       });
       const measuredServices = Object.entries(ids)
-        .filter(([, id]) => rows.some((row) => matchesContainer(row, id)))
+        .filter(([, id]) => rows.some((row) => matchesContainer(row, id) && typeof row.MemUsage === 'string' && typeof row.CPUPerc === 'string'))
         .map(([service]) => service);
       samples.push({
         at: new Date().toISOString(),
