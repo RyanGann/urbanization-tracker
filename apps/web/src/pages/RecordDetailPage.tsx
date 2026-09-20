@@ -61,7 +61,7 @@ export function RecordDetailPage() {
     );
   }
 
-  if (!recordQuery.data) {
+  if (recordQuery.isError || !recordQuery.data) {
     return (
       <main className="page-shell">
         <Link className="back-link" to="/">
