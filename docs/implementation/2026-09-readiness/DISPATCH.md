@@ -80,7 +80,7 @@ Escalation means finish independent authorized work and bring a concrete conflic
 - User-visible changes are inspected, including narrow screen/keyboard paths when affected.
 - plan.json status/PR/evidence is updated only after review. A guide is not complete merely because a draft PR exists.
 
-Use statuses planned, in_progress, in_review, blocked, complete. Blocked entries state the concrete dependency/decision and work already finished. Store implementation PR URL and evidence path when they exist; leave them null now. Re-run dependency validation after changes.
+Use statuses planned, in_progress, in_review, blocked, complete. Blocked entries state the concrete dependency/decision and work already finished in blocked_reason. Store implementation PR URL and evidence path when they exist; leave them null now. Evidence paths are relative to this plan directory. Re-run `node scripts/validate-readiness-plan.mjs` after changes; the [validator](../../../scripts/validate-readiness-plan.mjs) is checked into the repository.
 
 ## Release versus implementation decisions
 

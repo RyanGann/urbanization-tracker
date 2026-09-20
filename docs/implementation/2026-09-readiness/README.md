@@ -150,6 +150,8 @@ Waterways, watersheds, broader protected-land/habitat sources, additional jurisd
 
 ## Plan validation
 
-Validation passed for all 38 guide files, nine performance guides, the acyclic dependency graph, index/manifest agreement, required guide sections and all local links across the package and updated entry documents. Whitespace checks passed. The temporary local validator is under tmp/validate-readiness-plan.cjs; it checks documentation only and is not a new application test harness.
+Run `node scripts/validate-readiness-plan.mjs` from the repository root after changing this package. The [tracked validator](../../../scripts/validate-readiness-plan.mjs) checks guide files, dependency cycles and ordering, index/manifest agreement, required sections, status/evidence consistency and local links across the package and updated entry documents. Evidence paths in plan.json are relative to this directory. A complete guide requires a PR URL, an existing evidence file and complete prerequisites; a blocked guide requires a blocked_reason. This validates the plan, not application behavior or GitHub merge status.
+
+Validation passed for the baseline of 38 guides, including nine performance guides. Whitespace checks passed.
 
 Application tests were not rerun for these documentation-only changes. The previously reviewed checks remain historical evidence; live API, new performance budgets and launch acceptance are still work for the implementation PRs.
