@@ -69,7 +69,7 @@
       "id": "C02",
       "title": "Introduce shared transactions and safe item mutations",
       "path": "C02-transactional-store-foundation.md",
-      "status": "in_progress",
+      "status": "complete",
       "track": "Correctness",
       "gate": "G1",
       "depends_on": [
@@ -78,14 +78,14 @@
       ],
       "review": "Lead review",
       "pr_boundary": "One storage foundation PR; migrate callers in the explicitly dependent PRs.",
-      "implementation_pr": null,
-      "evidence": null
+      "implementation_pr": "https://github.com/RyanGann/urbanization-tracker/pull/21",
+      "evidence": "../../evidence/C02-transactions.md"
     },
     {
       "id": "C03",
       "title": "Preserve source identity and merge ingestion batches safely",
       "path": "C03-stable-source-identity.md",
-      "status": "planned",
+      "status": "in_progress",
       "track": "Correctness",
       "gate": "G1",
       "depends_on": [
@@ -229,7 +229,7 @@
       "id": "P01",
       "title": "Establish a reproducible map performance baseline",
       "path": "P01-performance-baseline.md",
-      "status": "in_review",
+      "status": "complete",
       "track": "Performance",
       "gate": "G0",
       "depends_on": [
@@ -238,13 +238,13 @@
       "review": "Routine coding agent",
       "pr_boundary": "One measurement/fixture PR; no optimization yet.",
       "implementation_pr": "https://github.com/RyanGann/urbanization-tracker/pull/17",
-      "evidence": null
+      "evidence": "../../evidence/P01-performance-baseline.md"
     },
     {
       "id": "P02",
       "title": "Serve a small layer catalog and stop eager bulk overlay downloads",
       "path": "P02-layer-catalog-startup-relief.md",
-      "status": "planned",
+      "status": "in_review",
       "track": "Performance",
       "gate": "G1",
       "depends_on": [
@@ -253,7 +253,7 @@
       ],
       "review": "Routine coding agent",
       "pr_boundary": "One immediate startup-relief PR; tiles remain a later step.",
-      "implementation_pr": null,
+      "implementation_pr": "https://github.com/RyanGann/urbanization-tracker/pull/22",
       "evidence": null
     },
     {
@@ -630,7 +630,7 @@
       "id": "U00",
       "title": "Make current map filters show the intended records",
       "path": "U00-immediate-filter-correctness.md",
-      "status": "in_progress",
+      "status": "in_review",
       "track": "Usability",
       "gate": "G1",
       "depends_on": [
@@ -638,7 +638,7 @@
       ],
       "review": "Routine coding agent",
       "pr_boundary": "One small correctness PR on current endpoints; do this before the larger map refactor.",
-      "implementation_pr": null,
+      "implementation_pr": "https://github.com/RyanGann/urbanization-tracker/pull/20",
       "evidence": null
     }
   ],
