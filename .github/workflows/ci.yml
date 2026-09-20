@@ -77,3 +77,6 @@ jobs:
           name: integration-artifacts
           path: tmp/integration
           if-no-files-found: ignore
+
+      - name: Run production Playwright smoke
+        run: npm --workspace apps/web run e2e:production
