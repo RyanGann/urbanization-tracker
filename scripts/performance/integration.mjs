@@ -75,7 +75,7 @@ export async function startResourceSampling({ compose, run, log, artifactDir }) 
       let hostConfig = {}; try { hostConfig = JSON.parse(config.output); } catch {}
       containers[service] = { id, state: state.code === 0 ? JSON.parse(state.output) : null,
         cgroup_memory_peak_bytes: peak.code === 0 && /^\d+\s*$/.test(peak.output) ? Number(peak.output.trim()) : null,
-        memory_limit_bytes: hostConfig.Memory ?? null, nano_cpus: hostConfig.NanoCpus ?? null };
+        memory_limit_bytes: hostConfig.Memory ?? null, memory_swap_limit_bytes: hostConfig.MemorySwap ?? null, nano_cpus: hostConfig.NanoCpus ?? null };
     }
     const docker = await run('docker', ['info', '--format', '{{json .}}'], { allowFailure: true, ignoreInterrupt: true });
     let dockerInfo = {}; try { dockerInfo = JSON.parse(docker.output); } catch {}
