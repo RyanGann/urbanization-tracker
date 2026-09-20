@@ -6,6 +6,7 @@ from pathlib import Path
 from typing import Any
 
 from sqlalchemy import delete, func, select
+from sqlalchemy.exc import SQLAlchemyError
 
 from app.config import get_settings
 from app.data_availability import Availability, CollectionRead
@@ -40,14 +41,14 @@ def read_processed_list_result(
     if _use_postgres_store():
         try:
             return CollectionRead(Availability.READY, _read_postgres_items(name))
-        except Exception:
+        except SQLAlchemyError:
             return CollectionRead(Availability.UNAVAILABLE)
     path = _collection_path(data_dir or get_settings().ingestion_data_dir, name)
     if not path.exists():
         return CollectionRead(Availability.UNINITIALIZED)
     try:
         payload = json.loads(path.read_text(encoding="utf-8"))
-    except (OSError, json.JSONDecodeError):
+    except (OSError, UnicodeDecodeError, json.JSONDecodeError):
         return CollectionRead(Availability.UNAVAILABLE)
     if not isinstance(payload, list) or any(not isinstance(item, dict) for item in payload):
         return CollectionRead(Availability.UNAVAILABLE)
@@ -88,7 +89,7 @@ def read_processed_payload_result(
     if _use_postgres_store():
         try:
             items = _read_postgres_items(name)
-        except Exception:
+        except SQLAlchemyError:
             return CollectionRead(Availability.UNAVAILABLE)
         if not items:
             return CollectionRead(Availability.UNINITIALIZED)
@@ -100,7 +101,7 @@ def read_processed_payload_result(
         return CollectionRead(Availability.UNINITIALIZED)
     try:
         payload = json.loads(path.read_text(encoding="utf-8"))
-    except (OSError, json.JSONDecodeError):
+    except (OSError, UnicodeDecodeError, json.JSONDecodeError):
         return CollectionRead(Availability.UNAVAILABLE)
     if not isinstance(payload, dict):
         return CollectionRead(Availability.UNAVAILABLE)

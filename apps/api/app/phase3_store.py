@@ -10,8 +10,10 @@ from pathlib import Path
 from typing import Any, cast
 
 from sqlalchemy import delete, func, select
+from sqlalchemy.exc import SQLAlchemyError
 
 from app.config import get_settings
+from app.data_availability import Availability, DataUnavailableError
 
 HUNTSVILLE_CENTER: tuple[float, float] = (-86.5861, 34.7304)
 PUBLIC_SUBMISSION_SOURCE = "public-submission://local"
@@ -632,13 +634,25 @@ def _read_collection(name: str) -> list[dict[str, Any]]:
     if _memory_only:
         return copy.deepcopy(_memory_collections.get(name, []))
     if _use_postgres_store():
-        return _read_postgres_collection(name)
+        try:
+            return _read_postgres_collection(name)
+        except SQLAlchemyError as exc:
+            raise DataUnavailableError(
+                collection=f"phase3_{name}", availability=Availability.UNAVAILABLE
+            ) from exc
     path = _collection_path(name)
     if not path.exists():
         return copy.deepcopy(_memory_collections.get(name, []))
-    payload = json.loads(path.read_text(encoding="utf-8"))
-    if not isinstance(payload, list):
-        return []
+    try:
+        payload = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, UnicodeDecodeError, json.JSONDecodeError) as exc:
+        raise DataUnavailableError(
+            collection=f"phase3_{name}", availability=Availability.UNAVAILABLE
+        ) from exc
+    if not isinstance(payload, list) or any(not isinstance(item, dict) for item in payload):
+        raise DataUnavailableError(
+            collection=f"phase3_{name}", availability=Availability.UNAVAILABLE
+        )
     return copy.deepcopy(payload)
 
 

@@ -232,6 +232,15 @@ def get_staged_record(staged_id: str) -> dict[str, Any] | None:
 
 
 def approve_staged_record(staged_id: str, notes: str | None = None) -> DevelopmentRecord | None:
+    if get_settings().data_mode == "live":
+        # Processed ingestion rows are read-only until the durable C05 review path.
+        # Only independently persisted phase3 staged rows may use the legacy action.
+        from app.phase3_store import publish_phase3_staged_record
+
+        published = publish_phase3_staged_record(staged_id, notes=notes)
+        if published is None:
+            return None
+        return DevelopmentRecord.model_validate(published)
     staged = get_staged_record(staged_id)
     if staged is None:
         from app.phase3_store import publish_phase3_staged_record
@@ -254,6 +263,17 @@ def set_staged_review_status(
     review_status: str,
     notes: str | None = None,
 ) -> StagedDevelopmentRecord | None:
+    if get_settings().data_mode == "live":
+        from app.phase3_store import set_phase3_staged_review_status
+
+        phase3_staged = set_phase3_staged_review_status(
+            staged_id,
+            review_status,
+            notes=notes,
+        )
+        if phase3_staged is None:
+            return None
+        return StagedDevelopmentRecord.model_validate(copy.deepcopy(phase3_staged))
     staged = get_staged_record(staged_id)
     if staged is None:
         from app.phase3_store import set_phase3_staged_review_status
