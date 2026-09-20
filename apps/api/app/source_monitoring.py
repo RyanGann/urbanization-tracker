@@ -5,6 +5,7 @@ from datetime import UTC, datetime, timedelta
 from typing import Any
 
 from app.config import get_settings
+from app.data_availability import DataUnavailableError
 from app.jurisdictions import ConnectorHealth, connector_health
 from app.seed_store import load_source_health
 
@@ -19,11 +20,17 @@ def build_source_health_monitor(
     settings = get_settings()
     checked_at = now or datetime.now(UTC)
     max_age = max_age_hours if max_age_hours is not None else settings.source_health_max_age_hours
-    rows = list(
-        health_rows
-        if health_rows is not None
-        else connector_health(source_health if source_health is not None else load_source_health())
-    )
+    if health_rows is not None:
+        rows = list(health_rows)
+    else:
+        if source_health is None:
+            try:
+                source_health = load_source_health()
+            except DataUnavailableError:
+                # Monitoring remains a degraded 503 even before a live source-health
+                # collection is initialized; the public source-health API fails closed.
+                source_health = {"status": "unknown", "sources": [], "records": {}}
+        rows = connector_health(source_health)
     source_checks = [
         _source_check(row=row, max_age_hours=max_age, now=checked_at) for row in rows
     ]
