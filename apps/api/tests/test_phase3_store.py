@@ -191,3 +191,26 @@ def test_phase3_read_treats_artifact_stat_error_as_unavailable(monkeypatch, tmp_
 
     with pytest.raises(DataUnavailableError):
         list_public_submissions()
+
+
+def test_live_missing_artifact_does_not_read_prior_demo_memory(monkeypatch, tmp_path) -> None:
+    monkeypatch.setenv("DATA_MODE", "demo")
+    monkeypatch.setenv("INGESTION_DATA_DIR", str(tmp_path))
+    monkeypatch.setenv("PHASE3_STORE_BACKEND", "artifact")
+    get_settings.cache_clear()
+    reset_phase3_state(force_memory=False)
+    create_public_submission(
+        {
+            "title": "Demo-only submission",
+            "source_url": "https://example.test/demo-only",
+            "notes": "Must not appear after switching to live mode.",
+            "submitter_contact": "demo@example.test",
+        },
+        published_records=[],
+    )
+    assert any(row["title"] == "Demo-only submission" for row in list_public_submissions())
+
+    monkeypatch.setenv("DATA_MODE", "live")
+    get_settings.cache_clear()
+
+    assert list_public_submissions() == []

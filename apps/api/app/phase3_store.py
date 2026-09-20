@@ -647,7 +647,7 @@ def _read_collection(name: str) -> list[dict[str, Any]]:
     path = _collection_path(name)
     try:
         if not path.exists():
-            return copy.deepcopy(_memory_collections.get(name, []))
+            return []
         payload = json.loads(path.read_text(encoding="utf-8"))
     except (OSError, UnicodeDecodeError, json.JSONDecodeError) as exc:
         raise DataUnavailableError(
