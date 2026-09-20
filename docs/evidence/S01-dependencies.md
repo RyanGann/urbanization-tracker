@@ -1,7 +1,9 @@
 # S01 dependency update evidence
 
-Base: `dbdaf099f31bc0444fe202aaf2ee65b3c9268d34`  
-Implementation: `9bd5b2da59ac890e5d2273de50d0a75c7d5a8e02`  
+Base: `dbdaf099f31bc0444fe202aaf2ee65b3c9268d34`
+
+Initial dependency implementation: `9bd5b2da59ac890e5d2273de50d0a75c7d5a8e02`; final compatibility checks: `52e7022031d041234786c88a20aa9edc9c976985`.
+
 Evidence run: September 19, 2026, Windows, Node 20 host and Node 22.23.2 supported runtime.
 
 ## Resolved versions and advisory disposition
