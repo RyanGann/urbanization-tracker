@@ -3,11 +3,13 @@ from __future__ import annotations
 import copy
 import hashlib
 import json
+import os
 import re
 import secrets
 from datetime import UTC, datetime
 from pathlib import Path
-from typing import Any, cast
+from tempfile import NamedTemporaryFile
+from typing import Any, Callable, cast
 
 from sqlalchemy import delete, func, select
 from sqlalchemy.exc import SQLAlchemyError
@@ -136,7 +138,9 @@ def publish_phase3_staged_record(
 
 def create_public_submission(
     payload: dict[str, Any],
-    published_records: list[Any],
+    published_records: list[Any] | None = None,
+    *,
+    _failure_injector: Callable[[str], None] | None = None,
 ) -> dict[str, Any]:
     created_at = _now()
     submission_id = _stable_id("submission", payload["title"], created_at)
@@ -214,15 +218,53 @@ def create_public_submission(
         },
     }
 
+    if _use_transactional_postgres():
+        _create_public_submission_postgres(
+            submission,
+            staged,
+            failure_injector=_failure_injector,
+        )
+        return submission
+
     submissions = _read_collection("public_submissions")
     submissions.append(submission)
     _write_collection("public_submissions", submissions)
+    if _failure_injector is not None:
+        _failure_injector("public_submission_written")
 
     staged_records = _read_collection("submission_staged_records")
     staged_records.append(staged)
     _write_collection("submission_staged_records", staged_records)
-    _append_duplicate_candidates([staged], published_records)
+    _append_duplicate_candidates([staged], published_records or _published_records_for_creation())
     return submission
+
+
+def _create_public_submission_postgres(
+    submission: dict[str, Any],
+    staged: dict[str, Any],
+    *,
+    failure_injector: Callable[[str], None] | None,
+) -> None:
+    """Persist the dependent public-submission rows in one locked transaction."""
+    from app.db import SessionLocal
+    from app.transactional_store import CollectionUnitOfWork
+
+    with SessionLocal.begin() as session:
+        unit_of_work = CollectionUnitOfWork(session)
+        with unit_of_work.canonical_mutation():
+            # These reads must occur after the lock. They are inputs to duplicate matching.
+            published_records = [
+                *unit_of_work.list_processed("development_records"),
+                *unit_of_work.list_phase3("development_records"),
+            ]
+            unit_of_work.upsert_phase3("public_submissions", str(submission["id"]), submission)
+            if failure_injector is not None:
+                failure_injector("public_submission_written")
+            unit_of_work.upsert_phase3("submission_staged_records", str(staged["id"]), staged)
+            if failure_injector is not None:
+                failure_injector("submission_staged_written")
+            for candidate in build_duplicate_candidates([staged], published_records):
+                unit_of_work.upsert_phase3("duplicate_candidates", str(candidate["id"]), candidate)
 
 
 def set_public_submission_status(
@@ -243,7 +285,12 @@ def set_public_submission_status(
     return None
 
 
-def create_watch_area(payload: dict[str, Any], published_records: list[Any]) -> dict[str, Any]:
+def create_watch_area(
+    payload: dict[str, Any],
+    published_records: list[Any] | None = None,
+    *,
+    _failure_injector: Callable[[str], None] | None = None,
+) -> dict[str, Any]:
     created_at = _now()
     email = str(payload["email"]).strip().lower()
     watch_area_id = _stable_id("watch", payload["name"], email, created_at)
@@ -260,15 +307,51 @@ def create_watch_area(payload: dict[str, Any], published_records: list[Any]) -> 
         "created_at": created_at,
         "alert_count": 0,
     }
+    if _use_transactional_postgres():
+        return _create_watch_area_postgres(watch_area, failure_injector=_failure_injector)
+
     watch_areas = _read_collection("watch_areas")
     watch_areas.append(watch_area)
     _write_collection("watch_areas", watch_areas)
+    if _failure_injector is not None:
+        _failure_injector("watch_area_written")
 
     alerts = _read_collection("alerts")
-    new_alerts = _alerts_for_watch_area(watch_area, published_records)
+    new_alerts = _alerts_for_watch_area(
+        watch_area, published_records or _published_records_for_creation()
+    )
     alerts.extend(new_alerts)
     _write_collection("alerts", _dedupe(alerts, key="id"))
     watch_area["alert_count"] = len(new_alerts)
+    return watch_area
+
+
+def _create_watch_area_postgres(
+    watch_area: dict[str, Any],
+    *,
+    failure_injector: Callable[[str], None] | None,
+) -> dict[str, Any]:
+    """Persist a watch and its initial alerts without replacing unrelated items."""
+    from app.db import SessionLocal
+    from app.transactional_store import CollectionUnitOfWork
+
+    with SessionLocal.begin() as session:
+        unit_of_work = CollectionUnitOfWork(session)
+        with unit_of_work.canonical_mutation():
+            # Watch matching must read both current canonical collections in this transaction.
+            published_records = [
+                *unit_of_work.list_processed("development_records"),
+                *unit_of_work.list_phase3("development_records"),
+            ]
+            new_alerts = _alerts_for_watch_area(watch_area, published_records)
+            watch_area["alert_count"] = len(new_alerts)
+            unit_of_work.upsert_phase3("watch_areas", str(watch_area["id"]), watch_area)
+            if failure_injector is not None:
+                failure_injector("watch_area_written")
+            for alert in new_alerts:
+                unit_of_work.upsert_phase3("alerts", str(alert["id"]), alert)
+            if failure_injector is not None:
+                failure_injector("watch_alerts_written")
     return watch_area
 
 
@@ -660,6 +743,13 @@ def _read_collection(name: str) -> list[dict[str, Any]]:
     return copy.deepcopy(payload)
 
 
+def _published_records_for_creation() -> list[Any]:
+    """Compatibility path for the single-writer memory/artifact backends only."""
+    from app.seed_store import list_development_records
+
+    return list_development_records()
+
+
 def _write_collection(name: str, items: list[dict[str, Any]]) -> None:
     if _memory_only or get_settings().data_mode == "demo":
         _memory_collections[name] = copy.deepcopy(items)
@@ -669,7 +759,24 @@ def _write_collection(name: str, items: list[dict[str, Any]]) -> None:
         return
     path = _collection_path(name)
     path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(json.dumps(items, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+    # Artifact mode is deliberately single-writer. Each file replacement is atomic,
+    # but a multi-collection operation has no PostgreSQL-style transaction guarantee.
+    with NamedTemporaryFile(
+        mode="w",
+        encoding="utf-8",
+        dir=path.parent,
+        prefix=f".{path.name}.",
+        suffix=".tmp",
+        delete=False,
+    ) as temporary:
+        temporary.write(json.dumps(items, indent=2, sort_keys=True) + "\n")
+        temporary.flush()
+        os.fsync(temporary.fileno())
+        temporary_path = Path(temporary.name)
+    try:
+        os.replace(temporary_path, path)
+    finally:
+        temporary_path.unlink(missing_ok=True)
 
 
 def _collection_path(name: str) -> Path:
@@ -678,6 +785,14 @@ def _collection_path(name: str) -> Path:
 
 def _use_postgres_store() -> bool:
     return get_settings().phase3_store_backend.lower() == "postgres"
+
+
+def _use_transactional_postgres() -> bool:
+    return (
+        not _memory_only
+        and get_settings().data_mode != "demo"
+        and _use_postgres_store()
+    )
 
 
 def _read_postgres_collection(name: str) -> list[dict[str, Any]]:
