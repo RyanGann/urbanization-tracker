@@ -150,14 +150,15 @@ def migrate_processed_artifacts_to_postgres(
 def processed_store_status(*, data_dir: Path | None = None) -> dict[str, Any]:
     settings = get_settings()
     root = data_dir or settings.ingestion_data_dir
+    effective_memory = settings.data_mode == "demo"
     database_counts: dict[str, int] = {}
     database_error: str | None = None
-    if settings.processed_store_backend == "postgres":
+    if settings.processed_store_backend == "postgres" and not effective_memory:
         database_counts, database_error = _postgres_collection_counts()
 
     collections = []
     for name in PROCESSED_COLLECTIONS:
-        artifact_count = _artifact_count(root, name)
+        artifact_count = 0 if effective_memory else _artifact_count(root, name)
         database_count = database_counts.get(name, 0)
         collections.append(
             {
@@ -167,6 +168,7 @@ def processed_store_status(*, data_dir: Path | None = None) -> dict[str, Any]:
                 "artifact_path": str(_collection_path(root, name)),
                 "requires_migration": (
                     settings.processed_store_backend == "postgres"
+                    and not effective_memory
                     and artifact_count > 0
                     and database_count == 0
                 ),
@@ -176,15 +178,15 @@ def processed_store_status(*, data_dir: Path | None = None) -> dict[str, Any]:
     raw_artifacts = [
         {
             "name": name,
-            "artifact_count": _artifact_count(root, name),
+            "artifact_count": 0 if effective_memory else _artifact_count(root, name),
             "artifact_path": str(_collection_path(root, name)),
         }
         for name in RAW_ARTIFACT_COLLECTIONS
     ]
 
     return {
-        "backend": settings.processed_store_backend,
-        "database_first": settings.processed_store_backend == "postgres",
+        "backend": "memory" if effective_memory else settings.processed_store_backend,
+        "database_first": settings.processed_store_backend == "postgres" and not effective_memory,
         "database_error": database_error,
         "collections": collections,
         "raw_artifacts": raw_artifacts,

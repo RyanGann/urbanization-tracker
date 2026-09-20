@@ -1,3 +1,4 @@
+import pytest
 from fastapi.testclient import TestClient
 
 from app.alert_delivery import send_queued_email_alerts
@@ -9,8 +10,13 @@ from app.seed_store import reset_seed_state
 client = TestClient(app)
 
 
-def setup_function() -> None:
+@pytest.fixture(autouse=True)
+def explicit_demo_mode(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("DATA_MODE", "demo")
+    get_settings.cache_clear()
     reset_seed_state()
+    yield
+    get_settings.cache_clear()
 
 
 def test_health_check() -> None:
@@ -276,7 +282,7 @@ def test_reviewer_processed_store_status_omits_server_paths() -> None:
 
     assert response.status_code == 200
     body = response.json()
-    assert body["backend"] == "artifact"
+    assert body["backend"] == "memory"
     assert body["database_first"] is False
     assert any(collection["name"] == "development_records" for collection in body["collections"])
     assert all("artifact_path" not in collection for collection in body["collections"])

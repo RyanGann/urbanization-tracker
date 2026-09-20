@@ -394,18 +394,22 @@ def migrate_artifact_collections_to_postgres(
 def phase3_store_status() -> dict[str, Any]:
     settings = get_settings()
     configured_backend = settings.phase3_store_backend.lower()
-    backend = "memory" if _memory_only else configured_backend
+    effective_memory = _memory_only or settings.data_mode == "demo"
+    backend = "memory" if effective_memory else configured_backend
     database_counts: dict[str, int] = {}
     database_error: str | None = None
 
-    if not _memory_only:
+    if not effective_memory:
         database_counts, database_error = _postgres_collection_counts()
 
     collections = []
     for name in PHASE3_COLLECTIONS:
-        artifact_count, artifact_error = _artifact_collection_count(name)
+        if effective_memory:
+            artifact_count, artifact_error = 0, None
+        else:
+            artifact_count, artifact_error = _artifact_collection_count(name)
         database_count = database_counts.get(name, 0)
-        memory_count = len(_memory_collections.get(name, [])) if _memory_only else 0
+        memory_count = len(_memory_collections.get(name, [])) if effective_memory else 0
         collections.append(
             {
                 "name": name,
@@ -418,7 +422,7 @@ def phase3_store_status() -> dict[str, Any]:
                 ),
                 "artifact_error": artifact_error,
                 "requires_migration": (
-                    not _memory_only
+                    not effective_memory
                     and database_error is None
                     and artifact_error is None
                     and artifact_count > database_count
@@ -428,7 +432,7 @@ def phase3_store_status() -> dict[str, Any]:
 
     return {
         "backend": backend,
-        "database_first": configured_backend == "postgres" and not _memory_only,
+        "database_first": configured_backend == "postgres" and not effective_memory,
         "database_error": database_error,
         "raw_artifact_root": _relative_to_data_dir(
             settings.ingestion_data_dir / "raw",

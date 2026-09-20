@@ -146,3 +146,28 @@ def test_phase3_store_status_returns_relative_artifact_paths(monkeypatch, tmp_pa
         == "processed/phase3_public_submissions.json"
     )
     assert not collections["public_submissions"]["artifact_path"].startswith(str(tmp_path))
+
+
+def test_phase3_store_status_uses_memory_in_demo_without_durable_probes(
+    monkeypatch, tmp_path
+) -> None:
+    monkeypatch.setenv("DATA_MODE", "demo")
+    monkeypatch.setenv("INGESTION_DATA_DIR", str(tmp_path))
+    monkeypatch.setenv("PHASE3_STORE_BACKEND", "postgres")
+    get_settings.cache_clear()
+    reset_phase3_state(force_memory=False)
+
+    def fail_durable_probe(*_args: Any, **_kwargs: Any) -> Any:
+        raise AssertionError("demo status must not inspect durable stores")
+
+    monkeypatch.setattr("app.phase3_store._postgres_collection_counts", fail_durable_probe)
+    monkeypatch.setattr("app.phase3_store._artifact_collection_count", fail_durable_probe)
+
+    status = phase3_store_status()
+    collections = {collection["name"]: collection for collection in status["collections"]}
+
+    assert status["backend"] == "memory"
+    assert status["database_first"] is False
+    assert status["database_error"] is None
+    assert collections["public_submissions"]["database_count"] == 0
+    assert collections["public_submissions"]["artifact_count"] == 0
