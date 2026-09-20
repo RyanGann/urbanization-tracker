@@ -1,6 +1,6 @@
 # P01 — Reproducible real-stack performance baseline
 
-Implementation and measurements are in progress; this is not a deployment-readiness claim.
+The legacy representative workload fails on both desktop and mobile. This PR establishes measurement and failure evidence; it is not a deployment-readiness claim.
 
 ## Reproduce
 
@@ -47,7 +47,7 @@ If the copy has no record allowed by the current default filters or no enabled l
 
 The corrected desktop functional run at `97fca6e` passed two fresh loads, two complete warm cycles and both real endpoints at concurrency one/five. Artifact: `tmp/integration/2026-09-20T03-06-14-304Z-819b3502`; cleanup removed. Lead inspected its selected-record screenshot. That small smoke run is not a representative performance result. Earlier failed prechecks revealed transformed string feature IDs and overlapping click targets; stable fixture properties and an isolated known development corrected those assertions.
 
-## Controlled desktop results
+## Controlled reference results
 
 The representative legacy path failed both desktop runs: the API was OOM-killed (exit 137) while loading the full environmental collection under its 1 GiB RAM limit. Neither run achieved a useful map with enabled environmental context. Both completed cleanup successfully. These failures establish the baseline; they do not pass any readiness or performance budget.
 
@@ -55,6 +55,8 @@ The representative legacy path failed both desktop runs: the API was OOM-killed 
 | --- | --- | --- | --- |
 | [Desktop 1](P01/desktop-1/summary.json) | ff59ba671a362974e81d8b7fd6e1ddf430fddb33 | API OOM, no usable-map latency | 2/10 cold loads, 0/20 warm cycles, 14/400 API attempts |
 | [Desktop 2](P01/desktop-2/summary.json) | 930e2556a81e977e3fb2142cfadbee31fe6a2e5d | Overlay readiness timed out, then API OOM | 2/10 cold loads, 0/20 warm cycles, 14/400 API attempts |
+| [Mobile 1](P01/mobile-1/summary.json) | 59d6e8b7c6b5675e0b682971e6a68680d9400fae | Overlay readiness timed out, then API OOM | 2/10 cold loads, 0/20 warm cycles, 14/400 API attempts |
+| [Mobile 2](P01/mobile-2/summary.json) | 6d26c3f403abf7909276bcb002b5cb1ed2bf1102 | Overlay readiness timed out, then API OOM | 2/10 cold loads, 0/20 warm cycles, 14/400 API attempts |
 | [Functional fixture A](P01/desktop-functional/summary.json) | 294a995d0de2f8b4278fcb938816e24591eedd7b | All functional checks passed | 2/2 cold loads, 2/2 warm cycles, 8/8 API attempts |
 
 The two-failure stop rule avoided hundreds of repeated requests to an unavailable API. Successful-latency distributions remain empty/null; failed requests are not included in a p95. Of 430 requested representative operations, each desktop run attempted 16 and left 414 unrun. Raw samples, failures, SQL plans, fixture manifests, image versions, resource samples and cleanup records are alongside each summary. The small fixture's two samples prove the harness works, not the representative budgets.
@@ -76,4 +78,12 @@ node scripts/performance/archive-evidence.mjs --run tmp/integration/<completed-r
 
 Only completed, cleaned synthetic A/B runs with matching fixture hashes can be archived. The helper copies selected JSON evidence and removes local absolute paths and unrelated container names. Snapshot data, generated full geometry, logs, environment files and screenshots remain local. Existing archive names are never overwritten.
 
-The first mobile repetition also ended in API OOM (exit 137), after the enabled-overlay wait timed out. It used SHA `59d6e8b` with archive-helper/evidence work present in the working tree; the application path was unchanged. Its effective API policy was 1 GiB RAM and 2 GiB combined RAM/swap. Raw run: `2026-09-20T03-37-33-892Z-65f330b2`; cleanup removed. The second mobile repetition and final PR checks are still in progress.
+The first mobile repetition also ended in API OOM (exit 137), after the enabled-overlay wait timed out. It used SHA `59d6e8b` with archive-helper/evidence work present in the working tree; the application path was unchanged. Its effective API policy was 1 GiB RAM and 2 GiB combined RAM/swap. Raw run: `2026-09-20T03-37-33-892Z-65f330b2`; cleanup removed. The second mobile repetition at `6d26c3f403abf7909276bcb002b5cb1ed2bf1102` had the same OOM outcome, sample counts, and effective resource limits. Neither profile produced a successful representative latency; comparison across devices is therefore limited to the repeated failure, not a speed ratio. All four representative projects were removed.
+
+## Final integration checks
+
+C01 was merged into this branch after the legacy baseline measurements; its data-mode/error handling is retained together with benchmark instrumentation. All four archived baseline application SHAs predate that integration, and are explicitly identified rather than described as final-head latency measurements.
+
+Ten affected measurement tests pass, including streamed gzip byte counts, timeout failure, mandatory resource sampling, conventional medians, and awaiting delayed worker size accounting. Worker response transfer uses completed Playwright encoded body plus response header sizes when page-target CDP omits completion, with explicit provenance. Unknown decoded body sizes remain null. The [Playwright request size contract](https://playwright.dev/docs/api/class-request#request-sizes) defines those fields. Older archived smoke medians used nearest-rank p50; their raw samples are preserved, and no two-sample latency budget is claimed.
+
+Final combined real-stack functional verification and CI are pending. Required CI includes the performance functional precheck, T01 real API/browser smoke, and C01 data-mode scenario.

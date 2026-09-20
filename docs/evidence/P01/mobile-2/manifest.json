@@ -1,0 +1,158 @@
+{
+  "run_id": "2026-09-20T03-46-57-629Z-1bdaa7a9",
+  "project": "urbanization_t01_9b7f623f00e8",
+  "suite": "performance",
+  "performance": {
+    "fixture": {
+      "schema_version": 1,
+      "generator": {
+        "name": "p01-performance-fixture",
+        "version": 2,
+        "settings": {
+          "dense_polygon_points": "950-1110",
+          "development_grid": "80x17",
+          "overlay_grid": "80x52"
+        }
+      },
+      "profile": "B",
+      "seed": 1369948382,
+      "development_records": 1324,
+      "environmental_features": 4000,
+      "environmental_coordinate_pairs": 4451671,
+      "geometry_cases": [
+        "dense-line",
+        "holes",
+        "multipolygon",
+        "polygon",
+        "tile-boundary-touch"
+      ],
+      "source_coverage": {
+        "synthetic": true,
+        "disclaimer": "Fixture coverage metadata is synthetic and does not claim completeness for any real source.",
+        "sources": [
+          {
+            "id": "p01-synthetic-complete",
+            "status": "complete",
+            "scope_id": "p01-b-complete-scope",
+            "expected_features": 4000,
+            "fetched_features": 4000,
+            "note": "All generated features for this synthetic source are present."
+          },
+          {
+            "id": "p01-synthetic-partial",
+            "status": "partial",
+            "scope_id": "p01-b-partial-scope",
+            "expected_features": 4008,
+            "fetched_features": 4000,
+            "note": "Eight synthetic source features are intentionally outside this fixture."
+          }
+        ]
+      },
+      "expected": {
+        "first_development": {
+          "public_id": "p01-b-development-0000",
+          "title": "P01 B development 0",
+          "centroid": [
+            -86.66,
+            34.85
+          ]
+        },
+        "visible_geometry_cases": [
+          "dense-line",
+          "holes",
+          "multipolygon",
+          "polygon",
+          "tile-boundary-touch"
+        ],
+        "enabled_overlay_id": "wetlands"
+      },
+      "overlay_probes": [
+        {
+          "overlay_id": "wetlands",
+          "overlay_name": "P01 B rendered context",
+          "feature_id": "p01-environment-1",
+          "coordinate": [
+            -86.8548,
+            34.615
+          ]
+        }
+      ],
+      "diagnostics": {
+        "quarantined_invalid": [
+          {
+            "id": "p01-invalid-self-intersection",
+            "reason": "self-intersecting-ring"
+          }
+        ],
+        "touching_tile_boundaries": [
+          {
+            "id": "p01-tile-boundary-touch",
+            "reason": "published polygon deliberately touches a real slippy-map tile west edge",
+            "boundary": "west",
+            "published_feature_id": "p01-environment-2",
+            "zoom": 12,
+            "tile_x": 1061,
+            "coordinate": [
+              -86.748046875,
+              34.75
+            ]
+          }
+        ],
+        "unsupported_unlocated_records": [
+          {
+            "id": "p01-unlocated-diagnostic",
+            "reason": "published source record has no usable geometry or centroid; excluded from development_records"
+          }
+        ]
+      },
+      "bytes_utf8": 103055694,
+      "sha256": "6cc899d1db3110a1278f77a2352c11b0aba8e43f9a95e1a4be58409c7fc18150"
+    },
+    "profile": "mobile",
+    "smoke": false,
+    "resource_limits": {
+      "api_cpus": 1,
+      "api_memory_gib": 1,
+      "db_cpus": 2,
+      "db_memory_gib": 2
+    }
+  },
+  "api_url": "http://127.0.0.1:62674",
+  "fixture_sha256": "6cc899d1db3110a1278f77a2352c11b0aba8e43f9a95e1a4be58409c7fc18150",
+  "fixture": {
+    "id": "p01-b-development-0000",
+    "title": "P01 B development 0",
+    "count": 1324
+  },
+  "command": "node scripts/run-integration.mjs --suite performance --scenario representative --profile mobile",
+  "options": {
+    "suite": "performance",
+    "keep_on_failure": false,
+    "assert_failure": false,
+    "isolation_check": false
+  },
+  "outcome": "failed",
+  "failure": "docker exited with 1",
+  "commit_sha": "6d26c3f403abf7909276bcb002b5cb1ed2bf1102",
+  "working_tree_dirty": false,
+  "images": {
+    "database": "postgis/postgis:16-3.4",
+    "mail": "axllent/mailpit:v1.27.1",
+    "browser": "mcr.microsoft.com/playwright:v1.60.0-noble"
+  },
+  "image_digests": {
+    "database": "postgis/postgis@sha256:44126d872ac91993766c341e369c539e8196614321765d36a6f1bab0419a5fa5",
+    "mail": "axllent/mailpit@sha256:986b14ff7b253e62883ea19fd3112806f116e5e2f221e03f12fb81c7312ff532",
+    "browser": "mcr.microsoft.com/playwright@sha256:9bd26ad900bb5e0f4dee75839e957a89ae89c2b7ab1e76050e559790e946b948"
+  },
+  "image_ids": {
+    "urbanization_t01_9b7f623f00e8-web-1": "sha256:d1bd520f5bb78954eb09c6823f025e8d3b82837c41bdfa528098be89f47847ac",
+    "urbanization_t01_9b7f623f00e8-api-1": "sha256:877d8141f94fcef4ae145d134a11cf700d1d74bc43efeebfde6f57ba1af2f292",
+    "urbanization_t01_9b7f623f00e8-api-gateway-1": "sha256:6769dc3a703c719c1d2756bda113659be28ae16cf0da58dd5fd823d6b9a050ea",
+    "urbanization_t01_9b7f623f00e8-db-1": "sha256:06287eb8e12c43f425773085c48d6ad02d73f8b442ac209810c1b211eb0a643b",
+    "urbanization_t01_9b7f623f00e8-mail-1": "sha256:774f5f77986b98051deecb040426ec57c259fd0d61f85724500e6737cadb1747"
+  },
+  "retained": false,
+  "cleanup_result": "removed",
+  "cleanup_failure": null
+}
