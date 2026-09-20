@@ -2,6 +2,10 @@
 
 Last updated: 2026-05-20
 
+This is the historical phase checklist. The [September review](reviews/2026-09-19-project-review.md)
+found gaps in several completed milestones. Use the [current implementation plan](implementation/2026-09-readiness/README.md)
+for remaining work and verified acceptance gates; checked historical items do not establish launch readiness.
+
 ## Phase 0 - Research and Data Feasibility
 
 Goal: prove Huntsville is a viable pilot and document the source/legal/geometry constraints before building production workflows.

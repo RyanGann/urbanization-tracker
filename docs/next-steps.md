@@ -1,12 +1,19 @@
 # Next Steps
 
-Last updated: 2026-07-09
+Last updated: 2026-09-19
 
-The codebase is through Phase 4 and has the application and deployment plumbing needed for a
-private alpha. The critical path is now production configuration and operational verification, not
-another broad feature phase.
+The September review found application correctness, performance, and usability work in addition
+to deployment configuration. The active source of implementation order and acceptance criteria
+is the [PR-sized readiness plan](implementation/2026-09-readiness/README.md).
+Start with its real API/PostGIS harness, dependency update, explicit data modes, performance
+baseline, and early filter/payload fixes. Its [performance plan](implementation/2026-09-readiness/PERFORMANCE.md)
+and [testing plan](implementation/2026-09-readiness/TESTING.md) are ready for coding-agent handoff.
 
-## Completed Hardening
+The checklists below retain earlier implementation history and operational reminders. Checked
+items describe completed implementation milestones, not proof that current end-to-end workflows
+are ready for launch. The active plan supersedes the earlier configuration-only critical path.
+
+## Historical Hardening Milestones
 
 - [x] Add Postgres-backed Phase 3 operational collections, migration tooling, and status APIs.
 - [x] Add Postgres-backed canonical processed collections and migration tooling.

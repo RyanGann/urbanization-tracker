@@ -2,6 +2,12 @@
 
 Last updated: 2026-05-20
 
+The product goals below remain the foundation. For the September readiness work, the
+[implementation plan](implementation/2026-09-readiness/README.md) and
+[shared implementation contracts](implementation/2026-09-readiness/CONTRACTS.md)
+define the incremental storage, API, tile, review and alert changes. They supersede conflicting
+implementation details in this original design without replacing its product goals.
+
 ## 1. Product Definition
 
 Urbanization Tracker is a web-first, eventually mobile-capable, open-source public-good application. It helps people see where land is already developed, where future development is proposed or approved, and what environmental context exists nearby.
@@ -622,4 +628,3 @@ docker compose up
 - How much applicant/contractor/owner information should be shown publicly?
 - Should permit points be buffered for proximity analysis, or should environmental flags be restricted to polygon-based sources until parcel geometry is available?
 - Should Madison County be included in the first pilot boundary or treated as Phase 2 research?
-
