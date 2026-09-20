@@ -1,0 +1,34 @@
+# C01 explicit data modes evidence
+
+Base: `9ed339bb23c8a4b15c8f7c1f04d8f4cc6c137ff8` (merged T01/S01 main)
+Tested commit: `c80b80f`
+
+## Real stack
+
+Command: `node scripts/run-integration.mjs --suite api --scenario c01-data-modes`
+
+Passed on September 20, 2026. Manifest: `tmp/integration/2026-09-20T03-04-34-633Z-a1bff65c/manifest.json`. The isolated Compose project `urbanization_t01_a399842b48b0` finished with `cleanup_result: removed`.
+
+The scenario used the T01 PostGIS Compose stack and real HTTP through its fixed gateway. It verified:
+
+- Initialized empty PostgreSQL returns live/ready metadata, an empty record and GeoJSON collection, and 404 for an unknown detail.
+- A seeded PostgreSQL fixture survives a database stop and restart; while stopped, list, detail, and GeoJSON return 503 with `detail.code=data_unavailable` and no seed fallback.
+- Missing, empty, and corrupt live artifact collections distinguish uninitialized, ready-empty, and unavailable states.
+- Explicit demo reports `data_mode=demo`, returns demo-only records, and does not mix the live fixture. A real live public submission is visible to authenticated reviewer reads, excluded in demo, while a demo-created submission stays memory-only and is absent after returning to the same live Postgres backend.
+- Browser checks against the real internal API distinguish empty, unavailable with no map features or record rows, and labelled demo data.
+
+Fixture SHA-256: `932eacb03655a3dee1a2838abf9ddf8d5dfa44f744482408611b61a2561bbee2`.
+
+Generated empty artifact SHA-256: `37517e5f3dc66819f61f5a7bb8ace1921282415f10551d2defa5c3eb0985b570`.
+
+Generated corrupt artifact SHA-256: `ca3d163bab055381827226140568f3bef7eaac187cebd76878e0b63e9e442356`.
+
+## Ordinary checks
+
+`npm run typecheck:web` passed after the C01 client and browser test changes.
+
+The API production image built successfully from the C01 source. A direct attempt to run pytest in that runtime image was not applicable because its deliberately minimal runtime lock does not install pytest; the test attempt was cleaned with `docker compose down --volumes --remove-orphans`. The focused Python availability tests are included in this change and the real-stack driver exercised their HTTP contract through the production API image.
+
+## Limits
+
+No deployment, real SMTP delivery, saved dataset mutation, or external source fetch was performed. The scenario used generated files only beneath its integration artifact directory and removed its Compose resources on completion.
