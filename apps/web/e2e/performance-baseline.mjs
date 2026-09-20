@@ -137,6 +137,7 @@ async function coldLoad(browser, index) {
     for (const required of ['p01:records-received', 'p01:list-ready', 'p01:overlays-received', 'p01:map-loaded']) {
       if (!Number.isFinite(marks[required])) throw new Error(`Missing required mark: ${required}`);
     }
+    await network.flush();
     Object.assign(result, {
       marks, feature_rendered_ms: dev.time, overlay_rendered_ms: env.time,
       first_useful_ms: dev.visible ? Math.max(dev.time, marks['p01:list-ready'], marks['p01:records-received']) : null,
@@ -157,6 +158,7 @@ async function coldLoad(browser, index) {
     result.ok = true;
   } catch (error) {
     result.error = error.message;
+    await network.flush().catch((flushError) => { result.network_flush_error = flushError.message; });
     result.network ??= [...network.rows.values()];
     await page.screenshot({ path: join(dirname(output), `${profile}-failure-${index}.png`), timeout: 5000 }).catch(() => {});
   } finally { result.page_errors = errors; await context.close(); }

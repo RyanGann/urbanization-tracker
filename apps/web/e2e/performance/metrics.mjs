@@ -119,6 +119,7 @@ export async function trackNetwork(context, page, mobile) {
     offline: false, latency: 100, downloadThroughput: 10_000_000 / 8, uploadThroughput: 1_000_000 / 8
   });
   const rows = new Map();
+  const pendingSizes = new Set();
   cdp.on('Network.requestWillBeSent', ({ requestId, request }) => {
     rows.set(requestId, {
       url: request.url,
@@ -152,7 +153,18 @@ export async function trackNetwork(context, page, mobile) {
     Object.assign(row, { failed: true, complete: false, error: errorText }); rows.set(requestId, row);
   });
   page.on('requestfinished', (request) => {
-    void applyCompletedRequestSizes(rows, request).catch(() => {});
+    const pending = applyCompletedRequestSizes(rows, request).catch(() => {});
+    pendingSizes.add(pending);
+    void pending.finally(() => pendingSizes.delete(pending));
   });
-  return { rows, cdp };
+  const flush = async (timeoutMs = 5000) => {
+    let timer;
+    try {
+      await Promise.race([
+        (async () => { while (pendingSizes.size) await Promise.all([...pendingSizes]); })(),
+        new Promise((_, reject) => { timer = setTimeout(() => reject(new Error('Worker transfer measurement timed out')), timeoutMs); })
+      ]);
+    } finally { clearTimeout(timer); }
+  };
+  return { rows, cdp, flush };
 }

@@ -1,8 +1,31 @@
 import assert from 'node:assert/strict';
 import { createServer } from 'node:http';
+import { EventEmitter } from 'node:events';
 import { gzipSync } from 'node:zlib';
 import test from 'node:test';
-import { applyCompletedRequestSizes, sampleHttp, summary } from './metrics.mjs';
+import { applyCompletedRequestSizes, sampleHttp, summary, trackNetwork } from './metrics.mjs';
+
+test('flush waits for delayed worker sizes before the caller snapshots network evidence', async () => {
+  const cdp = new EventEmitter();
+  cdp.send = async () => {};
+  const page = new EventEmitter();
+  const network = await trackNetwork({ newCDPSession: async () => cdp }, page, false);
+  const url = 'http://web/assets/maplibre-gl-worker.js';
+  cdp.emit('Network.requestWillBeSent', { requestId: 'worker', request: { url } });
+  let release;
+  const delayed = new Promise((resolve) => { release = resolve; });
+  page.emit('requestfinished', {
+    url: () => url, response: async () => ({ status: () => 200 }), sizes: () => delayed
+  });
+  let flushed = false;
+  const flushing = network.flush().then(() => { flushed = true; });
+  await new Promise((resolve) => setImmediate(resolve));
+  assert.equal(flushed, false);
+  release({ responseBodySize: 500, responseHeadersSize: 20 });
+  await flushing;
+  assert.equal(network.rows.get('worker').transfer_bytes, 520);
+  assert.equal(network.rows.get('worker').complete, true);
+});
 
 test('summarizes empty, odd, and even timing samples with a conventional median', () => {
   assert.deepEqual(summary([]), {
