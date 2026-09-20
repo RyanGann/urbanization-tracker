@@ -284,6 +284,11 @@ async function runSuite(options) {
   const commitSha = (await run("git", ["rev-parse", "HEAD"], { log })).output.trim();
 
   await mkdir(artifactDir, { recursive: true });
+  if (options.scenario === "c01-data-modes") {
+    // Create the bind-mount source as the host user before Compose starts the API.
+    // Otherwise Docker creates it as root and the runner cannot write C01 fixtures on Linux CI.
+    await mkdir(join(artifactDir, "c01-data"), { recursive: true });
+  }
   await writeFile(envFile, [
     `INTEGRATION_ARTIFACT_DIR=${artifactDir.replaceAll("\\", "/")}`,
     `INTEGRATION_REVIEWER_TOKEN=${reviewerToken}`,
