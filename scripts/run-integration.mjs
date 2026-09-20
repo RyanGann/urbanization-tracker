@@ -7,8 +7,9 @@ import { fileURLToPath } from "node:url";
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const composeFile = join(root, "compose.integration.yml");
-const fixturePath = join(root, "apps", "api", "tests", "integration", "fixture.json");
-const supportedSuites = new Set(["api", "live"]);
+const defaultFixturePath = join(root, "apps", "api", "tests", "integration", "fixture.json");
+const performanceGenerator = join(root, "scripts", "performance", "generate-fixture.mjs");
+const supportedSuites = new Set(["api", "live", "performance"]);
 const requestedArgs = process.argv.slice(2);
 let interrupted = false;
 const activeChildren = new Set();
@@ -27,12 +28,12 @@ for (const signal of ["SIGINT", "SIGTERM"]) {
 
 function usage(message) {
   if (message) console.error(`Error: ${message}`);
-  console.error("Usage: node scripts/run-integration.mjs --suite api|live [--keep-on-failure]");
+  console.error("Usage: node scripts/run-integration.mjs --suite api|live|performance [--scenario functional|representative] [--profile desktop|mobile] [--keep-on-failure]");
   process.exitCode = 2;
 }
 
 function parseArgs(argv) {
-  const options = { keepOnFailure: false, assertFailure: false, isolationCheck: false, child: false };
+  const options = { keepOnFailure: false, assertFailure: false, isolationCheck: false, child: false, profile: null };
   for (let index = 0; index < argv.length; index += 1) {
     const argument = argv[index];
     if (argument === "--suite" || argument === "--scenario") {
@@ -41,6 +42,11 @@ function parseArgs(argv) {
       options[argument.slice(2)] = value;
       index += 1;
     } else if (argument === "--keep-on-failure") options.keepOnFailure = true;
+    else if (argument === "--profile") {
+      const value = argv[++index];
+      if (!value || value.startsWith("--")) throw new Error("--profile requires a value");
+      options.profile = value;
+    }
     else if (argument === "--assert-failure") options.assertFailure = true;
     else if (argument === "--isolation-check") options.isolationCheck = true;
     else if (argument === "--child") options.child = true;
@@ -50,8 +56,17 @@ function parseArgs(argv) {
   if (!supportedSuites.has(options.suite)) {
     throw new Error(`Suite '${options.suite}' is not implemented by T01`);
   }
-  if (options.scenario) {
+  if (options.suite === "performance") {
+    if (!new Set(["functional", "representative"]).has(options.scenario ?? "functional")) {
+      throw new Error(`Performance scenario '${options.scenario}' must be functional or representative`);
+    }
+    if (!new Set(["desktop", "mobile"]).has(options.profile)) {
+      throw new Error("Performance suite requires --profile desktop|mobile");
+    }
+  } else if (options.scenario) {
     throw new Error(`Scenario '${options.scenario}' is not implemented by T01`);
+  } else if (options.profile) {
+    throw new Error("--profile is only supported with --suite performance");
   }
   if (options.assertFailure && options.suite !== "api") {
     throw new Error("--assert-failure is only supported with --suite api");
@@ -154,7 +169,7 @@ async function waitForDatabase(compose, log, timeoutMs = 60_000) {
   throw new Error(`database SQL readiness probe timed out: ${lastError}`);
 }
 
-async function assertApi(apiUrl, reviewerToken, fixture, assertFailure) {
+async function assertApi(apiUrl, reviewerToken, fixture, assertFailure, expectedRecordCount = 1) {
   const health = await fetchWithTimeout(`${apiUrl}/health`);
   if (!health.ok) throw new Error(`health request returned ${health.status}`);
 
@@ -173,7 +188,7 @@ async function assertApi(apiUrl, reviewerToken, fixture, assertFailure) {
   });
   const store = await authorized.json();
   const collection = store.collections?.find((item) => item.name === "development_records");
-  if (!authorized.ok || store.backend !== "postgres" || collection?.database_count !== 1) {
+  if (!authorized.ok || store.backend !== "postgres" || collection?.database_count !== expectedRecordCount) {
     throw new Error("reviewer request did not observe the Postgres processed-store fixture");
   }
 }
@@ -237,6 +252,10 @@ async function runSuite(options) {
     id: `t01-postgis-${sentinel}`,
     title: `T01 PostGIS Fixture ${sentinel}`
   };
+  const fixtureProfile = options.suite === "performance" && options.scenario !== "functional" ? "B" : "A";
+  const selectedFixturePath = options.suite === "performance"
+    ? join(artifactDir, `fixture-${fixtureProfile.toLowerCase()}.json`)
+    : defaultFixturePath;
   let apiUrl = "";
   const compose = ["compose", "--project-name", project, "--project-directory", root, "--env-file", envFile, "-f", composeFile];
   let failed = false;
@@ -246,10 +265,18 @@ async function runSuite(options) {
   const commitSha = (await run("git", ["rev-parse", "HEAD"], { log })).output.trim();
 
   await mkdir(artifactDir, { recursive: true });
+  if (options.suite === "performance") {
+    await run(process.execPath, [performanceGenerator, "--profile", fixtureProfile, "--seed", "1369948382", "--output", selectedFixturePath], { log, timeoutMs: 300_000 });
+  }
   await writeFile(envFile, [
     `INTEGRATION_ARTIFACT_DIR=${artifactDir.replaceAll("\\", "/")}`,
     `INTEGRATION_REVIEWER_TOKEN=${reviewerToken}`,
-    `INTEGRATION_FIXTURE_TITLE=${fixture.title}`
+    `INTEGRATION_FIXTURE_TITLE=${fixture.title}`,
+    `P01_PERFORMANCE_PROFILE=${options.profile ?? ""}`,
+    `P01_PERFORMANCE_SCENARIO=${options.scenario ?? ""}`,
+    `P01_PERFORMANCE_MARKS=${options.suite === "performance" ? "true" : "false"}`,
+    "P01_API_INTERNAL_URL=http://api:8000",
+    `P01_OUTPUT=/artifacts/performance/${options.profile ?? ""}-${options.scenario ?? ""}.json`
   ].join("\n") + "\n", { encoding: "utf8", mode: 0o600 });
   await writeFile(cleanupEnv, [
     `INTEGRATION_ARTIFACT_DIR=${artifactDir.replaceAll("\\", "/")}`,
@@ -273,28 +300,37 @@ async function runSuite(options) {
     },
     instruction: "Inspect every listed resource label before running the exact cleanup arguments."
   }, null, 2) + "\n", "utf8");
-  const fixtureHash = createHash("sha256").update(await readFile(fixturePath)).digest("hex");
+  const fixtureHash = createHash("sha256").update(await readFile(selectedFixturePath)).digest("hex");
 
   try {
-    await run("docker", [...compose, "build", "api", ...(options.suite === "live" ? ["web", "browser"] : [])], { log, timeoutMs: 300_000 });
+    const buildArgs = [...compose, "build", "api", ...(options.suite === "live" || options.suite === "performance" ? ["web", "browser"] : [])];
+    if (options.suite === "performance") buildArgs.push("--build-arg", "VITE_PERFORMANCE_MARKS=true");
+    await run("docker", buildArgs, { log, timeoutMs: 300_000 });
     await run("docker", [...compose, "up", "--detach", "db", "mail"], { log, timeoutMs: 300_000 });
     await waitForDatabase(compose, log);
     await run("docker", [...compose, "run", "--rm", "--no-deps", "api", "alembic", "upgrade", "head"], { log });
-    await run("docker", [...compose, "run", "--rm", "--no-deps", "--volume", `${join(root, "apps", "api", "tests", "integration").replaceAll("\\", "/")}:/integration:ro`, "--env", `INTEGRATION_FIXTURE_ID=${fixture.id}`, "--env", `INTEGRATION_FIXTURE_TITLE=${fixture.title}`, "api", "python", "/integration/seed_integration.py"], { log });
+    const seedArgs = [...compose, "run", "--rm", "--no-deps", "--volume", `${join(root, "apps", "api", "tests", "integration").replaceAll("\\", "/")}:/integration:ro`];
+    if (options.suite === "performance") seedArgs.push("--volume", `${selectedFixturePath.replaceAll("\\", "/")}:/p01-fixture.json:ro`, "--env", "INTEGRATION_FIXTURE_PATH=/p01-fixture.json", "--env", "P01_VALIDATE_GEOMETRY=1");
+    seedArgs.push("--env", `INTEGRATION_FIXTURE_ID=${fixture.id}`, "--env", `INTEGRATION_FIXTURE_TITLE=${fixture.title}`, "api", "python", "/integration/seed_integration.py");
+    await run("docker", seedArgs, { log, timeoutMs: options.suite === "performance" ? 300_000 : 120_000 });
     await run("docker", [...compose, "up", "--detach", "api"], { log });
     await run("docker", [...compose, "up", "--detach", "api-gateway"], { log });
     apiUrl = await publishedPort(compose, "api-gateway", 8000, log);
     await waitForHealth(apiUrl);
     await run("docker", [...compose, "exec", "-T", "db", "psql", "-U", "integration", "-d", "integration", "-Atqc", "SELECT PostGIS_Version();"], { log });
     await run("docker", [...compose, "exec", "-T", "api", "alembic", "current"], { log });
-    await assertApi(apiUrl, reviewerToken, fixture, options.assertFailure);
+    const expectedRecordCount = options.suite === "performance" ? JSON.parse(await readFile(selectedFixturePath, "utf8")).development_records.length : 1;
+    await assertApi(apiUrl, reviewerToken, fixture, options.assertFailure, expectedRecordCount);
     await run("docker", [...compose, "restart", "api"], { log });
     apiUrl = await publishedPort(compose, "api-gateway", 8000, log);
     await waitForHealth(apiUrl);
-    await assertApi(apiUrl, reviewerToken, fixture, false);
+    await assertApi(apiUrl, reviewerToken, fixture, false, expectedRecordCount);
     if (options.suite === "live") {
       await run("docker", [...compose, "up", "--detach", "web"], { log, timeoutMs: 300_000 });
       await run("docker", [...compose, "run", "--rm", "browser"], { log, timeoutMs: 300_000 });
+    } else if (options.suite === "performance") {
+      await run("docker", [...compose, "up", "--detach", "web"], { log, timeoutMs: 300_000 });
+      await run("docker", [...compose, "run", "--rm", "--entrypoint", "node", "browser", "e2e/performance-baseline.mjs"], { log, timeoutMs: 1_800_000 });
     }
   } catch (error) {
     failed = true;

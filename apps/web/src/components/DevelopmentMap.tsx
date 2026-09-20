@@ -12,6 +12,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 
 import type { DevelopmentRecord, EnvironmentalOverlay } from "../types";
 import { statusLabel } from "../utils/records";
+import { performanceMark } from "../utils/performance";
 
 maplibregl.setWorkerUrl(maplibreWorkerUrl);
 interface DevelopmentMapProps {
@@ -262,7 +263,10 @@ export function DevelopmentMap({
       }),
       "bottom-right"
     );
-    map.once("load", () => setMapReady(true));
+    map.once("load", () => {
+      performanceMark("map-loaded");
+      setMapReady(true);
+    });
     if (import.meta.env.DEV) {
       (
         window as typeof window & {
@@ -322,6 +326,19 @@ export function DevelopmentMap({
       });
     });
     setAppliedFeatureCount(records.length);
+    map.once("idle", () => {
+      const renderedDevelopment = map.queryRenderedFeatures(undefined, {
+        layers: ["development-points", "development-polygons-fill"]
+      });
+      if (renderedDevelopment.length > 0) performanceMark("feature-rendered");
+      const renderedOverlay = overlays.some((overlay) => {
+        if (!visibleOverlayIds.includes(overlay.id)) return false;
+        return overlayLayerIds(overlay).some((layerId) =>
+          map.getLayer(layerId) && map.queryRenderedFeatures(undefined, { layers: [layerId] }).length > 0
+        );
+      });
+      if (renderedOverlay) performanceMark("overlay-rendered");
+    });
 
     if (!handlersAttachedRef.current) {
       const handleClick = (event: MapLayerMouseEvent) => {

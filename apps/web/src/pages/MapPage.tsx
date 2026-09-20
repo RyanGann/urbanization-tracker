@@ -2,7 +2,7 @@ import "maplibre-gl/dist/maplibre-gl.css";
 
 import { useQuery } from "@tanstack/react-query";
 import { ExternalLink, Filter, Layers, ListFilter, MapPin, RotateCcw } from "lucide-react";
-import { useCallback, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 
 import { fetchDevelopmentRecords, fetchEnvironmentalOverlays } from "../api";
@@ -16,6 +16,7 @@ import {
   formatArea,
   uniqueFlagTypes
 } from "../utils/records";
+import { performanceMark } from "../utils/performance";
 
 const INITIAL_STATUSES: DevelopmentStatus[] = ["layout", "preliminary", "final", "issued_permit"];
 const INITIAL_CONFIDENCE: ConfidenceLevel[] = ["high", "medium", "low"];
@@ -58,6 +59,10 @@ export function MapPage() {
 
   const records = recordsQuery.data?.records ?? [];
   const overlays = overlaysQuery.data ?? [];
+  useEffect(() => {
+    if (recordsQuery.isSuccess) performanceMark("list-ready");
+    if (overlaysQuery.isSuccess) performanceMark("catalog-ready");
+  }, [recordsQuery.isSuccess, overlaysQuery.isSuccess]);
   const availableFlags = uniqueFlagTypes(recordsQuery.data?.records ?? records);
 
   const resetFilters = () => {
