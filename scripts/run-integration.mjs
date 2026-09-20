@@ -28,7 +28,7 @@ for (const signal of ["SIGINT", "SIGTERM"]) {
 
 function usage(message) {
   if (message) console.error(`Error: ${message}`);
-  console.error("Usage: node scripts/run-integration.mjs --suite api|live|performance [--scenario functional|representative] [--profile desktop|mobile] [--smoke] [--keep-on-failure]");
+  console.error("Usage: node scripts/run-integration.mjs --suite api|live|performance [--scenario functional|representative|snapshot] [--snapshot-dir DISPOSABLE_COPY] [--profile desktop|mobile] [--smoke] [--keep-on-failure]");
   process.exitCode = 2;
 }
 
@@ -36,10 +36,10 @@ function parseArgs(argv) {
   const options = { keepOnFailure: false, assertFailure: false, isolationCheck: false, child: false };
   for (let index = 0; index < argv.length; index += 1) {
     const argument = argv[index];
-    if (argument === "--suite" || argument === "--scenario" || argument === "--profile") {
+    if (argument === "--suite" || argument === "--scenario" || argument === "--profile" || argument === "--snapshot-dir") {
       const value = argv[index + 1];
       if (!value || value.startsWith("--")) throw new Error(`${argument} requires a value`);
-      options[argument.slice(2)] = value;
+      options[argument === "--snapshot-dir" ? "snapshotDir" : argument.slice(2)] = value;
       index += 1;
     } else if (argument === "--keep-on-failure") options.keepOnFailure = true;
     else if (argument === "--assert-failure") options.assertFailure = true;
@@ -53,11 +53,12 @@ function parseArgs(argv) {
     throw new Error(`Suite '${options.suite}' is not implemented by T01`);
   }
   if (options.suite === "performance") {
-    options.scenario ??= "representative";
+    options.scenario ??= options.snapshotDir ? "snapshot" : "representative";
     options.profile ??= "desktop";
-    if (!["functional", "representative"].includes(options.scenario)) throw new Error("Performance scenario must be functional or representative");
+    if (!["functional", "representative", "snapshot"].includes(options.scenario)) throw new Error("Performance scenario must be functional, representative or snapshot");
+    if ((options.scenario === "snapshot") !== !!options.snapshotDir) throw new Error("Snapshot scenario requires --snapshot-dir; other scenarios forbid it");
     if (!["desktop", "mobile"].includes(options.profile)) throw new Error("Performance profile must be desktop or mobile");
-  } else if (options.scenario || options.profile || options.smoke) {
+  } else if (options.scenario || options.profile || options.smoke || options.snapshotDir) {
     throw new Error("Performance options require --suite performance");
   }
   if (options.assertFailure && options.suite !== "api") {
@@ -268,6 +269,8 @@ async function runSuite(options) {
   let imageDigests = {};
   let imageIds = {};
   const commitSha = (await run("git", ["rev-parse", "HEAD"], { log })).output.trim();
+  const workingTreeDirty = !!(await run("git", ["status", "--porcelain"], { log })).output.trim();
+  console.log(JSON.stringify({ run_id: runId, project, suite: options.suite, artifact_directory: artifactDir }));
 
   await mkdir(artifactDir, { recursive: true });
   const performance = options.suite === "performance" ? await preparePerformance({ options, root, artifactDir, run, log }) : null;
@@ -404,6 +407,7 @@ async function runSuite(options) {
       outcome: failed || finalError ? "failed" : "passed",
       failure: manifestFailure,
       commit_sha: commitSha,
+      working_tree_dirty: workingTreeDirty,
       images: {
         database: "postgis/postgis:16-3.4",
         mail: "axllent/mailpit:v1.27.1",

@@ -157,6 +157,17 @@ if (!tileDiagnostic?.geometry || Math.abs(tileDiagnostic.coordinate[0] - expecte
   || !tileDiagnostic.geometry.coordinates[0].some(([longitude]) => Math.abs(longitude - expectedWest) < 1e-12)) {
   throw new Error("tile-boundary diagnostic does not touch its declared slippy tile edge");
 }
+const tileFeature = environmentalFeatures.find((feature) => feature.id === tileDiagnostic.published_feature_id);
+if (!tileFeature || tileFeature.properties.geometry_case !== "tile-boundary-touch"
+  || !tileFeature.geometry.coordinates[0].some(([longitude]) => Math.abs(longitude - expectedWest) < 1e-12)) {
+  throw new Error("published fixture does not contain the declared valid tile-boundary feature");
+}
+const sourceCoverage = fixture.fixture_metadata?.source_coverage;
+if (!sourceCoverage?.synthetic || !sourceCoverage.disclaimer || sourceCoverage.sources?.length !== 2
+  || !sourceCoverage.sources.some((source) => source.status === "complete")
+  || !sourceCoverage.sources.some((source) => source.status === "partial")) {
+  throw new Error("fixture source coverage metadata must explicitly include synthetic complete and partial sources");
+}
 const sha256 = createHash("sha256").update(fixtureText).digest("hex");
 if (manifest.sha256 !== sha256) throw new Error(`fixture checksum mismatch: ${sha256} != ${manifest.sha256}`);
 if (manifest.development_records !== fixture.development_records.length || manifest.environmental_features !== environmentalFeatures.length) {
@@ -191,6 +202,8 @@ console.log(JSON.stringify({
   environmental_features: environmentalFeatures.length,
   coordinate_pairs_including_developments: coordinatePairs,
   geometry_validation: "passed",
+  published_tile_boundary_feature: tileFeature.id,
+  source_coverage: sourceCoverage,
   quarantined_invalid_rejected: true,
   diagnostics: manifest.diagnostics
 }, null, 2));

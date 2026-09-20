@@ -36,6 +36,12 @@ const report = {
 await mkdir(dirname(output), { recursive: true });
 let pendingCheckpoint = Promise.resolve();
 function checkpoint() {
+  report.cold_unrun = counts.cold - report.cold.length;
+  report.interactions_unrun = counts.interaction - report.interactions.length;
+  for (const scenario of report.api) {
+    scenario.completed = scenario.samples.filter(Boolean).length;
+    scenario.unrun = scenario.requested - scenario.completed;
+  }
   const serialized = `${JSON.stringify(report, null, 2)}\n`;
   pendingCheckpoint = pendingCheckpoint.then(async () => {
     await writeFile(`${output}.pending`, serialized);
@@ -44,6 +50,7 @@ function checkpoint() {
   return pendingCheckpoint;
 }
 async function probe(page, coordinate, layers) {
+  if (page.__p01Errors?.length) throw new Error(page.__p01Errors.join("; "));
   return page.evaluate(({ coordinate, layers }) => window.__urbanizationPerformance?.probe(coordinate, layers) ?? null, { coordinate, layers });
 }
 async function until(check, description, timeout = 30_000) {
@@ -82,7 +89,12 @@ async function newPage(browser) {
   });
   const network = await trackNetwork(context, page, mobile);
   const errors = [];
+  page.__p01Errors = errors;
   page.on('pageerror', (error) => errors.push(error.message));
+  page.on('requestfailed', (request) => errors.push(`${request.url()}: ${request.failure()?.errorText}`));
+  page.on('response', (response) => {
+    if (new URL(response.url()).pathname.startsWith('/api/') && response.status() >= 400) errors.push(`API ${response.status()}: ${response.url()}`);
+  });
   return { context, page, network, errors };
 }
 async function coldLoad(browser, index) {
@@ -90,7 +102,10 @@ async function coldLoad(browser, index) {
   const result = { index, ok: false, first_useful_ms: null, context_ready_ms: null, scroll_required: null };
   try {
     await page.goto(baseUrl, { waitUntil: 'domcontentloaded', timeout: 180_000 });
-    await page.locator('button.record-row').filter({ hasText: record.title }).waitFor({ timeout: 180_000 });
+    await until(async () => {
+      if (errors.length) throw new Error(errors.join('; '));
+      return await page.locator('button.record-row').filter({ hasText: record.title }).count() > 0;
+    }, 'known record list row', 180_000);
     const dev = await renderedDevelopment(page);
     const env = await until(async () => {
       const state = await probe(page, overlay.coordinate, overlayLayers);
@@ -109,6 +124,7 @@ async function coldLoad(browser, index) {
       metrics: (await network.cdp.send('Performance.getMetrics')).metrics
     });
     // Functional interaction after timing ends. Scrolling cannot masquerade as initial readiness.
+    if (index === 0) await page.screenshot({ path: join(dirname(output), `${profile}-initial.png`) });
     await mapInView(page);
     await physicalSelect(page);
     if (index === 0) await page.screenshot({ path: join(dirname(output), `${profile}-selected.png`) });
@@ -125,10 +141,12 @@ async function coldLoad(browser, index) {
   return result;
 }
 async function warmInteractions(browser) {
-  const { context, page } = await newPage(browser);
+  const { context, page, network, errors } = await newPage(browser);
   try {
     await page.goto(baseUrl, { waitUntil: 'domcontentloaded', timeout: 180_000 });
     await renderedDevelopment(page);
+    let previousRequestCount = network.rows.size;
+    let previousLongTaskCount = 0;
     for (let index = 0; index < counts.interaction; index++) {
       const sample = { index, ok: false, actions_ms: {} };
       const measure = async (name, action) => { const start = performance.now(); await action(); sample.actions_ms[name] = performance.now() - start; };
@@ -166,6 +184,14 @@ async function warmInteractions(browser) {
           await toggle.check();
           await until(async () => (await probe(page, overlay.coordinate, overlayLayers)).visibility.filter((v) => v === 'visible').length === overlayLayers.length, 'overlay enabled');
         });
+        const longTasks = await page.evaluate(() => window.__p01LongTasks);
+        sample.long_tasks = longTasks.slice(previousLongTaskCount);
+        previousLongTaskCount = longTasks.length;
+        sample.new_request_count = network.rows.size - previousRequestCount;
+        previousRequestCount = network.rows.size;
+        sample.metrics = (await network.cdp.send('Performance.getMetrics')).metrics;
+        sample.page_errors = [...errors];
+        if (errors.length) throw new Error(errors.join('; '));
         sample.ok = true;
       } catch (error) { sample.error = error.message; }
       report.interactions.push(sample); await checkpoint();
@@ -212,6 +238,16 @@ finally {
   report.cold_unrun = counts.cold - report.cold.length;
   report.interactions_unrun = counts.interaction - report.interactions.length;
   report.first_useful = summary(report.cold.filter((sample) => sample.ok).map((sample) => sample.first_useful_ms));
+  report.transfer = report.cold.map((sample) => ({
+    index: sample.index,
+    categories: Object.fromEntries(['application_data', 'application_assets', 'basemap_glyph_sprite'].map((category) => {
+      const rows = (sample.network ?? []).filter((row) => row.category === category);
+      return [category, { requests: rows.length, completed: rows.filter((row) => row.complete).length,
+        failed: rows.filter((row) => row.failed || row.status >= 400).length,
+        decoded_body_bytes: rows.reduce((sum, row) => sum + (row.decoded_body_bytes ?? 0), 0),
+        transfer_bytes: rows.every((row) => Number.isFinite(row.transfer_bytes)) ? rows.reduce((sum, row) => sum + row.transfer_bytes, 0) : null }];
+    }))
+  }));
   report.context_ready = summary(report.cold.filter((sample) => sample.ok).map((sample) => sample.context_ready_ms));
   report.functional_pass = report.complete && !report.errors.length && report.cold.every((sample) => sample.ok) && report.interactions.every((sample) => sample.ok) && report.api.every((scenario) => scenario.failures === 0);
   await checkpoint();

@@ -34,7 +34,18 @@ def validate_with_postgis(fixture: dict) -> None:
                 invalid.append(index)
     if invalid:
         raise RuntimeError(f"PostGIS geometry validation failed for feature indexes: {invalid[:10]}")
-    print(json.dumps({"postgis_geometry_valid": len(geometries)}))
+    quarantined = fixture.get("fixture_diagnostics", {}).get("quarantined_invalid", [])
+    quarantined_invalid_checked = False
+    if quarantined:
+        with SessionLocal() as db:
+            diagnostic_valid = db.scalar(
+                text("SELECT ST_IsValid(ST_GeomFromGeoJSON(:geometry))"),
+                {"geometry": json.dumps(quarantined[0]["geometry"])},
+            )
+        if diagnostic_valid is not False:
+            raise RuntimeError("P01 quarantined invalid diagnostic unexpectedly passed PostGIS validity")
+        quarantined_invalid_checked = True
+    print(json.dumps({"postgis_geometry_valid": len(geometries), "postgis_quarantined_invalid": quarantined_invalid_checked}))
 
 
 def main() -> None:

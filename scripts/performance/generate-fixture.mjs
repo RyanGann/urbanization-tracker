@@ -183,9 +183,27 @@ function lineGeometry(index, random, dense) {
   return { type: "LineString", coordinates };
 }
 
+function tileBoundaryGeometry() {
+  const west = -86.748046875;
+  return {
+    type: "Polygon",
+    coordinates: [[
+      [west, 34.748],
+      [west + 0.001, 34.748],
+      [west + 0.001, 34.752],
+      [west, 34.752],
+      [west, 34.748]
+    ]]
+  };
+}
+
 function environmentalFeature(index, random, dense) {
-  const geometry = index % 11 === 0 ? lineGeometry(index, random, dense) : polygonGeometry(index, random, dense);
-  const geometryCase = geometry.type === "LineString"
+  const geometry = index === 2
+    ? tileBoundaryGeometry()
+    : index % 11 === 0 ? lineGeometry(index, random, dense) : polygonGeometry(index, random, dense);
+  const geometryCase = index === 2
+    ? "tile-boundary-touch"
+    : geometry.type === "LineString"
     ? "dense-line"
     : geometry.type === "MultiPolygon"
       ? "multipolygon"
@@ -258,6 +276,28 @@ function createFixture(profile, seed) {
     geom_type: "polygon",
     features: { type: "FeatureCollection", features: environmentalFeatures }
   }];
+  const sourceCoverage = {
+    synthetic: true,
+    disclaimer: "Fixture coverage metadata is synthetic and does not claim completeness for any real source.",
+    sources: [
+      {
+        id: "p01-synthetic-complete",
+        status: "complete",
+        scope_id: `p01-${profile.toLowerCase()}-complete-scope`,
+        expected_features: overlayCount,
+        fetched_features: overlayCount,
+        note: "All generated features for this synthetic source are present."
+      },
+      {
+        id: "p01-synthetic-partial",
+        status: "partial",
+        scope_id: `p01-${profile.toLowerCase()}-partial-scope`,
+        expected_features: overlayCount + 8,
+        fetched_features: overlayCount,
+        note: "Eight synthetic source features are intentionally outside this fixture."
+      }
+    ]
+  };
   const fixture_diagnostics = {
     quarantined_invalid: [{
       id: "p01-invalid-self-intersection",
@@ -269,8 +309,9 @@ function createFixture(profile, seed) {
     }],
     touching_tile_boundaries: [{
       id: "p01-tile-boundary-touch",
-      reason: "quarantined polygon deliberately touches a real slippy-map tile west edge",
+      reason: "published polygon deliberately touches a real slippy-map tile west edge",
       boundary: "west",
+      published_feature_id: "p01-environment-2",
       zoom: 12,
       tile_x: 1061,
       coordinate: [-86.748046875, 34.75],
@@ -287,7 +328,13 @@ function createFixture(profile, seed) {
   return {
     development_records,
     environmental_overlays,
-    source_health: { status: "healthy", sources: [], records: { fixture: developmentCount } },
+    source_health: {
+      status: "healthy",
+      sources: [],
+      records: { fixture: developmentCount },
+      fixture_coverage: sourceCoverage
+    },
+    fixture_metadata: { source_coverage: sourceCoverage },
     fixture_diagnostics
   };
 }
@@ -311,6 +358,7 @@ function stats(fixture, profile, seed, bytes, sha256) {
     environmental_features: features.length,
     environmental_coordinate_pairs: coordinatePairsCount,
     geometry_cases: geometryCases,
+    source_coverage: fixture.fixture_metadata.source_coverage,
     expected: {
       first_development: { public_id: first.public_id, title: first.title, centroid: first.centroid },
       visible_geometry_cases: geometryCases,
@@ -324,7 +372,7 @@ function stats(fixture, profile, seed, bytes, sha256) {
     }],
     diagnostics: {
       quarantined_invalid: fixture.fixture_diagnostics.quarantined_invalid.map(({ id, reason }) => ({ id, reason })),
-      touching_tile_boundaries: fixture.fixture_diagnostics.touching_tile_boundaries.map(({ id, reason, boundary, zoom, tile_x, coordinate }) => ({ id, reason, boundary, zoom, tile_x, coordinate })),
+      touching_tile_boundaries: fixture.fixture_diagnostics.touching_tile_boundaries.map(({ id, reason, boundary, published_feature_id, zoom, tile_x, coordinate }) => ({ id, reason, boundary, published_feature_id, zoom, tile_x, coordinate })),
       unsupported_unlocated_records: fixture.fixture_diagnostics.unsupported_unlocated_records.map(({ id, reason }) => ({ id, reason }))
     },
     bytes_utf8: bytes,

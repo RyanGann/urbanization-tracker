@@ -1,11 +1,13 @@
 import { readFile, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import os from 'node:os';
+import { prepareSnapshot } from './snapshot.mjs';
 
 export async function preparePerformance({ options, root, artifactDir, run, log }) {
   const fixturePath = join(artifactDir, 'fixture.json');
   const profile = options.scenario === 'functional' ? 'A' : 'B';
-  await run(process.execPath, [join(root, 'scripts/performance/generate-fixture.mjs'), '--profile', profile, '--output', fixturePath], { log, timeoutMs: 600_000 });
+  if (options.snapshotDir) await prepareSnapshot(root, options.snapshotDir, fixturePath);
+  else await run(process.execPath, [join(root, 'scripts/performance/generate-fixture.mjs'), '--profile', profile, '--output', fixturePath], { log, timeoutMs: 600_000 });
   const manifest = JSON.parse(await readFile(`${fixturePath}.manifest.json`, 'utf8'));
   const override = join(artifactDir, 'performance.compose.yml');
   // Fixture creation/validation is outside the measured API limit. Apply that
