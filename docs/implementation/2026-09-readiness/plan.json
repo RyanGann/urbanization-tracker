@@ -2,8 +2,7 @@
   "schema_version": 1,
   "prepared_at": "2026-09-19",
   "baseline_sha": "dbdaf099f31bc0444fe202aaf2ee65b3c9268d34",
-  "status": "planned",
-  "scope": "Documentation handoff; no application implementation or deployment performed.",
+  "scope": "Implementation roadmap; per-guide status, PRs and evidence record progress. This manifest does not authorize deployment.",
   "shared_documents": [
     "README.md",
     "CONTRACTS.md",

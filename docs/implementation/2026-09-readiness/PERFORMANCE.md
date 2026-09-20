@@ -1,6 +1,6 @@
 # Map performance implementation plan
 
-Prepared September 19, 2026. **Plan and proposed budgets; no optimization has been implemented by this planning task.** Start with the [dispatch instructions](DISPATCH.md) and use one PR guide at a time. The architecture below is fixed for the first pilot so a routine coding agent can execute without choosing a new stack.
+Prepared September 19, 2026. **Budgets here are targets; achieved results belong in the evidence linked from [plan.json](plan.json).** Start with the [dispatch instructions](DISPATCH.md) and use one PR guide at a time. The architecture below is fixed for the first pilot so a routine coding agent can execute without choosing a new stack.
 
 ## Problem and target
 

@@ -9,7 +9,7 @@ Execution status: [plan.json](plan.json), entry `U00`. Prepared September 19, 20
 | Review | Routine coding agent |
 | PR boundary | One small correctness PR on current endpoints; do this before the larger map refactor. |
 
-Read the [shared contracts](CONTRACTS.md), [testing instructions](TESTING.md) and [handoff rules](DISPATCH.md). Endpoint changes below are proposed work.
+Read the [shared contracts](CONTRACTS.md), [testing instructions](TESTING.md) and [handoff rules](DISPATCH.md). The steps below define this guide's scope; use its manifest entry and evidence to determine current capability.
 
 ## Problem and intended result
 
