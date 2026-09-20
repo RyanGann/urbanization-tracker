@@ -38,11 +38,13 @@ mypy app
 pytest tests/test_map_layer_catalog.py tests/test_api.py tests/test_ingestion_pipeline.py
 ```
 
-Result: Ruff passed; mypy found no issues in 31 modules; pytest passed 27 tests
+Result: Ruff passed; mypy found no issues in 33 modules; pytest passed 28 tests
 (two upstream TestClient deprecation warnings). The focused tests cover the compact
 response bound, ETag revalidation/change, live/demo mode mismatch, missing and
 malformed catalogs, no-store failures, real Huntsville layer IDs, no HTTP-path call
-to the legacy reader, and the explicit offline projection path.
+to the legacy reader, and the explicit offline projection path. It also proves that
+equal fetched/reported counts remain `unknown`, observed truncation is `partial`,
+and failed ingestion is `failed`; D01 owns scoped completeness reconciliation.
 
 Web type validation passed:
 

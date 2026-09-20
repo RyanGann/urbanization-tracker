@@ -26,6 +26,24 @@ def catalog_revision(payload: dict[str, Any]) -> str:
     return hashlib.sha256(canonical).hexdigest()
 
 
+def _coverage_status(
+    source_status: str, reported_count: Any, fetched_count: Any
+) -> str:
+    if source_status != "healthy":
+        return "failed"
+    if (
+        isinstance(reported_count, int)
+        and not isinstance(reported_count, bool)
+        and isinstance(fetched_count, int)
+        and not isinstance(fetched_count, bool)
+        and reported_count > fetched_count
+    ):
+        return "partial"
+    # A source count does not prove the declared scope is complete. D01 owns
+    # scope reconciliation, so equality and absent counts stay explicitly unknown.
+    return "unknown"
+
+
 def build_catalog(
     environmental_sources: list[tuple[Any, dict[str, Any]]],
     *,
@@ -38,6 +56,8 @@ def build_catalog(
             raw_metadata if isinstance(raw_metadata, dict) else {}
         )
         source_status = str(health.get("status", "unknown"))
+        reported_count = metadata.get("reported_count")
+        fetched_count = health.get("records_seen")
         layers.append(
             {
                 "id": str(config.key),
@@ -53,10 +73,12 @@ def build_catalog(
                 "maxzoom": None,
                 "bounds": None,
                 "coverage": {
-                    "status": "unknown",
+                    "status": _coverage_status(
+                        source_status, reported_count, fetched_count
+                    ),
                     "scope_id": None,
-                    "reported_count": metadata.get("reported_count"),
-                    "fetched_count": health.get("records_seen"),
+                    "reported_count": reported_count,
+                    "fetched_count": fetched_count,
                 },
                 "source_name": str(config.source_agency),
                 "source_url": str(config.layer_url),

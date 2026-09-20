@@ -31,12 +31,18 @@ def test_demo_catalog_is_compact_cached_and_does_not_read_legacy_overlays(monkey
 
     assert response.status_code == 200
     assert response.headers["cache-control"] == "public, max-age=60, must-revalidate"
-    expected_etag = '"cd36b29222049784b196aaef5a751b2e3357dd65ab8ee93de04651f070dda113"'
+    expected_etag = '"104117014a4ace26bc81701db43af0ded517e151740dce857b2f57bf3f35567e"'
     assert response.headers["etag"] == expected_etag
     assert len(response.content) <= 50 * 1024
     body = response.json()
     assert body["data_mode"] == "demo"
-    assert body["layers"]
+    assert {layer["id"] for layer in body["layers"]} == {
+        "pilot-boundary",
+        "wetlands",
+        "floodplain",
+        "hydrography",
+        "parks-open-space",
+    }
     assert all("features" not in layer and "coordinates" not in layer for layer in body["layers"])
 
     not_modified = client.get(
@@ -185,6 +191,48 @@ def test_catalog_builder_uses_source_metadata_without_geometry() -> None:
     assert catalog["layers"][0]["id"] == "layer-a"
     assert catalog["layers"][0]["delivery_status"] == "processing"
     assert catalog["layers"][0]["coverage"]["reported_count"] == 3
+
+
+def test_catalog_coverage_only_marks_observed_truncation_partial() -> None:
+    class Source:
+        key = "coverage-layer"
+        name = "Coverage layer"
+        category = "wetlands"
+        source_agency = "Agency"
+        layer_url = "https://example.test/coverage-layer"
+        attribution = "Agency"
+        caveat = "Context only"
+        default_visible = True
+
+    equal_counts = build_catalog(
+        [
+            (
+                Source(),
+                {
+                    "status": "healthy",
+                    "records_seen": 2_000,
+                    "metadata": {"reported_count": 2_000},
+                },
+            )
+        ]
+    )
+    truncated = build_catalog(
+        [
+            (
+                Source(),
+                {
+                    "status": "healthy",
+                    "records_seen": 2_000,
+                    "metadata": {"reported_count": 2_001},
+                },
+            )
+        ]
+    )
+    failed = build_catalog([(Source(), {"status": "failed", "records_seen": 0})])
+
+    assert equal_counts["layers"][0]["coverage"]["status"] == "unknown"
+    assert truncated["layers"][0]["coverage"]["status"] == "partial"
+    assert failed["layers"][0]["coverage"]["status"] == "failed"
 
 
 def test_catalog_builder_keeps_the_two_real_huntsville_layer_ids() -> None:
