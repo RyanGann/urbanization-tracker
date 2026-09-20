@@ -8,6 +8,7 @@ from typing import Any
 from sqlalchemy import delete, func, select
 from sqlalchemy.exc import SQLAlchemyError
 
+from app.artifact_files import write_json_atomically
 from app.config import get_settings
 from app.data_availability import Availability, CollectionRead
 
@@ -234,8 +235,7 @@ def _artifact_count(data_dir: Path, name: str) -> int:
 
 
 def _write_json(path: Path, payload: Any) -> None:
-    path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(json.dumps(payload, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+    write_json_atomically(path, payload)
 
 
 def _read_postgres_items(name: str) -> list[dict[str, Any]]:

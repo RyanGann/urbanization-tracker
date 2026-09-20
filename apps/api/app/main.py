@@ -66,6 +66,7 @@ from app.seed_store import (
     set_staged_review_status,
 )
 from app.source_monitoring import build_source_health_monitor
+from app.transactional_store import MutationLockTimeout
 
 settings = get_settings()
 reviewer_router = APIRouter(
@@ -232,10 +233,18 @@ def get_reviewer_public_submissions() -> list[UserSubmission]:
 
 @app.post("/api/public-submissions", response_model=UserSubmissionReceipt)
 def post_public_submission(submission: UserSubmissionCreate) -> UserSubmissionReceipt:
-    created = create_public_submission(
-        submission.model_dump(),
-        published_records=list_development_records(),
-    )
+    try:
+        created = create_public_submission(submission.model_dump())
+    except MutationLockTimeout as exc:
+        raise HTTPException(
+            status_code=503,
+            detail={
+                "code": "transaction_busy",
+                "message": "A concurrent update is finishing. Please retry shortly.",
+                "retry_after_seconds": 1,
+            },
+            headers={"Retry-After": "1"},
+        ) from exc
     return UserSubmissionReceipt.model_validate(created)
 
 
@@ -246,7 +255,18 @@ def get_reviewer_watch_areas() -> list[WatchArea]:
 
 @app.post("/api/watch-areas", response_model=WatchAreaReceipt)
 def post_watch_area(watch_area: WatchAreaCreate) -> WatchAreaReceipt:
-    created = create_watch_area(watch_area.model_dump(), list_development_records())
+    try:
+        created = create_watch_area(watch_area.model_dump())
+    except MutationLockTimeout as exc:
+        raise HTTPException(
+            status_code=503,
+            detail={
+                "code": "transaction_busy",
+                "message": "A concurrent update is finishing. Please retry shortly.",
+                "retry_after_seconds": 1,
+            },
+            headers={"Retry-After": "1"},
+        ) from exc
     return WatchAreaReceipt.model_validate(created)
 
 
