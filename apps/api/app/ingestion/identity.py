@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import hashlib
+import math
 from typing import Any
 
 SOURCE_ID_FIELDS = {
@@ -26,10 +28,12 @@ def source_record_id(source_key: str, properties: dict[str, Any]) -> str:
     if field is None:
         raise SourceIdentityError(f"No authoritative source ID field configured for {source_key}")
     value = properties.get(field)
-    if value is None or isinstance(value, bool):
+    if value is None or isinstance(value, bool) or isinstance(value, (dict, list, tuple, set)):
+        raise SourceIdentityError(f"{source_key} has no usable {field}")
+    if isinstance(value, float) and not math.isfinite(value):
         raise SourceIdentityError(f"{source_key} has no usable {field}")
     identifier = str(value).strip()
-    if not identifier:
+    if not identifier or len(identifier) > 255:
         raise SourceIdentityError(f"{source_key} has no usable {field}")
     return identifier
 
@@ -39,7 +43,9 @@ def provisional_public_id(source_key: str, source_id: str) -> str:
     prefix = PUBLIC_ID_PREFIXES.get(source_key)
     if prefix is None:
         raise SourceIdentityError(f"No public ID prefix configured for {source_key}")
-    return f"{prefix}-{_slug(source_id)}"
+    readable = _slug(source_id)[:48]
+    digest = hashlib.sha256(f"{source_key}\0{source_id}".encode()).hexdigest()[:16]
+    return f"{prefix}-{readable}-{digest}"
 
 
 def _slug(value: str) -> str:

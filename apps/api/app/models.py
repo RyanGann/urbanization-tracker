@@ -385,7 +385,9 @@ class SourceIngestionBatch(Base):
     coverage: Mapped[str] = mapped_column(String(20), nullable=False)
     outcome: Mapped[str] = mapped_column(String(20), nullable=False)
     counts_json: Mapped[dict[str, Any]] = mapped_column(JSON, nullable=False, default=dict)
-    started_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    started_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False
+    )
     finished_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
 
 
@@ -399,10 +401,10 @@ class SourceObservation(Base):
 
     id: Mapped[int] = mapped_column(primary_key=True)
     batch_id: Mapped[int] = mapped_column(
-        ForeignKey("source_ingestion_batches.id"), nullable=False
+        ForeignKey("source_ingestion_batches.id"), nullable=False, index=True
     )
     registry_id: Mapped[int] = mapped_column(
-        ForeignKey("source_identity_registry.id"), nullable=False
+        ForeignKey("source_identity_registry.id"), nullable=False, index=True
     )
     state: Mapped[str] = mapped_column(String(20), nullable=False)
     content_fingerprint: Mapped[str | None] = mapped_column(String(128))
