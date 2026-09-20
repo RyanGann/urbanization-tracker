@@ -27,7 +27,7 @@ Generated corrupt artifact SHA-256: `ca3d163bab055381827226140568f3bef7eaac187ce
 
 `npm run typecheck:web` passed after the C01 client and browser test changes.
 
-The API production image built successfully from the C01 source. A direct attempt to run pytest in that runtime image was not applicable because its deliberately minimal runtime lock does not install pytest; the test attempt was cleaned with `docker compose down --volumes --remove-orphans`. The focused Python availability tests are included in this change and the real-stack driver exercised their HTTP contract through the production API image.
+The API production image built successfully from the C01 source. A direct attempt to run pytest in that runtime image was not applicable because its deliberately minimal runtime lock does not install pytest; the test attempt was cleaned with `docker compose down --volumes --remove-orphans`. A locked test-container run of `pytest tests/test_data_modes.py tests/test_api.py tests/test_processed_store.py tests/test_phase3_store.py` passed 31 tests with two deprecation warnings. The later full lint/mypy/pytest shell command returned exit 0, but its complete per-check output was not retained; the separate required GitHub CI checks provide the final auditable full-suite result. The C01 real-stack scenario is now also an explicit required CI step.
 
 ## Limits
 
