@@ -6,8 +6,10 @@ from pathlib import Path
 from typing import Any
 
 from sqlalchemy import delete, func, select
+from sqlalchemy.exc import SQLAlchemyError
 
 from app.config import get_settings
+from app.data_availability import Availability, CollectionRead
 
 LIST_COLLECTIONS = (
     "development_records",
@@ -24,16 +26,33 @@ def read_processed_list(
     *,
     data_dir: Path | None = None,
 ) -> list[dict[str, Any]] | None:
+    result = read_processed_list_result(name, data_dir=data_dir)
+    if result.availability is Availability.UNINITIALIZED:
+        return None
+    return result.require_ready(collection=name)
+
+
+def read_processed_list_result(
+    name: str,
+    *,
+    data_dir: Path | None = None,
+) -> CollectionRead[list[dict[str, Any]]]:
     _require_collection(name, LIST_COLLECTIONS)
     if _use_postgres_store():
-        return _read_postgres_items(name)
+        try:
+            return CollectionRead(Availability.READY, _read_postgres_items(name))
+        except SQLAlchemyError:
+            return CollectionRead(Availability.UNAVAILABLE)
     path = _collection_path(data_dir or get_settings().ingestion_data_dir, name)
-    if not path.exists():
-        return None
-    payload = json.loads(path.read_text(encoding="utf-8"))
-    if not isinstance(payload, list):
-        return None
-    return [copy.deepcopy(item) for item in payload if isinstance(item, dict)]
+    try:
+        if not path.exists():
+            return CollectionRead(Availability.UNINITIALIZED)
+        payload = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, UnicodeDecodeError, json.JSONDecodeError):
+        return CollectionRead(Availability.UNAVAILABLE)
+    if not isinstance(payload, list) or any(not isinstance(item, dict) for item in payload):
+        return CollectionRead(Availability.UNAVAILABLE)
+    return CollectionRead(Availability.READY, copy.deepcopy(payload))
 
 
 def write_processed_list(
@@ -55,19 +74,38 @@ def read_processed_payload(
     data_dir: Path | None = None,
     default: dict[str, Any] | None = None,
 ) -> dict[str, Any] | None:
+    result = read_processed_payload_result(name, data_dir=data_dir)
+    if result.availability is Availability.UNINITIALIZED:
+        return copy.deepcopy(default)
+    return result.require_ready(collection=name)
+
+
+def read_processed_payload_result(
+    name: str,
+    *,
+    data_dir: Path | None = None,
+) -> CollectionRead[dict[str, Any]]:
     _require_collection(name, SINGLETON_COLLECTIONS)
     if _use_postgres_store():
-        items = _read_postgres_items(name)
+        try:
+            items = _read_postgres_items(name)
+        except SQLAlchemyError:
+            return CollectionRead(Availability.UNAVAILABLE)
         if not items:
-            return copy.deepcopy(default)
-        return copy.deepcopy(items[0])
+            return CollectionRead(Availability.UNINITIALIZED)
+        if len(items) != 1 or not isinstance(items[0], dict):
+            return CollectionRead(Availability.UNAVAILABLE)
+        return CollectionRead(Availability.READY, copy.deepcopy(items[0]))
     path = _collection_path(data_dir or get_settings().ingestion_data_dir, name)
-    if not path.exists():
-        return copy.deepcopy(default)
-    payload = json.loads(path.read_text(encoding="utf-8"))
+    try:
+        if not path.exists():
+            return CollectionRead(Availability.UNINITIALIZED)
+        payload = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, UnicodeDecodeError, json.JSONDecodeError):
+        return CollectionRead(Availability.UNAVAILABLE)
     if not isinstance(payload, dict):
-        return copy.deepcopy(default)
-    return copy.deepcopy(payload)
+        return CollectionRead(Availability.UNAVAILABLE)
+    return CollectionRead(Availability.READY, copy.deepcopy(payload))
 
 
 def write_processed_payload(
@@ -112,14 +150,15 @@ def migrate_processed_artifacts_to_postgres(
 def processed_store_status(*, data_dir: Path | None = None) -> dict[str, Any]:
     settings = get_settings()
     root = data_dir or settings.ingestion_data_dir
+    effective_memory = settings.data_mode == "demo"
     database_counts: dict[str, int] = {}
     database_error: str | None = None
-    if settings.processed_store_backend == "postgres":
+    if settings.processed_store_backend == "postgres" and not effective_memory:
         database_counts, database_error = _postgres_collection_counts()
 
     collections = []
     for name in PROCESSED_COLLECTIONS:
-        artifact_count = _artifact_count(root, name)
+        artifact_count = 0 if effective_memory else _artifact_count(root, name)
         database_count = database_counts.get(name, 0)
         collections.append(
             {
@@ -129,6 +168,7 @@ def processed_store_status(*, data_dir: Path | None = None) -> dict[str, Any]:
                 "artifact_path": str(_collection_path(root, name)),
                 "requires_migration": (
                     settings.processed_store_backend == "postgres"
+                    and not effective_memory
                     and artifact_count > 0
                     and database_count == 0
                 ),
@@ -138,15 +178,15 @@ def processed_store_status(*, data_dir: Path | None = None) -> dict[str, Any]:
     raw_artifacts = [
         {
             "name": name,
-            "artifact_count": _artifact_count(root, name),
+            "artifact_count": 0 if effective_memory else _artifact_count(root, name),
             "artifact_path": str(_collection_path(root, name)),
         }
         for name in RAW_ARTIFACT_COLLECTIONS
     ]
 
     return {
-        "backend": settings.processed_store_backend,
-        "database_first": settings.processed_store_backend == "postgres",
+        "backend": "memory" if effective_memory else settings.processed_store_backend,
+        "database_first": settings.processed_store_backend == "postgres" and not effective_memory,
         "database_error": database_error,
         "collections": collections,
         "raw_artifacts": raw_artifacts,
@@ -217,9 +257,7 @@ def _write_postgres_items(name: str, items: list[dict[str, Any]]) -> None:
 
     with SessionLocal.begin() as db:
         db.execute(
-            delete(ProcessedCollectionItem).where(
-                ProcessedCollectionItem.collection_name == name
-            )
+            delete(ProcessedCollectionItem).where(ProcessedCollectionItem.collection_name == name)
         )
         db.add_all(
             ProcessedCollectionItem(

@@ -231,6 +231,7 @@ export function DevelopmentMap({
   const mapRef = useRef<MapLibreMap | null>(null);
   const popupRef = useRef<maplibregl.Popup | null>(null);
   const handlersAttachedRef = useRef(false);
+  const renderedOverlaySignaturesRef = useRef<Map<string, string>>(new Map());
   const recordsRef = useRef(records);
   const [mapReady, setMapReady] = useState(false);
   const [appliedFeatureCount, setAppliedFeatureCount] = useState(0);
@@ -308,7 +309,32 @@ export function DevelopmentMap({
     upsertSource(map, "development-points", pointFeatures(records));
     ensureDevelopmentLayers(map);
 
+    const nextOverlayIds = new Set(overlays.map((overlay) => overlay.id));
+    [...renderedOverlaySignaturesRef.current.keys()]
+      .filter((overlayId) => !nextOverlayIds.has(overlayId))
+      .forEach((overlayId) => {
+        ["fill", "line"].forEach((kind) => {
+          const layerId = "env-" + overlayId + "-" + kind;
+          if (map.getLayer(layerId)) {
+            map.removeLayer(layerId);
+          }
+        });
+        const sourceId = "env-" + overlayId;
+        if (map.getSource(sourceId)) {
+          map.removeSource(sourceId);
+        }
+      });
+
     overlays.forEach((overlay) => {
+      const signature = overlay.geom_type + ":" + overlay.category;
+      if (renderedOverlaySignaturesRef.current.get(overlay.id) !== signature) {
+        ["fill", "line"].forEach((kind) => {
+          const layerId = "env-" + overlay.id + "-" + kind;
+          if (map.getLayer(layerId)) {
+            map.removeLayer(layerId);
+          }
+        });
+      }
       upsertSource(map, `env-${overlay.id}`, overlay.features);
       ensureOverlayLayer(map, overlay);
       overlayLayerIds(overlay).forEach((layerId) => {
@@ -321,6 +347,9 @@ export function DevelopmentMap({
         }
       });
     });
+    renderedOverlaySignaturesRef.current = new Map(
+      overlays.map((overlay) => [overlay.id, overlay.geom_type + ":" + overlay.category])
+    );
     setAppliedFeatureCount(records.length);
 
     if (!handlersAttachedRef.current) {
@@ -358,7 +387,12 @@ export function DevelopmentMap({
 
   useEffect(() => {
     const map = mapRef.current;
-    if (!map || !selectedRecord) {
+    if (!map) {
+      return;
+    }
+    if (!selectedRecord) {
+      popupRef.current?.remove();
+      popupRef.current = null;
       return;
     }
 

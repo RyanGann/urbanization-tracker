@@ -50,7 +50,16 @@ export interface DevelopmentRecord {
 }
 
 export interface DevelopmentRecordCollection {
+  data_mode: "live" | "demo";
   records: DevelopmentRecord[];
+}
+
+export interface DatasetStatus {
+  data_mode: "live" | "demo";
+  availability: "ready" | "uninitialized" | "unavailable";
+  dataset_revision: string | null;
+  source_freshness: string | null;
+  declared_scope: string | null;
 }
 
 export interface StagedDevelopmentRecord {

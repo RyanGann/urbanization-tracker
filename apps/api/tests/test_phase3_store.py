@@ -1,8 +1,13 @@
+from pathlib import Path
 from typing import Any
 
+import pytest
+
 from app.config import get_settings
+from app.data_availability import DataUnavailableError
 from app.phase3_store import (
     create_public_submission,
+    list_public_submissions,
     phase3_store_status,
     reset_phase3_state,
 )
@@ -146,3 +151,66 @@ def test_phase3_store_status_returns_relative_artifact_paths(monkeypatch, tmp_pa
         == "processed/phase3_public_submissions.json"
     )
     assert not collections["public_submissions"]["artifact_path"].startswith(str(tmp_path))
+
+
+def test_phase3_store_status_uses_memory_in_demo_without_durable_probes(
+    monkeypatch, tmp_path
+) -> None:
+    monkeypatch.setenv("DATA_MODE", "demo")
+    monkeypatch.setenv("INGESTION_DATA_DIR", str(tmp_path))
+    monkeypatch.setenv("PHASE3_STORE_BACKEND", "postgres")
+    get_settings.cache_clear()
+    reset_phase3_state(force_memory=False)
+
+    def fail_durable_probe(*_args: Any, **_kwargs: Any) -> Any:
+        raise AssertionError("demo status must not inspect durable stores")
+
+    monkeypatch.setattr("app.phase3_store._postgres_collection_counts", fail_durable_probe)
+    monkeypatch.setattr("app.phase3_store._artifact_collection_count", fail_durable_probe)
+
+    status = phase3_store_status()
+    collections = {collection["name"]: collection for collection in status["collections"]}
+
+    assert status["backend"] == "memory"
+    assert status["database_first"] is False
+    assert status["database_error"] is None
+    assert collections["public_submissions"]["database_count"] == 0
+    assert collections["public_submissions"]["artifact_count"] == 0
+
+
+def test_phase3_read_treats_artifact_stat_error_as_unavailable(monkeypatch, tmp_path) -> None:
+    monkeypatch.setenv("INGESTION_DATA_DIR", str(tmp_path))
+    monkeypatch.setenv("PHASE3_STORE_BACKEND", "artifact")
+    get_settings.cache_clear()
+    reset_phase3_state(force_memory=False)
+
+    def fail_stat(_path: Path) -> bool:
+        raise OSError("access denied")
+
+    monkeypatch.setattr(Path, "exists", fail_stat)
+
+    with pytest.raises(DataUnavailableError):
+        list_public_submissions()
+
+
+def test_live_missing_artifact_does_not_read_prior_demo_memory(monkeypatch, tmp_path) -> None:
+    monkeypatch.setenv("DATA_MODE", "demo")
+    monkeypatch.setenv("INGESTION_DATA_DIR", str(tmp_path))
+    monkeypatch.setenv("PHASE3_STORE_BACKEND", "artifact")
+    get_settings.cache_clear()
+    reset_phase3_state(force_memory=False)
+    create_public_submission(
+        {
+            "title": "Demo-only submission",
+            "source_url": "https://example.test/demo-only",
+            "notes": "Must not appear after switching to live mode.",
+            "submitter_contact": "demo@example.test",
+        },
+        published_records=[],
+    )
+    assert any(row["title"] == "Demo-only submission" for row in list_public_submissions())
+
+    monkeypatch.setenv("DATA_MODE", "live")
+    get_settings.cache_clear()
+
+    assert list_public_submissions() == []

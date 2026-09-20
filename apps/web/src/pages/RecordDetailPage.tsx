@@ -2,7 +2,12 @@ import { useQuery } from "@tanstack/react-query";
 import { ArrowLeft, ExternalLink, MapPin } from "lucide-react";
 import { Link, useParams } from "react-router-dom";
 
-import { fetchDevelopmentRecord, fetchRecordVersions } from "../api";
+import {
+  ApiError,
+  fetchDatasetStatus,
+  fetchDevelopmentRecord,
+  fetchRecordVersions
+} from "../api";
 import { StatusBadge } from "../components/StatusBadge";
 import { developmentTypeLabel, formatArea, statusLabel } from "../utils/records";
 
@@ -25,11 +30,33 @@ export function RecordDetailPage() {
     queryFn: () => fetchRecordVersions(publicId ?? ""),
     enabled: Boolean(publicId)
   });
+  const datasetStatusQuery = useQuery({
+    queryKey: ["dataset-status"],
+    queryFn: fetchDatasetStatus
+  });
 
   if (recordQuery.isLoading) {
     return (
       <main className="page-shell">
         <p className="muted">Loading record...</p>
+      </main>
+    );
+  }
+
+  if (
+    recordQuery.isError &&
+    !(recordQuery.error instanceof ApiError && recordQuery.error.status === 404)
+  ) {
+    return (
+      <main className="page-shell">
+        <Link className="back-link" to="/">
+          <ArrowLeft size={16} aria-hidden />
+          Back to map
+        </Link>
+        <section className="panel empty-state">
+          <h1>Development data is unavailable</h1>
+          <p>Try again after canonical data initialization completes.</p>
+        </section>
       </main>
     );
   }
@@ -48,7 +75,6 @@ export function RecordDetailPage() {
       </main>
     );
   }
-
   const record = recordQuery.data;
 
   return (
@@ -70,6 +96,9 @@ export function RecordDetailPage() {
             <StatusBadge value={record.review_status} kind="review" />
           </div>
           <p className="lede">{record.description}</p>
+          {datasetStatusQuery.data?.data_mode === "demo" ? (
+            <p className="muted">Demo data — not live planning data.</p>
+          ) : null}
 
           <dl className="facts detail-facts">
             <div>

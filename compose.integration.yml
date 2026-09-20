@@ -20,14 +20,14 @@ services:
       context: ./apps/api
     environment:
       DATABASE_URL: postgresql+psycopg://integration:integration@db:5432/integration
-      DATA_MODE: live
-      PHASE3_STORE_BACKEND: postgres
-      PROCESSED_STORE_BACKEND: postgres
+      DATA_MODE: ${INTEGRATION_DATA_MODE:-live}
+      PHASE3_STORE_BACKEND: ${INTEGRATION_PHASE3_STORE_BACKEND:-postgres}
+      PROCESSED_STORE_BACKEND: ${INTEGRATION_PROCESSED_STORE_BACKEND:-postgres}
       HOSTED_INGESTION_ENABLED: "false"
       ALERT_DELIVERY_ENABLED: "false"
       REVIEWER_API_TOKEN: ${INTEGRATION_REVIEWER_TOKEN}
       CORS_ORIGINS: http://web
-      INGESTION_DATA_DIR: /var/empty-data
+      INGESTION_DATA_DIR: ${INTEGRATION_INGESTION_DATA_DIR:-/var/empty-data}
       SMTP_HOST: mail
       SMTP_PORT: "1025"
       SMTP_USE_TLS: "false"
@@ -35,6 +35,8 @@ services:
     depends_on:
       db:
         condition: service_healthy
+    volumes:
+      - ${INTEGRATION_ARTIFACT_DIR}/c01-data:/c01-data
     networks:
       - private
 

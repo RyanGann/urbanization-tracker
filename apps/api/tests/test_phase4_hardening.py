@@ -1,7 +1,9 @@
 from time import perf_counter
 
+import pytest
 from fastapi.testclient import TestClient
 
+from app.config import get_settings
 from app.ingestion.geometry import centroid
 from app.jurisdictions import active_sources, list_jurisdictions
 from app.main import app
@@ -12,8 +14,13 @@ from app.seed_store import development_records_geojson, reset_seed_state
 client = TestClient(app)
 
 
-def setup_function() -> None:
+@pytest.fixture(autouse=True)
+def explicit_demo_mode(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("DATA_MODE", "demo")
+    get_settings.cache_clear()
     reset_seed_state()
+    yield
+    get_settings.cache_clear()
 
 
 def test_jurisdiction_configs_include_second_pilot_source() -> None:

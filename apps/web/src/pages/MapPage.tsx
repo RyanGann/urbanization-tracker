@@ -2,10 +2,10 @@ import "maplibre-gl/dist/maplibre-gl.css";
 
 import { useQuery } from "@tanstack/react-query";
 import { ExternalLink, Filter, Layers, ListFilter, MapPin, RotateCcw } from "lucide-react";
-import { useCallback, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 
-import { fetchDevelopmentRecords, fetchEnvironmentalOverlays } from "../api";
+import { fetchDatasetStatus, fetchDevelopmentRecords, fetchEnvironmentalOverlays } from "../api";
 import { DevelopmentMap } from "../components/DevelopmentMap";
 import { StatusBadge } from "../components/StatusBadge";
 import type { ConfidenceLevel, DevelopmentRecord, DevelopmentStatus } from "../types";
@@ -56,9 +56,19 @@ export function MapPage() {
     queryFn: fetchEnvironmentalOverlays
   });
 
-  const records = recordsQuery.data?.records ?? [];
-  const overlays = overlaysQuery.data ?? [];
-  const availableFlags = uniqueFlagTypes(recordsQuery.data?.records ?? records);
+  const datasetStatusQuery = useQuery({
+    queryKey: ["dataset-status"],
+    queryFn: fetchDatasetStatus
+  });
+
+  const records = recordsQuery.isError ? [] : recordsQuery.data?.records ?? [];
+  const overlays = overlaysQuery.isError ? [] : overlaysQuery.data ?? [];
+  const availableFlags = uniqueFlagTypes(records);
+  const dataMode = recordsQuery.data?.data_mode ?? datasetStatusQuery.data?.data_mode;
+
+  useEffect(() => {
+    if (recordsQuery.isError) setSelectedRecord(null);
+  }, [recordsQuery.isError]);
 
   const resetFilters = () => {
     setStatuses(INITIAL_STATUSES);
@@ -170,20 +180,26 @@ export function MapPage() {
               Layers
             </span>
           </div>
-          <div className="layer-list">
-            {overlays.map((overlay) => (
-              <label key={overlay.id} className="check-row">
-                <input
-                  type="checkbox"
-                  checked={visibleOverlayIds.includes(overlay.id)}
-                  onChange={() =>
-                    setVisibleOverlayIds((current) => toggleValue(current, overlay.id))
-                  }
-                />
-                <span>{overlay.name}</span>
-              </label>
-            ))}
-          </div>
+          {overlaysQuery.isError ? (
+            <p className="error-text" role="alert">
+              Environmental context is unavailable. Try again after initialization completes.
+            </p>
+          ) : (
+            <div className="layer-list">
+              {overlays.map((overlay) => (
+                <label key={overlay.id} className="check-row">
+                  <input
+                    type="checkbox"
+                    checked={visibleOverlayIds.includes(overlay.id)}
+                    onChange={() =>
+                      setVisibleOverlayIds((current) => toggleValue(current, overlay.id))
+                    }
+                  />
+                  <span>{overlay.name}</span>
+                </label>
+              ))}
+            </div>
+          )}
         </section>
 
         <section className="panel record-list-panel">
@@ -194,10 +210,14 @@ export function MapPage() {
             </span>
             <strong>{records.length}</strong>
           </div>
-          {recordsQuery.isLoading ? <p className="muted">Loading seed records...</p> : null}
+          {recordsQuery.isLoading ? <p className="muted">Loading development records...</p> : null}
           {recordsQuery.isError ? (
-            <p className="error-text">Could not load records from the API.</p>
+            <p className="error-text" role="alert">Development data is unavailable. Try again after initialization completes.</p>
           ) : null}
+          {!recordsQuery.isLoading && !recordsQuery.isError && records.length === 0 ? (
+            <p className="muted">No development records are available for these filters.</p>
+          ) : null}
+          {dataMode === "demo" ? <p className="muted">Demo data — not live planning data.</p> : null}
           <div className="record-list">
             {records.map((record) => (
               <button
