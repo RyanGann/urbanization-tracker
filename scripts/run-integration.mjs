@@ -345,7 +345,7 @@ async function runSuite(options) {
         browser: "mcr.microsoft.com/playwright:v1.60.0-noble"
       })) {
         const digest = await run("docker", ["image", "inspect", image, "--format", "{{join .RepoDigests \",\"}}"], { log, allowFailure: true, ignoreInterrupt: true });
-        imageDigests[name] = digest.output.trim() || null;
+        imageDigests[name] = digest.code === 0 ? digest.output.trim() || null : null;
       }
       imageIds = await inspectComposeImages(compose, log);
     } catch (error) {
@@ -357,6 +357,10 @@ async function runSuite(options) {
       cleanupError = error;
       cleanupFailure = error instanceof Error ? error.message.split("\n", 1)[0] : String(error);
     } finally {}
+    const finalError = cleanupError ?? artifactError;
+    const manifestFailure = failureMessage ?? (
+      finalError instanceof Error ? finalError.message.split("\n", 1)[0] : finalError ? String(finalError) : null
+    );
     try {
       await writeFile(join(artifactDir, "manifest.json"), JSON.stringify({
       run_id: runId,
@@ -372,8 +376,8 @@ async function runSuite(options) {
         assert_failure: options.assertFailure,
         isolation_check: options.isolationCheck
       },
-      outcome: failed ? "failed" : "passed",
-      failure: failureMessage,
+      outcome: failed || finalError ? "failed" : "passed",
+      failure: manifestFailure,
       commit_sha: commitSha,
       images: {
         database: "postgis/postgis:16-3.4",
