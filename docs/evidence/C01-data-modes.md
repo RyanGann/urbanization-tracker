@@ -3,6 +3,14 @@
 Base: `9ed339bb23c8a4b15c8f7c1f04d8f4cc6c137ff8` (merged T01/S01 main)
 Tested commit: `1a147bd846738c828a1a5644c0a5900132a70c1b`
 
+## Final implementation and review
+
+Implementation [PR #18](https://github.com/RyanGann/urbanization-tracker/pull/18) merged at `ee6bc5dd2ae77fa16154fd86294e84514f7caa50`. Its final reviewed head was `821734a944a50d01de2d45754fad109b730e9125`.
+
+The final [GitHub Actions CI run](https://github.com/RyanGann/urbanization-tracker/actions/runs/35487422741) passed. It included readiness-plan validation, API lint and type checking, 73 API tests, web type checking/tests/build, regular and production browser smoke, the T01 real-stack smoke, and the required C01 data-modes scenario.
+
+Eight Codex review threads were resolved before merge. The resulting fixes cover unavailable-state handling and source-health behavior, strict live/demo isolation including direct operational reads and missing-artifact fallback, demo documentation, validation of malformed canonical artifacts, record-detail error semantics, and clearing stale map overlays and selections after a failed refetch. The final source-monitoring compatibility fix is `2d36b78`.
+
 ## Real stack
 
 Command: `node scripts/run-integration.mjs --suite api --scenario c01-data-modes`

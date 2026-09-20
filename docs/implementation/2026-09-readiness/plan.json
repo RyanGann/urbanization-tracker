@@ -54,7 +54,7 @@
       "id": "C01",
       "title": "Distinguish live data, demo fixtures, empty collections, and unavailable stores",
       "path": "C01-explicit-data-modes.md",
-      "status": "in_progress",
+      "status": "complete",
       "track": "Correctness",
       "gate": "G0",
       "depends_on": [
@@ -62,14 +62,14 @@
       ],
       "review": "Routine coding agent",
       "pr_boundary": "One API/configuration/UI state PR.",
-      "implementation_pr": null,
-      "evidence": null
+      "implementation_pr": "https://github.com/RyanGann/urbanization-tracker/pull/18",
+      "evidence": "../../evidence/C01-data-modes.md"
     },
     {
       "id": "C02",
       "title": "Introduce shared transactions and safe item mutations",
       "path": "C02-transactional-store-foundation.md",
-      "status": "planned",
+      "status": "in_progress",
       "track": "Correctness",
       "gate": "G1",
       "depends_on": [
@@ -229,7 +229,7 @@
       "id": "P01",
       "title": "Establish a reproducible map performance baseline",
       "path": "P01-performance-baseline.md",
-      "status": "in_progress",
+      "status": "in_review",
       "track": "Performance",
       "gate": "G0",
       "depends_on": [
@@ -237,7 +237,7 @@
       ],
       "review": "Routine coding agent",
       "pr_boundary": "One measurement/fixture PR; no optimization yet.",
-      "implementation_pr": null,
+      "implementation_pr": "https://github.com/RyanGann/urbanization-tracker/pull/17",
       "evidence": null
     },
     {
@@ -630,7 +630,7 @@
       "id": "U00",
       "title": "Make current map filters show the intended records",
       "path": "U00-immediate-filter-correctness.md",
-      "status": "planned",
+      "status": "in_progress",
       "track": "Usability",
       "gate": "G1",
       "depends_on": [
