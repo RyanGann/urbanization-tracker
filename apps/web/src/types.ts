@@ -321,8 +321,8 @@ export interface ConnectorHealth {
 }
 
 export interface RecordFilters {
-  statuses: DevelopmentStatus[];
-  confidenceLevels: ConfidenceLevel[];
-  developmentTypes: string[];
-  flagTypes: string[];
+  statuses?: DevelopmentStatus[];
+  confidenceLevels?: ConfidenceLevel[];
+  developmentTypes?: string[];
+  flagTypes?: string[];
 }

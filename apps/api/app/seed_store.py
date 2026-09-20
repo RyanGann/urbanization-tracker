@@ -152,19 +152,19 @@ def list_development_records(
     records.extend(list_phase3_development_records())
     records = [record.model_dump() for record in _validated_development_records(records)]
 
-    if statuses:
+    if statuses is not None:
         status_set = set(statuses)
         records = [record for record in records if record["status"] in status_set]
 
-    if development_types:
+    if development_types is not None:
         type_set = set(development_types)
         records = [record for record in records if record["development_type"] in type_set]
 
-    if confidence_levels:
+    if confidence_levels is not None:
         confidence_set = set(confidence_levels)
         records = [record for record in records if record["confidence_level"] in confidence_set]
 
-    if flag_types:
+    if flag_types is not None:
         flag_set = set(flag_types)
         records = [
             record

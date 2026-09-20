@@ -8,6 +8,7 @@ from app.alert_delivery import send_queued_email_alerts
 from app.auth import require_reviewer_access
 from app.config import get_settings
 from app.data_availability import DataUnavailableError
+from app.filters import parse_record_filters
 from app.jurisdictions import connector_health, list_jurisdictions
 from app.phase3_store import (
     change_log_for,
@@ -134,12 +135,13 @@ def get_development_records(
     confidence: Annotated[list[str] | None, Query()] = None,
     flag: Annotated[list[str] | None, Query()] = None,
 ) -> DevelopmentRecordCollection:
-    records = list_development_records(
-        statuses=status,
-        development_types=development_type,
-        confidence_levels=confidence,
-        flag_types=flag,
+    filters = parse_record_filters(
+        status=status,
+        development_type=development_type,
+        confidence=confidence,
+        flag=flag,
     )
+    records = list_development_records(**filters)
     return DevelopmentRecordCollection(data_mode=get_settings().data_mode, records=records)
 
 
@@ -171,12 +173,13 @@ def get_development_records_geojson(
     confidence: Annotated[list[str] | None, Query()] = None,
     flag: Annotated[list[str] | None, Query()] = None,
 ) -> dict[str, object]:
-    records = list_development_records(
-        statuses=status,
-        development_types=development_type,
-        confidence_levels=confidence,
-        flag_types=flag,
+    filters = parse_record_filters(
+        status=status,
+        development_type=development_type,
+        confidence=confidence,
+        flag=flag,
     )
+    records = list_development_records(**filters)
     payload = development_records_geojson(records)
     payload["data_mode"] = get_settings().data_mode
     return payload
