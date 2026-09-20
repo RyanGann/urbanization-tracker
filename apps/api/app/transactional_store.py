@@ -10,7 +10,7 @@ from __future__ import annotations
 import copy
 from collections.abc import Iterator
 from contextlib import contextmanager
-from typing import Any, Literal, TypeAlias
+from typing import Any, Literal
 
 from sqlalchemy import delete, func, select, text
 from sqlalchemy.exc import DBAPIError
@@ -19,8 +19,6 @@ from sqlalchemy.orm import Session
 from app.models import Phase3CollectionItem, ProcessedCollectionItem
 
 CollectionKind = Literal["phase3", "processed"]
-CollectionItem: TypeAlias = Phase3CollectionItem | ProcessedCollectionItem
-
 CANONICAL_MUTATION_LOCK_NAMESPACE = 2088694651
 CANONICAL_MUTATION_LOCK_KEY = 1
 LOCK_TIMEOUT_MS = 1_500
@@ -50,7 +48,10 @@ class CollectionUnitOfWork:
         try:
             self.session.execute(
                 text("SELECT pg_advisory_xact_lock(:namespace, :key)"),
-                {"namespace": CANONICAL_MUTATION_LOCK_NAMESPACE, "key": CANONICAL_MUTATION_LOCK_KEY},
+                {
+                    "namespace": CANONICAL_MUTATION_LOCK_NAMESPACE,
+                    "key": CANONICAL_MUTATION_LOCK_KEY,
+                },
             )
         except DBAPIError as exc:
             if getattr(exc.orig, "sqlstate", None) == "55P03":
@@ -58,7 +59,7 @@ class CollectionUnitOfWork:
             raise
 
     @contextmanager
-    def canonical_mutation(self) -> Iterator["CollectionUnitOfWork"]:
+    def canonical_mutation(self) -> Iterator[CollectionUnitOfWork]:
         self.acquire_canonical_mutation_lock()
         yield self
 
@@ -74,14 +75,10 @@ class CollectionUnitOfWork:
     def get_processed(self, collection_name: str, item_id: str) -> dict[str, Any] | None:
         return self._get("processed", collection_name, item_id)
 
-    def upsert_phase3(
-        self, collection_name: str, item_id: str, payload: dict[str, Any]
-    ) -> None:
+    def upsert_phase3(self, collection_name: str, item_id: str, payload: dict[str, Any]) -> None:
         self._upsert("phase3", collection_name, item_id, payload)
 
-    def upsert_processed(
-        self, collection_name: str, item_id: str, payload: dict[str, Any]
-    ) -> None:
+    def upsert_processed(self, collection_name: str, item_id: str, payload: dict[str, Any]) -> None:
         self._upsert("processed", collection_name, item_id, payload)
 
     def delete_phase3(self, collection_name: str, item_id: str) -> None:

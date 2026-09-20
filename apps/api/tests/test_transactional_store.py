@@ -12,9 +12,15 @@ def test_item_upserts_preserve_other_rows_and_deterministic_order() -> None:
     with Session(engine) as session:
         with session.begin():
             unit_of_work = CollectionUnitOfWork(session)
-            unit_of_work.upsert_phase3("public_submissions", "first", {"id": "first", "title": "First"})
-            unit_of_work.upsert_phase3("public_submissions", "second", {"id": "second", "title": "Second"})
-            unit_of_work.upsert_phase3("public_submissions", "first", {"id": "first", "title": "Updated"})
+            unit_of_work.upsert_phase3(
+                "public_submissions", "first", {"id": "first", "title": "First"}
+            )
+            unit_of_work.upsert_phase3(
+                "public_submissions", "second", {"id": "second", "title": "Second"}
+            )
+            unit_of_work.upsert_phase3(
+                "public_submissions", "first", {"id": "first", "title": "Updated"}
+            )
             unit_of_work.upsert_processed(
                 "development_records", "canonical-1", {"public_id": "canonical-1"}
             )
@@ -26,6 +32,7 @@ def test_item_upserts_preserve_other_rows_and_deterministic_order() -> None:
         assert unit_of_work.get_processed("development_records", "canonical-1") == {
             "public_id": "canonical-1"
         }
+        session.rollback()  # Read queries autobegin; end that read-only transaction first.
         with session.begin():
             unit_of_work.delete_phase3("public_submissions", "first")
 

@@ -9,7 +9,7 @@ import { preparePerformance, enableMeasurementLimits, captureDatabase, startReso
 const root = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const composeFile = join(root, "compose.integration.yml");
 const fixturePath = join(root, "apps", "api", "tests", "integration", "fixture.json");
-const supportedSuites = new Set(["api", "live", "performance"]);
+const supportedSuites = new Set(["api", "live", "concurrency", "performance"]);
 const requestedArgs = process.argv.slice(2);
 let interrupted = false;
 const activeChildren = new Set();
@@ -28,8 +28,7 @@ for (const signal of ["SIGINT", "SIGTERM"]) {
 
 function usage(message) {
   if (message) console.error(`Error: ${message}`);
-  console.error("Usage: node scripts/run-integration.mjs --suite api|live|performance [--scenario functional|representative|snapshot|c01-data-modes] [--snapshot-dir DISPOSABLE_COPY] [--profile desktop|mobile] [--smoke] [--keep-on-failure]");
-
+  console.error("Usage: node scripts/run-integration.mjs --suite api|live|concurrency|performance [--scenario functional|representative|snapshot|c01-data-modes] [--snapshot-dir DISPOSABLE_COPY] [--profile desktop|mobile] [--smoke] [--keep-on-failure]");
   process.exitCode = 2;
 }
 
@@ -307,7 +306,9 @@ async function runSuite(options) {
     // Otherwise Docker creates it as root and the runner cannot write C01 fixtures on Linux CI.
     await mkdir(join(artifactDir, "c01-data"), { recursive: true });
   }
-
+  if (options.suite === "concurrency") {
+    await mkdir(join(artifactDir, "c02-data"), { recursive: true });
+  }
   await writeFile(envFile, [
     `INTEGRATION_ARTIFACT_DIR=${artifactDir.replaceAll("\\", "/")}`,
     `INTEGRATION_REVIEWER_TOKEN=${reviewerToken}`,
@@ -452,8 +453,23 @@ async function runSuite(options) {
 
   };
 
+  const runC02Transactions = async (phase) => {
+    await run("docker", [
+      ...compose,
+      "run", "--rm", "--no-deps",
+      "--volume", `${join(root, "apps", "api", "tests", "integration").replaceAll("\\", "/")}:/integration:ro`,
+      "api", "python", "/integration/c02_transactions.py",
+      "--api-url", "http://api-gateway:8000",
+      "--reviewer-token", reviewerToken,
+      "--fixture-id", fixture.id,
+      "--result", "/c02-data/results.json",
+      "--phase", phase
+    ], { log, timeoutMs: 90_000 });
+  };
+
   try {
-    await run("docker", [...compose, "build", "api", ...((options.suite !== "api" || options.scenario === "c01-data-modes") ? ["web", "browser"] : [])], { log, timeoutMs: 300_000 });
+    const requiresBrowser = options.suite === "live" || performance || options.scenario === "c01-data-modes";
+    await run("docker", [...compose, "build", "api", ...(requiresBrowser ? ["web", "browser"] : [])], { log, timeoutMs: 300_000 });
     await run("docker", [...compose, "up", "--detach", "db", "mail"], { log, timeoutMs: 300_000 });
     await waitForDatabase(compose, log);
     await run("docker", [...compose, "run", "--rm", "--no-deps", "api", "alembic", "upgrade", "head"], { log });
@@ -470,6 +486,7 @@ async function runSuite(options) {
       await runC01DataModes();
     } else {
       await assertApi(apiUrl, reviewerToken, fixture, options.assertFailure);
+      if (options.suite === "concurrency") await runC02Transactions("create");
       await run("docker", [...compose, "restart", "api"], { log });
       apiUrl = await publishedPort(compose, "api-gateway", 8000, log);
       await waitForHealth(apiUrl);
@@ -478,9 +495,14 @@ async function runSuite(options) {
         await captureDatabase({ compose, run, log, artifactDir });
         stopSampling = await startResourceSampling({ compose, run, log, artifactDir });
       }
+      if (options.suite === "concurrency") {
+        await runC02Transactions("verify");
+        scenarioArtifacts.c02_results_sha256 = createHash("sha256")
+          .update(await readFile(join(artifactDir, "c02-data", "results.json")))
+          .digest("hex");
+      }
     }
-    if (options.suite !== "api") {
-
+    if (options.suite === "live" || performance) {
       await run("docker", [...compose, "up", "--detach", "web"], { log, timeoutMs: 300_000 });
       await waitForWeb(compose, log);
       await run("docker", [...compose, "run", "--rm", ...(performance ? ["--entrypoint", "node"] : []), "browser", ...(performance ? ["e2e/performance-baseline.mjs"] : [])], { log, timeoutMs: performance ? 14_400_000 : 300_000 });

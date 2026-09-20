@@ -37,6 +37,7 @@ services:
         condition: service_healthy
     volumes:
       - ${INTEGRATION_ARTIFACT_DIR}/c01-data:/c01-data
+      - ${INTEGRATION_ARTIFACT_DIR}/c02-data:/c02-data
     networks:
       - private
 
