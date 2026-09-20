@@ -81,7 +81,7 @@ def test_madison_county_ingestion_preserves_other_processed_sources(tmp_path: Pa
     ]
 
     assert "existing-huntsville-record" in keys
-    assert "madison-county-subdivision-95-7-abernathy-estates" in keys
+    assert "madison-county-subdivision-95" in keys
     assert health["records"]["published"] == 2
     assert health["records"]["proximity_flags"] == 1
     assert {"huntsville_new_subdivisions", "madison_county_subdivisions"} <= health_keys

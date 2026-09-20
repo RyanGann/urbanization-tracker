@@ -13,6 +13,7 @@ from app.ingestion.artifacts import (
     write_json,
 )
 from app.ingestion.connectors.arcgis import ArcGISLayerConfig, ArcGISRestConnector
+from app.ingestion.identity import SourceIdentityError, source_record_id
 from app.ingestion.normalize import normalize_development_feature
 from app.ingestion.proximity import compute_proximity_flags
 from app.ingestion.sources.huntsville import (
@@ -58,9 +59,13 @@ def ingest_huntsville(
             source_health.append(source_result["health"])
             raw_records.extend(source_result["raw_records"])
             for feature in source_result["collection"]["features"]:
-                staged, published, validation_errors = normalize_development_feature(
-                    feature, source.key, checked_at
-                )
+                try:
+                    staged, published, validation_errors = normalize_development_feature(
+                        feature, source.key, checked_at
+                    )
+                except SourceIdentityError as exc:
+                    _quarantine_identity(source_result["health"], exc)
+                    continue
                 if validation_errors:
                     source_result["health"]["error_count"] += len(validation_errors)
                     source_result["health"]["validation_errors"].extend(validation_errors)
@@ -121,9 +126,13 @@ def ingest_madison_county(
             source_health.append(source_result["health"])
             raw_records.extend(source_result["raw_records"])
             for feature in source_result["collection"]["features"]:
-                staged, published, validation_errors = normalize_development_feature(
-                    feature, source.key, checked_at
-                )
+                try:
+                    staged, published, validation_errors = normalize_development_feature(
+                        feature, source.key, checked_at
+                    )
+                except SourceIdentityError as exc:
+                    _quarantine_identity(source_result["health"], exc)
+                    continue
                 if validation_errors:
                     source_result["health"]["error_count"] += len(validation_errors)
                     source_result["health"]["validation_errors"].extend(validation_errors)
@@ -230,26 +239,30 @@ def _raw_records(
     config: ArcGISLayerConfig, collection: dict[str, Any], checked_at: str
 ) -> list[dict[str, Any]]:
     records: list[dict[str, Any]] = []
-    for index, feature in enumerate(collection.get("features", [])):
+    for feature in collection.get("features", []):
         properties = feature.get("properties") or {}
-        source_record_id = (
-            properties.get("SubdID")
-            or properties.get("PermitID")
-            or properties.get("OBJECTID")
-            or properties.get("ObjectId")
-            or index
-        )
+        try:
+            record_id: str | None = source_record_id(config.key, properties)
+        except SourceIdentityError:
+            # The raw GeoJSON artifact retains the full rejected feature. It cannot
+            # participate in a registry or mutable merge without an anchor.
+            record_id = None
         payload = {"type": "Feature", **feature}
         records.append(
             {
                 "data_source_key": config.key,
-                "source_record_id": str(source_record_id),
+                "source_record_id": record_id,
                 "payload_json": payload,
                 "fetched_at": checked_at,
                 "payload_sha256": _sha256(payload),
             }
         )
     return records
+
+
+def _quarantine_identity(health: dict[str, Any], error: SourceIdentityError) -> None:
+    health["error_count"] += 1
+    health["validation_errors"].append(f"identity_quarantined: {error}")
 
 
 def _dedupe_records(records: list[dict[str, Any]], *, key: str) -> list[dict[str, Any]]:

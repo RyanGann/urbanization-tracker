@@ -1,11 +1,11 @@
 from __future__ import annotations
 
-import hashlib
 import re
 from datetime import UTC, datetime
 from typing import Any
 
 from app.ingestion.geometry import approx_area_sq_m, centroid, validate_geometry
+from app.ingestion.identity import provisional_public_id, source_record_id
 from app.ingestion.sources.huntsville import BUILDING_PERMITS, NEW_SUBDIVISIONS
 from app.ingestion.sources.madison_county import MADISON_COUNTY_SUBDIVISIONS
 
@@ -38,18 +38,13 @@ def normalize_new_subdivision(
     source_status = _string(properties.get("Status")) or "Unknown"
     normalized_status = _subdivision_status(source_status)
     title = subdivision if not phase else f"{subdivision} {phase}"
-    public_id = _public_id(
-        "hsv-subdivision",
-        properties.get("SubdID"),
-        subdivision,
-        phase,
-        source_status,
-    )
+    source_id = source_record_id(NEW_SUBDIVISIONS.key, properties)
+    public_id = provisional_public_id(NEW_SUBDIVISIONS.key, source_id)
     record_centroid = centroid(geometry)
 
     staged = {
         "id": f"stage-{public_id}",
-        "raw_record_id": _source_record_id(properties, fallback=public_id),
+        "raw_record_id": source_id,
         "title": title,
         "description": _subdivision_description(properties),
         "development_type": "subdivision",
@@ -107,19 +102,19 @@ def normalize_building_permit(
     properties = _properties(feature)
     geometry = feature.get("geometry") or {}
     validation_errors = validate_geometry(geometry, {"Point"})
-    permit_id = _string(properties.get("PermitID")) or _stable_hash(properties)
+    permit_id = source_record_id(BUILDING_PERMITS.key, properties)
     title_bits = [
         _string(properties.get("Subdivision")),
         _string(properties.get("OccupancyType")),
         _string(properties.get("TypeOfWork")),
     ]
     title = " / ".join(bit for bit in title_bits if bit) or f"Building Permit {permit_id}"
-    public_id = _public_id("hsv-building-permit", permit_id)
+    public_id = provisional_public_id(BUILDING_PERMITS.key, permit_id)
     record_centroid = centroid(geometry)
 
     staged = {
         "id": f"stage-{public_id}",
-        "raw_record_id": _source_record_id(properties, fallback=permit_id),
+        "raw_record_id": permit_id,
         "title": title,
         "description": (
             "Issued building permit point context. Point geometry is not a parcel or "
@@ -181,19 +176,15 @@ def normalize_madison_county_subdivision(
     validation_errors = validate_geometry(geometry, {"Polygon", "MultiPolygon"})
     subdivision = _string(properties.get("Subd_Name")) or "Unnamed subdivision"
     source_status = _madison_subdivision_status(properties)
-    public_id = _public_id(
-        "madison-county-subdivision",
-        properties.get("Subd_ID"),
-        properties.get("OBJECTID"),
-        subdivision,
-    )
+    source_id = source_record_id(MADISON_COUNTY_SUBDIVISIONS.key, properties)
+    public_id = provisional_public_id(MADISON_COUNTY_SUBDIVISIONS.key, source_id)
     record_centroid = centroid(geometry)
     description = _madison_subdivision_description(properties)
     approval_date = _text_date(properties.get("DateFiled"))
 
     staged = {
         "id": f"stage-{public_id}",
-        "raw_record_id": _source_record_id(properties, fallback=public_id),
+        "raw_record_id": source_id,
         "title": subdivision,
         "description": description,
         "development_type": "subdivision",
@@ -296,36 +287,9 @@ def _string(value: Any) -> str | None:
     return text or None
 
 
-def _source_record_id(properties: dict[str, Any], fallback: str) -> str:
-    for key in ("SubdID", "Subd_ID", "PermitID", "OBJECTID", "ObjectId", "FID"):
-        value = _string(properties.get(key))
-        if value:
-            return value
-    return fallback
-
-
 def _public_source_fields(properties: dict[str, Any]) -> dict[str, Any]:
     blocked = {"Address"}
     return {key: value for key, value in properties.items() if key not in blocked}
-
-
-def _public_id(prefix: str, *parts: Any) -> str:
-    clean_parts = [_slug(str(part)) for part in parts if _string(part)]
-    base = "-".join([prefix, *clean_parts])
-    if len(base) <= 96:
-        return base
-    return f"{base[:80]}-{_stable_hash(parts)[:10]}"
-
-
-def _slug(value: str) -> str:
-    text = value.lower().strip()
-    text = re.sub(r"[^a-z0-9]+", "-", text)
-    text = re.sub(r"-+", "-", text).strip("-")
-    return text or "unknown"
-
-
-def _stable_hash(value: Any) -> str:
-    return hashlib.sha256(repr(value).encode("utf-8")).hexdigest()
 
 
 def _arcgis_date(value: Any) -> str | None:
