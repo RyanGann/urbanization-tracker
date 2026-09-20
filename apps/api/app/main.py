@@ -1,11 +1,13 @@
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, FastAPI, HTTPException, Query, Response
+from fastapi import APIRouter, Depends, FastAPI, HTTPException, Query, Request, Response
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
 
 from app.alert_delivery import send_queued_email_alerts
 from app.auth import require_reviewer_access
 from app.config import get_settings
+from app.data_availability import DataUnavailableError
 from app.jurisdictions import connector_health, list_jurisdictions
 from app.phase3_store import (
     change_log_for,
@@ -28,6 +30,7 @@ from app.schemas import (
     ConnectorHealth,
     DevelopmentRecord,
     DevelopmentRecordCollection,
+    DatasetStatus,
     DuplicateCandidate,
     EnvironmentalOverlay,
     FeatureCollection,
@@ -52,6 +55,7 @@ from app.schemas import (
 from app.seed_store import (
     approve_staged_record,
     development_records_geojson,
+    development_records_availability,
     export_reviewer_decisions,
     get_development_record,
     import_reviewer_decisions,
@@ -79,9 +83,33 @@ app.add_middleware(
 )
 
 
+@app.exception_handler(DataUnavailableError)
+def data_unavailable_error(_request: Request, _exc: DataUnavailableError) -> JSONResponse:
+    return JSONResponse(
+        status_code=503,
+        content={
+            "detail": {
+                "code": "data_unavailable",
+                "message": "Canonical data is not available. Try again after initialization completes.",
+            }
+        },
+    )
+
+
 @app.get("/health")
 def health() -> dict[str, str]:
     return {"status": "ok", "service": "urbanization-tracker-api"}
+
+
+@app.get("/api/dataset-status", response_model=DatasetStatus)
+def get_dataset_status() -> DatasetStatus:
+    return DatasetStatus(
+        data_mode=get_settings().data_mode,
+        availability=development_records_availability(),
+        dataset_revision=None,
+        source_freshness=None,
+        declared_scope=None,
+    )
 
 
 @app.get("/health/source-health")
@@ -108,7 +136,7 @@ def get_development_records(
         confidence_levels=confidence,
         flag_types=flag,
     )
-    return DevelopmentRecordCollection(records=records)
+    return DevelopmentRecordCollection(data_mode=get_settings().data_mode, records=records)
 
 
 @app.get("/api/development-records/{public_id}", response_model=DevelopmentRecord)
@@ -146,7 +174,9 @@ def get_development_records_geojson(
         confidence_levels=confidence,
         flag_types=flag,
     )
-    return development_records_geojson(records)
+    payload = development_records_geojson(records)
+    payload["data_mode"] = get_settings().data_mode
+    return payload
 
 
 @app.get("/api/environmental-overlays", response_model=list[EnvironmentalOverlay])

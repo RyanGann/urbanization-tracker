@@ -5,6 +5,7 @@ import type {
   ConnectorHealth,
   DevelopmentRecord,
   DevelopmentRecordCollection,
+  DatasetStatus,
   DuplicateCandidate,
   EnvironmentalOverlay,
   Jurisdiction,
@@ -32,7 +33,8 @@ const REVIEWER_TOKEN_KEY = "urbanization-tracker:reviewer-token";
 export class ApiError extends Error {
   constructor(
     readonly status: number,
-    message: string
+    message: string,
+    readonly code?: string
   ) {
     super(message);
     this.name = "ApiError";
@@ -75,8 +77,14 @@ async function request<T>(path: string, init?: ApiRequestInit): Promise<T> {
   });
 
   if (!response.ok) {
-    const detail = await response.text();
-    throw new ApiError(response.status, detail || `Request failed with status ${response.status}`);
+    const detail = await response.json().catch(() => null) as {
+      detail?: string | { code?: string; message?: string };
+    } | null;
+    const errorDetail = detail?.detail;
+    const message = typeof errorDetail === "string"
+      ? errorDetail
+      : errorDetail?.message ?? `Request failed with status ${response.status}`;
+    throw new ApiError(response.status, message, typeof errorDetail === "string" ? undefined : errorDetail?.code);
   }
 
   return response.json() as Promise<T>;
@@ -104,6 +112,10 @@ export function fetchDevelopmentRecords(
   filters: Partial<RecordFilters>
 ): Promise<DevelopmentRecordCollection> {
   return request<DevelopmentRecordCollection>(`/api/development-records${filterQuery(filters)}`);
+}
+
+export function fetchDatasetStatus(): Promise<DatasetStatus> {
+  return request<DatasetStatus>("/api/dataset-status");
 }
 
 export function fetchDevelopmentRecord(publicId: string): Promise<DevelopmentRecord> {

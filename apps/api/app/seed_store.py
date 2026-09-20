@@ -6,7 +6,9 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
-from app.processed_store import read_processed_list, read_processed_payload
+from app.config import get_settings
+from app.data_availability import Availability
+from app.processed_store import read_processed_list_result, read_processed_payload_result
 from app.schemas import DevelopmentRecord, EnvironmentalOverlay, StagedDevelopmentRecord
 
 SEED_PATH = Path(__file__).parent / "seed" / "seed_data.json"
@@ -15,6 +17,7 @@ _seed_data: dict[str, Any] | None = None
 _development_records: list[dict[str, Any]] = []
 _staged_records: list[dict[str, Any]] = []
 _force_seed_records = False
+_active_data_mode: str | None = None
 
 
 def _load_seed_data() -> dict[str, Any]:
@@ -25,42 +28,61 @@ def _load_seed_data() -> dict[str, Any]:
 
 
 def reset_seed_state(*, force_seed: bool = True) -> None:
-    global _force_seed_records
+    """Reset the isolated demo session without selecting demo mode."""
+    global _active_data_mode, _force_seed_records
     seed = _load_seed_data()
     _development_records.clear()
     _development_records.extend(copy.deepcopy(seed["development_records"]))
     _staged_records.clear()
     _staged_records.extend(copy.deepcopy(seed["staged_records"]))
     _force_seed_records = force_seed
+    _active_data_mode = "demo"
     from app.phase3_store import reset_phase3_state
 
     reset_phase3_state(force_memory=force_seed)
 
 
 def _ensure_loaded() -> None:
-    if not _development_records and not _staged_records:
+    if get_settings().data_mode == "demo" and _active_data_mode != "demo":
         reset_seed_state(force_seed=False)
 
 
 def _load_processed_records() -> list[dict[str, Any]] | None:
-    return read_processed_list("development_records")
+    result = read_processed_list_result("development_records")
+    if result.availability is Availability.UNINITIALIZED:
+        return None
+    return result.require_ready(collection="development_records")
 
 
 def _load_processed_staged_records() -> list[dict[str, Any]] | None:
-    return read_processed_list("staged_development_records")
+    result = read_processed_list_result("staged_development_records")
+    if result.availability is Availability.UNINITIALIZED:
+        return None
+    return result.require_ready(collection="staged_development_records")
 
 
 def _load_processed_overlays() -> list[dict[str, Any]] | None:
-    return read_processed_list("environmental_overlays")
+    result = read_processed_list_result("environmental_overlays")
+    if result.availability is Availability.UNINITIALIZED:
+        return None
+    return result.require_ready(collection="environmental_overlays")
+
+
+def development_records_availability() -> Availability:
+    if get_settings().data_mode == "demo":
+        return Availability.READY
+    return read_processed_list_result("development_records").availability
 
 
 def load_source_health() -> dict[str, Any]:
-    payload = read_processed_payload(
-        "source_health",
-        default={"status": "unknown", "sources": [], "records": {}},
-    )
-    if payload is None:
+    if get_settings().data_mode == "demo":
         payload = {"status": "unknown", "sources": [], "records": {}}
+    else:
+        result = read_processed_payload_result("source_health")
+        if result.availability is Availability.UNINITIALIZED:
+            payload = {"status": "unknown", "sources": [], "records": {}}
+        else:
+            payload = result.require_ready(collection="source_health")
 
     from app.phase3_store import agenda_health
 
@@ -88,9 +110,18 @@ def list_development_records(
     confidence_levels: list[str] | None = None,
     flag_types: list[str] | None = None,
 ) -> list[DevelopmentRecord]:
-    _ensure_loaded()
-    processed_records = None if _force_seed_records else _load_processed_records()
-    records = copy.deepcopy(processed_records or _development_records)
+    if get_settings().data_mode == "demo":
+        _ensure_loaded()
+        records = copy.deepcopy(_development_records)
+    else:
+        processed_records = _load_processed_records()
+        if processed_records is None:
+            from app.data_availability import DataUnavailableError
+
+            raise DataUnavailableError(
+                collection="development_records", availability=Availability.UNINITIALIZED
+            )
+        records = copy.deepcopy(processed_records)
     from app.phase3_store import list_phase3_development_records
 
     records.extend(list_phase3_development_records())
@@ -119,9 +150,18 @@ def list_development_records(
 
 
 def get_development_record(public_id: str) -> DevelopmentRecord | None:
-    _ensure_loaded()
-    processed_records = None if _force_seed_records else _load_processed_records()
-    records = copy.deepcopy(processed_records or _development_records)
+    if get_settings().data_mode == "demo":
+        _ensure_loaded()
+        records = copy.deepcopy(_development_records)
+    else:
+        processed_records = _load_processed_records()
+        if processed_records is None:
+            from app.data_availability import DataUnavailableError
+
+            raise DataUnavailableError(
+                collection="development_records", availability=Availability.UNINITIALIZED
+            )
+        records = copy.deepcopy(processed_records)
     from app.phase3_store import list_phase3_development_records
 
     records.extend(list_phase3_development_records())
@@ -148,27 +188,31 @@ def development_records_geojson(records: list[DevelopmentRecord]) -> dict[str, A
 
 
 def list_environmental_overlays() -> list[EnvironmentalOverlay]:
-    processed_overlays = None if _force_seed_records else _load_processed_overlays()
-    if processed_overlays is not None:
-        return [
-            EnvironmentalOverlay.model_validate(copy.deepcopy(overlay))
-            for overlay in processed_overlays
-        ]
+    if get_settings().data_mode == "demo":
+        seed = _load_seed_data()
+        overlays = seed["environmental_overlays"]
+    else:
+        processed_overlays = _load_processed_overlays()
+        if processed_overlays is None:
+            from app.data_availability import DataUnavailableError
 
-    seed = _load_seed_data()
+            raise DataUnavailableError(
+                collection="environmental_overlays", availability=Availability.UNINITIALIZED
+            )
+        overlays = processed_overlays
     return [
         EnvironmentalOverlay.model_validate(copy.deepcopy(overlay))
-        for overlay in seed["environmental_overlays"]
+        for overlay in overlays
     ]
 
 
 def list_staged_records() -> list[StagedDevelopmentRecord]:
-    _ensure_loaded()
-    processed_staged = None if _force_seed_records else _load_processed_staged_records()
-    if processed_staged is not None:
-        records = copy.deepcopy(processed_staged)
-    else:
+    if get_settings().data_mode == "demo":
+        _ensure_loaded()
         records = copy.deepcopy(_staged_records)
+    else:
+        processed_staged = _load_processed_staged_records()
+        records = copy.deepcopy(processed_staged or [])
     from app.phase3_store import list_phase3_staged_records
 
     records.extend(list_phase3_staged_records())
@@ -176,8 +220,12 @@ def list_staged_records() -> list[StagedDevelopmentRecord]:
 
 
 def get_staged_record(staged_id: str) -> dict[str, Any] | None:
-    _ensure_loaded()
-    for staged in _staged_records:
+    if get_settings().data_mode == "demo":
+        _ensure_loaded()
+        records = _staged_records
+    else:
+        records = _load_processed_staged_records() or []
+    for staged in records:
         if staged["id"] == staged_id:
             return staged
     return None

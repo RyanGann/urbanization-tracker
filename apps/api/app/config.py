@@ -17,6 +17,13 @@ def _default_data_dir() -> Path:
 class Settings(BaseSettings):
     app_name: str = "Urbanization Tracker API"
     database_url: str = "postgresql+psycopg://urbanization:urbanization@localhost:5432/urbanization_tracker"
+    data_mode: Literal["live", "demo"] = Field(
+        default="live",
+        description=(
+            "Public data mode: 'live' reads only configured canonical stores; 'demo' uses "
+            "the bundled, visibly labelled fixtures in an isolated in-memory session."
+        ),
+    )
     redis_url: str = "redis://localhost:6379/0"
     ingestion_data_dir: Path = Field(
         default_factory=_default_data_dir,

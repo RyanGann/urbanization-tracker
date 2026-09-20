@@ -8,6 +8,7 @@ from typing import Any
 from sqlalchemy import delete, func, select
 
 from app.config import get_settings
+from app.data_availability import Availability, CollectionRead
 
 LIST_COLLECTIONS = (
     "development_records",
@@ -24,16 +25,33 @@ def read_processed_list(
     *,
     data_dir: Path | None = None,
 ) -> list[dict[str, Any]] | None:
+    result = read_processed_list_result(name, data_dir=data_dir)
+    if result.availability is Availability.UNINITIALIZED:
+        return None
+    return result.require_ready(collection=name)
+
+
+def read_processed_list_result(
+    name: str,
+    *,
+    data_dir: Path | None = None,
+) -> CollectionRead[list[dict[str, Any]]]:
     _require_collection(name, LIST_COLLECTIONS)
     if _use_postgres_store():
-        return _read_postgres_items(name)
+        try:
+            return CollectionRead(Availability.READY, _read_postgres_items(name))
+        except Exception:
+            return CollectionRead(Availability.UNAVAILABLE)
     path = _collection_path(data_dir or get_settings().ingestion_data_dir, name)
     if not path.exists():
-        return None
-    payload = json.loads(path.read_text(encoding="utf-8"))
-    if not isinstance(payload, list):
-        return None
-    return [copy.deepcopy(item) for item in payload if isinstance(item, dict)]
+        return CollectionRead(Availability.UNINITIALIZED)
+    try:
+        payload = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return CollectionRead(Availability.UNAVAILABLE)
+    if not isinstance(payload, list) or any(not isinstance(item, dict) for item in payload):
+        return CollectionRead(Availability.UNAVAILABLE)
+    return CollectionRead(Availability.READY, copy.deepcopy(payload))
 
 
 def write_processed_list(
@@ -55,19 +73,38 @@ def read_processed_payload(
     data_dir: Path | None = None,
     default: dict[str, Any] | None = None,
 ) -> dict[str, Any] | None:
+    result = read_processed_payload_result(name, data_dir=data_dir)
+    if result.availability is Availability.UNINITIALIZED:
+        return copy.deepcopy(default)
+    return result.require_ready(collection=name)
+
+
+def read_processed_payload_result(
+    name: str,
+    *,
+    data_dir: Path | None = None,
+) -> CollectionRead[dict[str, Any]]:
     _require_collection(name, SINGLETON_COLLECTIONS)
     if _use_postgres_store():
-        items = _read_postgres_items(name)
+        try:
+            items = _read_postgres_items(name)
+        except Exception:
+            return CollectionRead(Availability.UNAVAILABLE)
         if not items:
-            return copy.deepcopy(default)
-        return copy.deepcopy(items[0])
+            return CollectionRead(Availability.UNINITIALIZED)
+        if len(items) != 1 or not isinstance(items[0], dict):
+            return CollectionRead(Availability.UNAVAILABLE)
+        return CollectionRead(Availability.READY, copy.deepcopy(items[0]))
     path = _collection_path(data_dir or get_settings().ingestion_data_dir, name)
     if not path.exists():
-        return copy.deepcopy(default)
-    payload = json.loads(path.read_text(encoding="utf-8"))
+        return CollectionRead(Availability.UNINITIALIZED)
+    try:
+        payload = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return CollectionRead(Availability.UNAVAILABLE)
     if not isinstance(payload, dict):
-        return copy.deepcopy(default)
-    return copy.deepcopy(payload)
+        return CollectionRead(Availability.UNAVAILABLE)
+    return CollectionRead(Availability.READY, copy.deepcopy(payload))
 
 
 def write_processed_payload(
