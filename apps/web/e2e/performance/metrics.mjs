@@ -38,7 +38,10 @@ export async function applyCompletedRequestSizes(rows, request) {
   // CDP can finish between Playwright's event and sizes(); preserve that richer row.
   const matching = [...rows.values()].reverse().find((row) => row.url === url && !row.complete);
   if (!matching) return false;
-  const bodyBytes = Number.isFinite(sizes.responseBodySize) ? sizes.responseBodySize : null;
+  // Chromium can finish this cross-target worker request while reporting zero
+  // body bytes despite loading a nonempty worker. Preserve that observation,
+  // but do not turn a missing counter into a claimed zero-cost script.
+  const bodyBytes = Number.isFinite(sizes.responseBodySize) && sizes.responseBodySize > 0 ? sizes.responseBodySize : null;
   const headerBytes = Number.isFinite(sizes.responseHeadersSize) ? sizes.responseHeadersSize : null;
   // Playwright request.sizes reports encoded response body and response headers, never decoded body bytes.
   Object.assign(matching, {
@@ -48,6 +51,8 @@ export async function applyCompletedRequestSizes(rows, request) {
     decoded_body_bytes: null,
     encoded_chunk_bytes: null,
     encoded_body_bytes: bodyBytes,
+    reported_encoded_body_bytes: sizes.responseBodySize ?? null,
+    size_unavailable_reason: bodyBytes === null ? 'worker_body_counter_unavailable' : null,
     response_headers_bytes: headerBytes,
     transfer_bytes: bodyBytes !== null && headerBytes !== null ? bodyBytes + headerBytes : null,
     transfer_source: 'playwright.request.sizes.responseBodySize+responseHeadersSize',

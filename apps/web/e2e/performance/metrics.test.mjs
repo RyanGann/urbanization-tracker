@@ -51,8 +51,23 @@ test('fills an incomplete worker request from completed Playwright request sizes
   assert.deepEqual(rows.get('cdp-worker'), {
     url: 'http://web/assets/maplibre-gl-worker.js', category: 'application_assets', type: 'Worker', status: 200,
     decoded_body_bytes: null, encoded_chunk_bytes: null, encoded_body_bytes: 509_455, transfer_bytes: 509_679,
+    reported_encoded_body_bytes: 509_455, size_unavailable_reason: null,
     response_headers_bytes: 224, transfer_source: 'playwright.request.sizes.responseBodySize+responseHeadersSize', complete: true, failed: false
   });
+});
+
+test('does not claim zero worker transfer when Chromium omits its body counter', async () => {
+  const row = { url: 'http://web/assets/maplibre-gl-worker.js', complete: false };
+  const rows = new Map([['worker', row]]);
+  await applyCompletedRequestSizes(rows, {
+    url: () => row.url, response: async () => ({ status: () => 200 }),
+    sizes: async () => ({ responseBodySize: 0, responseHeadersSize: 256 })
+  });
+  assert.equal(row.complete, true);
+  assert.equal(row.reported_encoded_body_bytes, 0);
+  assert.equal(row.encoded_body_bytes, null);
+  assert.equal(row.transfer_bytes, null);
+  assert.equal(row.size_unavailable_reason, 'worker_body_counter_unavailable');
 });
 
 test('leaves an incomplete row untouched when completed request sizes fail', async () => {

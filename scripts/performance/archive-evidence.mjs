@@ -12,7 +12,6 @@ const allowedFiles = [
   "fixture.json.manifest.json",
   "database.json",
   "resources.json",
-  "resources.partial.json",
   "resource-policy.json",
   join("performance", "browser.json")
 ];
