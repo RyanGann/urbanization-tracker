@@ -7,7 +7,9 @@ from pathlib import Path
 from typing import Any
 
 from app.config import get_settings
-from app.data_availability import Availability
+from pydantic import ValidationError
+
+from app.data_availability import Availability, DataUnavailableError
 from app.processed_store import read_processed_list_result, read_processed_payload_result
 from app.schemas import DevelopmentRecord, EnvironmentalOverlay, StagedDevelopmentRecord
 
@@ -146,7 +148,12 @@ def list_development_records(
             if any(flag["flag_type"] in flag_set for flag in record.get("proximity_flags", []))
         ]
 
-    return [DevelopmentRecord.model_validate(record) for record in records]
+    try:
+        return [DevelopmentRecord.model_validate(record) for record in records]
+    except ValidationError as exc:
+        raise DataUnavailableError(
+            collection="development_records", availability=Availability.UNAVAILABLE
+        ) from exc
 
 
 def get_development_record(public_id: str) -> DevelopmentRecord | None:
@@ -167,7 +174,12 @@ def get_development_record(public_id: str) -> DevelopmentRecord | None:
     records.extend(list_phase3_development_records())
     for record in records:
         if record["public_id"] == public_id:
-            return DevelopmentRecord.model_validate(copy.deepcopy(record))
+            try:
+                return DevelopmentRecord.model_validate(copy.deepcopy(record))
+            except ValidationError as exc:
+                raise DataUnavailableError(
+                    collection="development_records", availability=Availability.UNAVAILABLE
+                ) from exc
     return None
 
 
@@ -200,10 +212,15 @@ def list_environmental_overlays() -> list[EnvironmentalOverlay]:
                 collection="environmental_overlays", availability=Availability.UNINITIALIZED
             )
         overlays = processed_overlays
-    return [
-        EnvironmentalOverlay.model_validate(copy.deepcopy(overlay))
-        for overlay in overlays
-    ]
+    try:
+        return [
+            EnvironmentalOverlay.model_validate(copy.deepcopy(overlay))
+            for overlay in overlays
+        ]
+    except ValidationError as exc:
+        raise DataUnavailableError(
+            collection="environmental_overlays", availability=Availability.UNAVAILABLE
+        ) from exc
 
 
 def list_staged_records() -> list[StagedDevelopmentRecord]:
@@ -216,7 +233,12 @@ def list_staged_records() -> list[StagedDevelopmentRecord]:
     from app.phase3_store import list_phase3_staged_records
 
     records.extend(list_phase3_staged_records())
-    return [StagedDevelopmentRecord.model_validate(copy.deepcopy(record)) for record in records]
+    try:
+        return [StagedDevelopmentRecord.model_validate(copy.deepcopy(record)) for record in records]
+    except ValidationError as exc:
+        raise DataUnavailableError(
+            collection="staged_development_records", availability=Availability.UNAVAILABLE
+        ) from exc
 
 
 def get_staged_record(staged_id: str) -> dict[str, Any] | None:
