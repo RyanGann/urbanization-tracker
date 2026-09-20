@@ -645,9 +645,9 @@ def _read_collection(name: str) -> list[dict[str, Any]]:
                 collection=f"phase3_{name}", availability=Availability.UNAVAILABLE
             ) from exc
     path = _collection_path(name)
-    if not path.exists():
-        return copy.deepcopy(_memory_collections.get(name, []))
     try:
+        if not path.exists():
+            return copy.deepcopy(_memory_collections.get(name, []))
         payload = json.loads(path.read_text(encoding="utf-8"))
     except (OSError, UnicodeDecodeError, json.JSONDecodeError) as exc:
         raise DataUnavailableError(

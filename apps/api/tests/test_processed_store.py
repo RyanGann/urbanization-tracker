@@ -2,11 +2,13 @@ from pathlib import Path
 from typing import Any
 
 from app.config import get_settings
+from app.data_availability import Availability
 from app.ingestion import pipeline
 from app.processed_store import (
     migrate_processed_artifacts_to_postgres,
     processed_store_status,
     read_processed_list,
+    read_processed_list_result,
     read_processed_payload,
     write_processed_list,
     write_processed_payload,
@@ -210,3 +212,20 @@ def test_processed_store_status_uses_memory_in_demo_without_durable_probes(
     assert status["database_error"] is None
     assert all(collection["artifact_count"] == 0 for collection in status["collections"])
     assert all(artifact["artifact_count"] == 0 for artifact in status["raw_artifacts"])
+
+
+def test_processed_list_status_treats_artifact_stat_error_as_unavailable(
+    monkeypatch, tmp_path
+) -> None:
+    monkeypatch.setenv("INGESTION_DATA_DIR", str(tmp_path))
+    monkeypatch.setenv("PROCESSED_STORE_BACKEND", "artifact")
+    get_settings.cache_clear()
+
+    def fail_stat(_path: Path) -> bool:
+        raise OSError("access denied")
+
+    monkeypatch.setattr(Path, "exists", fail_stat)
+
+    result = read_processed_list_result("development_records")
+
+    assert result.availability is Availability.UNAVAILABLE

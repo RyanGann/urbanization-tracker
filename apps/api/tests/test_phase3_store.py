@@ -1,8 +1,13 @@
+from pathlib import Path
 from typing import Any
 
+import pytest
+
 from app.config import get_settings
+from app.data_availability import DataUnavailableError
 from app.phase3_store import (
     create_public_submission,
+    list_public_submissions,
     phase3_store_status,
     reset_phase3_state,
 )
@@ -171,3 +176,18 @@ def test_phase3_store_status_uses_memory_in_demo_without_durable_probes(
     assert status["database_error"] is None
     assert collections["public_submissions"]["database_count"] == 0
     assert collections["public_submissions"]["artifact_count"] == 0
+
+
+def test_phase3_read_treats_artifact_stat_error_as_unavailable(monkeypatch, tmp_path) -> None:
+    monkeypatch.setenv("INGESTION_DATA_DIR", str(tmp_path))
+    monkeypatch.setenv("PHASE3_STORE_BACKEND", "artifact")
+    get_settings.cache_clear()
+    reset_phase3_state(force_memory=False)
+
+    def fail_stat(_path: Path) -> bool:
+        raise OSError("access denied")
+
+    monkeypatch.setattr(Path, "exists", fail_stat)
+
+    with pytest.raises(DataUnavailableError):
+        list_public_submissions()

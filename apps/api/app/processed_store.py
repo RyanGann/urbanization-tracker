@@ -44,9 +44,9 @@ def read_processed_list_result(
         except SQLAlchemyError:
             return CollectionRead(Availability.UNAVAILABLE)
     path = _collection_path(data_dir or get_settings().ingestion_data_dir, name)
-    if not path.exists():
-        return CollectionRead(Availability.UNINITIALIZED)
     try:
+        if not path.exists():
+            return CollectionRead(Availability.UNINITIALIZED)
         payload = json.loads(path.read_text(encoding="utf-8"))
     except (OSError, UnicodeDecodeError, json.JSONDecodeError):
         return CollectionRead(Availability.UNAVAILABLE)
@@ -97,9 +97,9 @@ def read_processed_payload_result(
             return CollectionRead(Availability.UNAVAILABLE)
         return CollectionRead(Availability.READY, copy.deepcopy(items[0]))
     path = _collection_path(data_dir or get_settings().ingestion_data_dir, name)
-    if not path.exists():
-        return CollectionRead(Availability.UNINITIALIZED)
     try:
+        if not path.exists():
+            return CollectionRead(Availability.UNINITIALIZED)
         payload = json.loads(path.read_text(encoding="utf-8"))
     except (OSError, UnicodeDecodeError, json.JSONDecodeError):
         return CollectionRead(Availability.UNAVAILABLE)
