@@ -1,0 +1,168 @@
+{
+  "development_records": [
+    {
+      "public_id": "u00-completed-development",
+      "title": "U00 Completed Development",
+      "description": "Deterministic real-store integration fixture.",
+      "development_type": "subdivision",
+      "status": "completed",
+      "source_status": "completed",
+      "source_url": "https://example.test/t01",
+      "source_agency": "T01 test fixture",
+      "date_discovered": "2026-09-19",
+      "date_last_checked": "2026-09-19",
+      "application_date": null,
+      "approval_date": null,
+      "permit_issue_date": null,
+      "review_status": "published",
+      "confidence_level": "high",
+      "geometry_source": "integration fixture",
+      "geometry_confidence": "high",
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          -86.5861,
+          34.7304
+        ]
+      },
+      "centroid": [
+        -86.5861,
+        34.7304
+      ],
+      "area_sq_m": null,
+      "address": null,
+      "parcel_ids": [],
+      "source_fields": {
+        "fixture": "u00-filters",
+        "fixture_case": "u00-completed-development"
+      },
+      "proximity_flags": [
+        {
+          "flag_type": "near_waterway",
+          "label": "Near waterway",
+          "relationship": "within",
+          "distance_m": 82,
+          "threshold_m": 100,
+          "source_name": "T01 fixture hydrography",
+          "source_url": "https://example.test/hydrography",
+          "caveat": "Screening context only"
+        }
+      ]
+    },
+    {
+      "public_id": "u00-proposed-submission",
+      "title": "U00 Proposed Public Submission",
+      "description": "Deterministic real-store integration fixture.",
+      "development_type": "public_submission",
+      "status": "proposed",
+      "source_status": "proposed",
+      "source_url": "https://example.test/t01",
+      "source_agency": "T01 test fixture",
+      "date_discovered": "2026-09-19",
+      "date_last_checked": "2026-09-19",
+      "application_date": null,
+      "approval_date": null,
+      "permit_issue_date": null,
+      "review_status": "published",
+      "confidence_level": "medium",
+      "geometry_source": "integration fixture",
+      "geometry_confidence": "high",
+      "geometry": {
+        "type": "Polygon",
+        "coordinates": [
+          [
+            [
+              -86.6,
+              34.74
+            ],
+            [
+              -86.59,
+              34.74
+            ],
+            [
+              -86.59,
+              34.75
+            ],
+            [
+              -86.6,
+              34.75
+            ],
+            [
+              -86.6,
+              34.74
+            ]
+          ]
+        ]
+      },
+      "centroid": [
+        -86.595,
+        34.745
+      ],
+      "area_sq_m": null,
+      "address": null,
+      "parcel_ids": [],
+      "source_fields": {
+        "fixture": "u00-filters",
+        "fixture_case": "u00-proposed-submission"
+      },
+      "proximity_flags": [
+        {
+          "flag_type": "near_waterway",
+          "label": "Near waterway",
+          "relationship": "within",
+          "distance_m": 82,
+          "threshold_m": 100,
+          "source_name": "T01 fixture hydrography",
+          "source_url": "https://example.test/hydrography",
+          "caveat": "Screening context only"
+        }
+      ]
+    },
+    {
+      "public_id": "u00-published-submission",
+      "title": "U00 Published Public Submission",
+      "description": "Deterministic real-store integration fixture.",
+      "development_type": "public_submission",
+      "status": "final",
+      "source_status": "published",
+      "source_url": "https://example.test/t01",
+      "source_agency": "T01 test fixture",
+      "date_discovered": "2026-09-19",
+      "date_last_checked": "2026-09-19",
+      "application_date": null,
+      "approval_date": null,
+      "permit_issue_date": null,
+      "review_status": "published",
+      "confidence_level": "low",
+      "geometry_source": "integration fixture",
+      "geometry_confidence": "high",
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          -86.57,
+          34.77
+        ]
+      },
+      "centroid": [
+        -86.57,
+        34.77
+      ],
+      "area_sq_m": null,
+      "address": null,
+      "parcel_ids": [],
+      "source_fields": {
+        "fixture": "u00-filters",
+        "fixture_case": "u00-published-submission"
+      },
+      "proximity_flags": []
+    }
+  ],
+  "environmental_overlays": [],
+  "source_health": {
+    "status": "healthy",
+    "sources": [],
+    "records": {
+      "published": 3
+    }
+  }
+}
