@@ -28,33 +28,33 @@
       "id": "T01",
       "title": "Run integration tests against the real API and PostGIS",
       "path": "T01-real-api-postgis-harness.md",
-      "status": "planned",
+      "status": "complete",
       "track": "Foundation",
       "gate": "G0",
       "depends_on": [],
       "review": "Lead review",
       "pr_boundary": "One harness PR; regression scenarios are added by their owning PRs.",
-      "implementation_pr": null,
-      "evidence": null
+      "implementation_pr": "https://github.com/RyanGann/urbanization-tracker/pull/14",
+      "evidence": "../../integration/T01-harness.md"
     },
     {
       "id": "S01",
       "title": "Patch frontend dependencies and verify map compatibility",
       "path": "S01-frontend-dependency-update.md",
-      "status": "planned",
+      "status": "complete",
       "track": "Security",
       "gate": "G0",
       "depends_on": [],
       "review": "Routine with visual review",
       "pr_boundary": "One dependency/migration PR; no feature redesign.",
-      "implementation_pr": null,
-      "evidence": null
+      "implementation_pr": "https://github.com/RyanGann/urbanization-tracker/pull/15",
+      "evidence": "../../evidence/S01-dependencies.md"
     },
     {
       "id": "C01",
       "title": "Distinguish live data, demo fixtures, empty collections, and unavailable stores",
       "path": "C01-explicit-data-modes.md",
-      "status": "planned",
+      "status": "in_progress",
       "track": "Correctness",
       "gate": "G0",
       "depends_on": [
@@ -229,7 +229,7 @@
       "id": "P01",
       "title": "Establish a reproducible map performance baseline",
       "path": "P01-performance-baseline.md",
-      "status": "planned",
+      "status": "in_progress",
       "track": "Performance",
       "gate": "G0",
       "depends_on": [
