@@ -80,10 +80,10 @@ A PR can merge before its broader gate is complete if its intermediate state is 
 | [D01: Fetch a declared pilot scope completely and report source coverage](D01-source-scope-pagination-canaries.md) | C03, T01 | Lead review |
 | [C04: Retain agenda documents and reviewer decisions across refreshes](C04-agenda-revision-retention.md) | C02, C03 | Lead review |
 | [C05: Make review actions explicit, durable, and revision checked](C05-review-action-policy.md) | C02, C04 | Routine with lead review |
-| [C06: Publish canonical changes and durable history in one transaction](C06-publication-events-history.md) | C03, C04, C05 | Lead review |
+| [C06: Publish canonical changes and durable history in one transaction](C06-publication-events-history.md) | C03, C04, C05, S02 | Lead review |
 | [S02: Validate geometry and limit public write abuse](S02-public-input-validation.md) | C02 | Lead review |
 | [U04: Let reviewers validate and correct a candidate location](U04-reviewer-geometry-correction.md) | C05, S02, U02, C06 | Lead review |
-| [C09: Merge confirmed duplicates without losing URLs or provenance](C09-manual-duplicate-resolution.md) | C06, U04 | Lead review |
+| [C09: Merge confirmed duplicates without losing URLs or provenance](C09-manual-duplicate-resolution.md) | C06, U04, C07 | Lead review |
 | [D02: Calculate environmental screening from complete canonical geometry](D02-authoritative-spatial-screening.md) | D01, P04, C06 | Lead review |
 
 ## Watch and notification reliability
@@ -150,6 +150,6 @@ Waterways, watersheds, broader protected-land/habitat sources, additional jurisd
 
 ## Plan validation
 
-Validation passed for all 38 guide files, nine performance guides, the acyclic dependency graph, index/manifest agreement, required guide sections and 495 local links across the package and updated entry documents. Whitespace checks passed. The temporary local validator is under tmp/validate-readiness-plan.cjs; it checks documentation only and is not a new application test harness.
+Validation passed for all 38 guide files, nine performance guides, the acyclic dependency graph, index/manifest agreement, required guide sections and all local links across the package and updated entry documents. Whitespace checks passed. The temporary local validator is under tmp/validate-readiness-plan.cjs; it checks documentation only and is not a new application test harness.
 
 Application tests were not rerun for these documentation-only changes. The previously reviewed checks remain historical evidence; live API, new performance budgets and launch acceptance are still work for the implementation PRs.

@@ -29,7 +29,7 @@ These are inspection starting points, not a requirement to put all new code in e
 
 1. Separate logical document identity from blob SHA-256 and document revision. Prefer an authoritative meeting/document identifier; otherwise persist a canonical source URL/date key with collision diagnostics. A different download URL alone must not erase known provenance.
 
-2. Define candidate identity from an authoritative case/application ID when available, scoped by document and item/category. Fallback normalized title/phase identity must flag collisions for reviewer resolution. Keep mutable status and blob content hash out of stable candidate IDs.
+2. Define candidate identity from an authoritative case/application ID when available, scoped by logical document and an immutable source item key. Otherwise allocate a persisted internal candidate ID on first import and record the observation-to-ID mapping; identical artifact/observation replays reuse it. Titles, phases, page positions and ordinals are matching evidence, never identity inputs. If a changed document lacks a stable item anchor, quarantine the unmatched observation for explicit identity resolution: link it as a revision of an existing candidate or deliberately create a new candidate. Provide a narrow audited operator mapping/import command for this resolution, with expected revision checks; never detach prior decisions or auto-merge by mutable text.
 
 3. Upsert documents and candidate revisions through C02. An unchanged content fingerprint preserves reviewer status, notes, actor, decision timestamp and revision. A materially changed candidate creates a new pending revision while preserving the previous decision and published snapshot.
 
@@ -43,7 +43,7 @@ These are inspection starting points, not a requirement to put all new code in e
 
 - [ ] Reject -> replay identical agenda -> still rejected with the same notes; approve -> replay -> one published record; changed content -> pending new revision with old decision retained.
 - [ ] Fetch three newer documents -> prior documents and their candidates remain accessible.
-- [ ] Changed source_status retains stable candidate identity; fallback collisions are reported, not merged.
+- [ ] Changed source_status retains stable candidate identity. Without an authoritative item ID, title/phase edits and reordered pages enter identity resolution; explicitly linking the observation preserves the prior candidate ID, decisions and history. Identical replays reuse the persisted mapping, and ambiguous matches are never automatically merged or published.
 - [ ] No-location candidate is visible for review but cannot be published at the default Huntsville center.
 - [ ] Run the affected existing lint/types/tests plus the real-stack scenarios above; retain exact commands, SHA, fixture checksum and results. Do not claim an unrun check passed.
 - [ ] Update API/client schemas and user-facing error states together when their contract changes; report any departure from the shared contract before merging.

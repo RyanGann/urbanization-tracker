@@ -155,7 +155,8 @@
       "depends_on": [
         "C03",
         "C04",
-        "C05"
+        "C05",
+        "S02"
       ],
       "review": "Lead review",
       "pr_boundary": "One publication service/events PR; matching and mail are separate.",
@@ -447,7 +448,8 @@
       "gate": "G1",
       "depends_on": [
         "C06",
-        "U04"
+        "U04",
+        "C07"
       ],
       "review": "Lead review",
       "pr_boundary": "One manual merge preview/apply PR; no automatic matching engine.",

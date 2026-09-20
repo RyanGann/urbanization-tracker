@@ -5,7 +5,7 @@ Status: **Planned; no application implementation in this guide.** Baseline: `dbd
 | Field | Assignment |
 | --- | --- |
 | Track / gate | Correctness / G1 |
-| Depends on | [C06](C06-publication-events-history.md), [U04](U04-reviewer-geometry-correction.md) |
+| Depends on | [C06](C06-publication-events-history.md), [U04](U04-reviewer-geometry-correction.md), [C07](C07-publication-watch-matcher.md) |
 | Review | Lead review |
 | PR boundary | One manual merge preview/apply PR; no automatic matching engine. |
 

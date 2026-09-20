@@ -5,7 +5,7 @@ Status: **Planned; no application implementation in this guide.** Baseline: `dbd
 | Field | Assignment |
 | --- | --- |
 | Track / gate | Correctness / G1 |
-| Depends on | [C03](C03-stable-source-identity.md), [C04](C04-agenda-revision-retention.md), [C05](C05-review-action-policy.md) |
+| Depends on | [C03](C03-stable-source-identity.md), [C04](C04-agenda-revision-retention.md), [C05](C05-review-action-policy.md), [S02](S02-public-input-validation.md) |
 | Review | Lead review |
 | PR boundary | One publication service/events PR; matching and mail are separate. |
 
@@ -28,7 +28,7 @@ These are inspection starting points, not a requirement to put all new code in e
 
 ## Implementation steps
 
-1. Create a publication service called by every public-record create/update/retract path, including ArcGIS ingestion and reviewer approval. Within C02's transaction, resolve existing identity, compare the approved public-content fingerprint, write the canonical row and append its event/version.
+1. Create a publication service called by every public-record create/update/retract path, including ArcGIS ingestion and reviewer approval. Require S02's geometry validation and explicit located provenance before creating/updating a public record; invalid or unknown-location staging cannot be made durable publication history. Within C02's transaction, resolve existing identity, compare the approved public-content fingerprint, write the canonical row and append its event/version.
 
 2. Add publication_events keyed by event_id and unique(public_id,revision), using string public IDs. Store event kind, before/after public snapshot, changed fields, source/run provenance, occurred_at, notify_eligible and matcher state. Do not attach these to the unused integer DevelopmentRecord scaffold by assumption.
 
