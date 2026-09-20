@@ -46,9 +46,7 @@ def test_render_blueprint_uses_private_alpha_defaults() -> None:
     assert "    region: ohio\n" in api
     assert "    plan: starter\n" in api
     assert "    autoDeployTrigger: checksPass\n" in api
-    assert _env_var_value(api, "CORS_ORIGINS") == (
-        "https://urbanization-tracker-web.onrender.com"
-    )
+    assert _env_var_value(api, "CORS_ORIGINS") == ("https://urbanization-tracker-web.onrender.com")
     assert _env_var_value(api, "PUBLIC_BASE_URL") == (
         "https://urbanization-tracker-web.onrender.com"
     )

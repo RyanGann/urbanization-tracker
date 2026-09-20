@@ -694,9 +694,7 @@ def _write_postgres_collection(name: str, items: list[dict[str, Any]]) -> None:
     from app.models import Phase3CollectionItem
 
     with SessionLocal.begin() as db:
-        db.execute(
-            delete(Phase3CollectionItem).where(Phase3CollectionItem.collection_name == name)
-        )
+        db.execute(delete(Phase3CollectionItem).where(Phase3CollectionItem.collection_name == name))
         db.add_all(
             Phase3CollectionItem(
                 collection_name=name,

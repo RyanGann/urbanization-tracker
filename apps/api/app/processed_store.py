@@ -255,9 +255,7 @@ def _write_postgres_items(name: str, items: list[dict[str, Any]]) -> None:
 
     with SessionLocal.begin() as db:
         db.execute(
-            delete(ProcessedCollectionItem).where(
-                ProcessedCollectionItem.collection_name == name
-            )
+            delete(ProcessedCollectionItem).where(ProcessedCollectionItem.collection_name == name)
         )
         db.add_all(
             ProcessedCollectionItem(

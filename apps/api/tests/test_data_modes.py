@@ -1,4 +1,3 @@
-import json
 from pathlib import Path
 
 from fastapi.testclient import TestClient
@@ -20,7 +19,9 @@ def configure_live_artifacts(monkeypatch, tmp_path: Path) -> Path:
     return tmp_path / "processed"
 
 
-def test_live_missing_canonical_collection_is_503_without_demo_fallback(monkeypatch, tmp_path) -> None:
+def test_live_missing_canonical_collection_is_503_without_demo_fallback(
+    monkeypatch, tmp_path
+) -> None:
     configure_live_artifacts(monkeypatch, tmp_path)
 
     status = client.get("/api/dataset-status")
@@ -35,7 +36,9 @@ def test_live_missing_canonical_collection_is_503_without_demo_fallback(monkeypa
         assert "westmoore" not in response.text.lower()
 
 
-def test_live_initialized_empty_collection_is_empty_and_unknown_detail_is_404(monkeypatch, tmp_path) -> None:
+def test_live_initialized_empty_collection_is_empty_and_unknown_detail_is_404(
+    monkeypatch, tmp_path
+) -> None:
     processed = configure_live_artifacts(monkeypatch, tmp_path)
     processed.mkdir()
     (processed / "development_records.json").write_text("[]", encoding="utf-8")
@@ -84,7 +87,9 @@ def test_demo_is_explicit_and_labelled(monkeypatch) -> None:
     assert records.json()["records"]
 
 
-def test_live_invalid_record_schema_is_unavailable_in_status_and_reads(monkeypatch, tmp_path) -> None:
+def test_live_invalid_record_schema_is_unavailable_in_status_and_reads(
+    monkeypatch, tmp_path
+) -> None:
     processed = configure_live_artifacts(monkeypatch, tmp_path)
     processed.mkdir()
     (processed / "development_records.json").write_text("[{}]", encoding="utf-8")

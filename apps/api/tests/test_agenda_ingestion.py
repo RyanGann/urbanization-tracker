@@ -11,7 +11,9 @@ def test_discovers_agenda_pdf_links_without_minutes() -> None:
     links = discover_agenda_links(html, base_url="https://www.huntsvilleal.gov/planningagendas/")
 
     assert len(links) == 1
-    assert links[0].url == "https://www.huntsvilleal.gov/wp-content/uploads/2026/04/sample-agenda.pdf"
+    assert (
+        links[0].url == "https://www.huntsvilleal.gov/wp-content/uploads/2026/04/sample-agenda.pdf"
+    )
 
 
 def test_parses_agenda_items_into_pending_staged_records() -> None:

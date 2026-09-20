@@ -25,9 +25,7 @@ def request(
         data = json.dumps(payload).encode("utf-8")
     if reviewer_token:
         headers["Authorization"] = f"Bearer {reviewer_token}"
-    request_value = Request(
-        f"{api_url}{path}", data=data, headers=headers, method=method
-    )
+    request_value = Request(f"{api_url}{path}", data=data, headers=headers, method=method)
     try:
         with urlopen(request_value, timeout=10) as response:  # noqa: S310 - test fixture URL
             return response.status, json.loads(response.read().decode("utf-8"))
@@ -47,7 +45,11 @@ def assert_unavailable(api_url: str, availability: str) -> list[str]:
     if body.get("data_mode") != "live" or body.get("availability") != availability:
         raise AssertionError(f"dataset status did not report live/{availability}: {body!r}")
     checks.append(f"dataset-status:{availability}")
-    for path in ("/api/development-records", "/api/development-records/not-a-real-record", "/api/map/development-records.geojson"):
+    for path in (
+        "/api/development-records",
+        "/api/development-records/not-a-real-record",
+        "/api/map/development-records.geojson",
+    ):
         status, body = request(api_url, path)
         assert_status(status, 503, path)
         if body.get("detail", {}).get("code") != "data_unavailable":
@@ -213,8 +215,14 @@ def main() -> None:
     elif args.phase == "demo":
         checks = assert_demo(args.api_url, args.fixture_id)
     else:
-        if not args.reviewer_token or not args.live_submission_title or not args.demo_submission_title:
-            raise AssertionError("Phase3 isolation assertions require reviewer token and both run-unique titles")
+        if (
+            not args.reviewer_token
+            or not args.live_submission_title
+            or not args.demo_submission_title
+        ):
+            raise AssertionError(
+                "Phase3 isolation assertions require reviewer token and both run-unique titles"
+            )
         if args.phase == "live-phase3-seeded":
             checks = assert_live_phase3_seeded(
                 args.api_url, args.reviewer_token, args.live_submission_title

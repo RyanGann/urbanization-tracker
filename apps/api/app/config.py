@@ -16,7 +16,9 @@ def _default_data_dir() -> Path:
 
 class Settings(BaseSettings):
     app_name: str = "Urbanization Tracker API"
-    database_url: str = "postgresql+psycopg://urbanization:urbanization@localhost:5432/urbanization_tracker"
+    database_url: str = (
+        "postgresql+psycopg://urbanization:urbanization@localhost:5432/urbanization_tracker"
+    )
     data_mode: Literal["live", "demo"] = Field(
         default="live",
         description=(

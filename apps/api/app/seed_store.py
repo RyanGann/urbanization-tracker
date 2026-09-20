@@ -6,9 +6,9 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
-from app.config import get_settings
 from pydantic import ValidationError
 
+from app.config import get_settings
 from app.data_availability import Availability, DataUnavailableError
 from app.processed_store import read_processed_list_result, read_processed_payload_result
 from app.schemas import DevelopmentRecord, EnvironmentalOverlay, StagedDevelopmentRecord
@@ -237,10 +237,7 @@ def list_environmental_overlays() -> list[EnvironmentalOverlay]:
             )
         overlays = processed_overlays
     try:
-        return [
-            EnvironmentalOverlay.model_validate(copy.deepcopy(overlay))
-            for overlay in overlays
-        ]
+        return [EnvironmentalOverlay.model_validate(copy.deepcopy(overlay)) for overlay in overlays]
     except ValidationError as exc:
         raise DataUnavailableError(
             collection="environmental_overlays", availability=Availability.UNAVAILABLE

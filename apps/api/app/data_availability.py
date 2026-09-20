@@ -2,9 +2,6 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from enum import StrEnum
-from typing import Generic, TypeVar
-
-T = TypeVar("T")
 
 
 class Availability(StrEnum):
@@ -14,7 +11,7 @@ class Availability(StrEnum):
 
 
 @dataclass(frozen=True)
-class CollectionRead(Generic[T]):
+class CollectionRead[T]:
     """A typed read result where an empty ready collection remains meaningful."""
 
     availability: Availability

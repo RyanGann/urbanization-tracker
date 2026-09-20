@@ -24,9 +24,7 @@ def build_source_health_monitor(
         if health_rows is not None
         else connector_health(source_health if source_health is not None else load_source_health())
     )
-    source_checks = [
-        _source_check(row=row, max_age_hours=max_age, now=checked_at) for row in rows
-    ]
+    source_checks = [_source_check(row=row, max_age_hours=max_age, now=checked_at) for row in rows]
     failing_count = sum(1 for source in source_checks if not source["healthy"])
     return {
         "status": "healthy" if failing_count == 0 else "degraded",

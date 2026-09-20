@@ -28,9 +28,9 @@ from app.schemas import (
     AlertDeliveryResult,
     ChangeLogEntry,
     ConnectorHealth,
+    DatasetStatus,
     DevelopmentRecord,
     DevelopmentRecordCollection,
-    DatasetStatus,
     DuplicateCandidate,
     EnvironmentalOverlay,
     FeatureCollection,
@@ -54,8 +54,8 @@ from app.schemas import (
 )
 from app.seed_store import (
     approve_staged_record,
-    development_records_geojson,
     development_records_availability,
+    development_records_geojson,
     export_reviewer_decisions,
     get_development_record,
     import_reviewer_decisions,
@@ -90,7 +90,10 @@ def data_unavailable_error(_request: Request, _exc: DataUnavailableError) -> JSO
         content={
             "detail": {
                 "code": "data_unavailable",
-                "message": "Canonical data is not available. Try again after initialization completes.",
+                "message": (
+                    "Canonical data is not available. Try again after " 
+                    "initialization completes."
+                ),
             }
         },
     )
@@ -156,8 +159,7 @@ def get_development_record_versions(public_id: str) -> list[RecordVersion]:
     if record is None:
         raise HTTPException(status_code=404, detail="Development record not found")
     return [
-        RecordVersion.model_validate(version)
-        for version in record_versions_for(public_id, record)
+        RecordVersion.model_validate(version) for version in record_versions_for(public_id, record)
     ]
 
 
@@ -219,17 +221,13 @@ def get_change_log(limit: int = 50) -> list[ChangeLogEntry]:
 @reviewer_router.get("/duplicate-candidates", response_model=list[DuplicateCandidate])
 def get_duplicate_candidates() -> list[DuplicateCandidate]:
     return [
-        DuplicateCandidate.model_validate(candidate)
-        for candidate in list_duplicate_candidates()
+        DuplicateCandidate.model_validate(candidate) for candidate in list_duplicate_candidates()
     ]
 
 
 @reviewer_router.get("/public-submissions", response_model=list[UserSubmission])
 def get_reviewer_public_submissions() -> list[UserSubmission]:
-    return [
-        UserSubmission.model_validate(submission)
-        for submission in list_public_submissions()
-    ]
+    return [UserSubmission.model_validate(submission) for submission in list_public_submissions()]
 
 
 @app.post("/api/public-submissions", response_model=UserSubmissionReceipt)
@@ -308,9 +306,7 @@ def export_reviewer_decision_snapshot() -> list[ReviewerDecisionSnapshot]:
 def import_reviewer_decision_snapshot(
     payload: ReviewerDecisionImport,
 ) -> ReviewerDecisionImportResult:
-    result = import_reviewer_decisions(
-        [decision.model_dump() for decision in payload.decisions]
-    )
+    result = import_reviewer_decisions([decision.model_dump() for decision in payload.decisions])
     return ReviewerDecisionImportResult.model_validate(result)
 
 
@@ -345,16 +341,11 @@ def mark_reviewer_record_needs_info(
 
 @reviewer_router.get("/submissions", response_model=list[UserSubmission])
 def get_reviewer_submissions() -> list[UserSubmission]:
-    return [
-        UserSubmission.model_validate(submission)
-        for submission in list_public_submissions()
-    ]
+    return [UserSubmission.model_validate(submission) for submission in list_public_submissions()]
 
 
 @reviewer_router.post("/submissions/{submission_id}/approve", response_model=UserSubmission)
-def approve_public_submission(
-    submission_id: str, decision: ReviewDecision
-) -> UserSubmission:
+def approve_public_submission(submission_id: str, decision: ReviewDecision) -> UserSubmission:
     submission = set_public_submission_status(submission_id, "approved", notes=decision.notes)
     if submission is None:
         raise HTTPException(status_code=404, detail="Submission not found")
@@ -362,9 +353,7 @@ def approve_public_submission(
 
 
 @reviewer_router.post("/submissions/{submission_id}/reject", response_model=UserSubmission)
-def reject_public_submission(
-    submission_id: str, decision: ReviewDecision
-) -> UserSubmission:
+def reject_public_submission(submission_id: str, decision: ReviewDecision) -> UserSubmission:
     submission = set_public_submission_status(submission_id, "rejected", notes=decision.notes)
     if submission is None:
         raise HTTPException(status_code=404, detail="Submission not found")
