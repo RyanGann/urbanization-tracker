@@ -631,7 +631,7 @@ def _alerts_for_watch_area(
 
 
 def _read_collection(name: str) -> list[dict[str, Any]]:
-    if _memory_only:
+    if _memory_only or get_settings().data_mode == "demo":
         return copy.deepcopy(_memory_collections.get(name, []))
     if _use_postgres_store():
         try:
@@ -657,7 +657,7 @@ def _read_collection(name: str) -> list[dict[str, Any]]:
 
 
 def _write_collection(name: str, items: list[dict[str, Any]]) -> None:
-    if _memory_only:
+    if _memory_only or get_settings().data_mode == "demo":
         _memory_collections[name] = copy.deepcopy(items)
         return
     if _use_postgres_store():
