@@ -4,7 +4,7 @@ Urbanization Tracker is an open-source public-good application for helping peopl
 
 The first pilot geography is **Huntsville, Alabama**.
 
-This repository is now through Phase 4: a Huntsville alpha with live ArcGIS ingestion, Planning Commission agenda PDF ingestion, reviewer-gated public submissions, watch areas, queued alerts, source-aware map/reviewer UI, and expansion hardening for additional jurisdictions.
+This repository contains a Huntsville prototype with ArcGIS ingestion, Planning Commission agenda PDF ingestion, reviewer-gated public submissions, watch areas, queued alerts, and map/reviewer interfaces. The current readiness work is described below.
 
 ## Goals
 
@@ -24,23 +24,23 @@ This repository is now through Phase 4: a Huntsville alpha with live ArcGIS inge
 
 ## Project Status
 
-Last verified: **2026-07-12**.
+Last reviewed: **2026-09-19**.
 
-The application is a code-complete Phase 4 alpha with production deployment scaffolding. It is not
-yet a verified public production service. The repository includes Postgres-backed operational and
-processed stores, Render cron definitions, deployment preflight checks, source-freshness
-monitoring, reviewer operations, and a live Madison County subdivision connector in addition to
-the Huntsville pilot sources.
+The application is a substantial Phase 4 prototype with production deployment scaffolding.
+The September review found correctness, performance, and usability gaps before a dependable
+public alpha. The repository includes Postgres-backed stores, ingestion, review, monitoring,
+and deployment tooling, but their presence does not establish end-to-end readiness.
 
 Current verification passes API and web lint/typechecking, 60 API tests, 4 web unit tests, the web
 production build, and 3 Chromium end-to-end smoke tests. The latest local ingestion snapshot was
 captured on 2026-06-19; it is useful as a development artifact but should not be treated as current
 public data.
 
-The remaining launch work is environment-specific: provision the hosted services, set production
-secrets and HTTPS origins, migrate existing collections into Postgres, verify PostGIS and backups,
-protect reviewer routes at the edge, configure artifact storage and monitoring, and decide when to
-enable scheduled ingestion and outbound email.
+The active plan covers durable record/review/publication behavior, real API/PostGIS tests, bounded
+map delivery, public input and subscription flows, and an isolated deployment/recovery rehearsal.
+See the [September project review](docs/reviews/2026-09-19-project-review.md)
+and [PR-sized implementation handoffs](docs/implementation/2026-09-readiness/README.md).
+All new handoffs are planned; the documentation does not claim these fixes are implemented.
 
 ## Planning Documents
 

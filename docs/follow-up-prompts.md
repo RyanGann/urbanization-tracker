@@ -1,6 +1,9 @@
 # Follow-Up Codex Prompts
 
-Use these prompts to implement the app in manageable chunks. Each prompt assumes the previous planning docs exist in the repo.
+These are historical prompts from the original build. For current work, use the
+[September PR-sized implementation guides](implementation/2026-09-readiness/README.md)
+and their [agent handoff instructions](implementation/2026-09-readiness/DISPATCH.md).
+Do not re-scaffold completed work or treat the broad prompts below as current PR boundaries.
 
 ## 1. Scaffold the Monorepo
 
@@ -73,4 +76,3 @@ Add comprehensive lint, typecheck, unit, integration, geospatial, frontend, and 
 ```text
 Write documentation for adding a new city or county data source. Include ArcGIS REST, open-data APIs, static downloads, webpages, PDFs, manual submissions, licensing review, geometry confidence, and reviewer workflow expectations.
 ```
-
