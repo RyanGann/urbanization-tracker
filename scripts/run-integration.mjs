@@ -18,7 +18,8 @@ for (const signal of ["SIGINT", "SIGTERM"]) {
     interrupted = true;
     for (const child of activeChildren) {
       child.kill("SIGTERM");
-      setTimeout(() => child.kill("SIGKILL"), 5_000);
+      const killEscalation = setTimeout(() => child.kill("SIGKILL"), 5_000);
+      child.once("close", () => clearTimeout(killEscalation));
     }
     process.exitCode = 1;
   });
@@ -187,6 +188,29 @@ async function assertOwnedResources(project, log, ignoreInterrupt = false) {
   }
 }
 
+async function inspectComposeImages(compose, log) {
+  const result = await run("docker", [...compose, "images", "--format", "json"], {
+    log,
+    allowFailure: true,
+    ignoreInterrupt: true
+  });
+  if (result.code !== 0 || !result.output.trim()) return {};
+  try {
+    const parsed = JSON.parse(result.output);
+    const images = Array.isArray(parsed) ? parsed : [parsed];
+    return Object.fromEntries(images.map((image) => [image.Service ?? image.ContainerName ?? image.Repository, image.ID]));
+  } catch {
+    return Object.fromEntries(result.output.trim().split(/\r?\n/).flatMap((line) => {
+      try {
+        const image = JSON.parse(line);
+        return [[image.Service ?? image.ContainerName ?? image.Repository, image.ID]];
+      } catch {
+        return [];
+      }
+    }));
+  }
+}
+
 async function runIsolationCheck() {
   const outcomes = await Promise.allSettled([runSuite({ suite: "api", child: true }), runSuite({ suite: "api", child: true })]);
   const failure = outcomes.find((outcome) => outcome.status === "rejected");
@@ -205,6 +229,7 @@ async function runSuite(options) {
   const project = `urbanization_t01_${randomBytes(6).toString("hex")}`;
   const artifactDir = join(root, "tmp", "integration", runId);
   const envFile = join(artifactDir, ".compose.env");
+  const cleanupEnv = join(artifactDir, "cleanup.env");
   const log = [];
   const reviewerToken = randomBytes(24).toString("base64url");
   const sentinel = randomBytes(6).toString("hex");
@@ -217,6 +242,7 @@ async function runSuite(options) {
   let failed = false;
   let failureMessage = null;
   let imageDigests = {};
+  let imageIds = {};
   const commitSha = (await run("git", ["rev-parse", "HEAD"], { log })).output.trim();
 
   await mkdir(artifactDir, { recursive: true });
@@ -225,6 +251,28 @@ async function runSuite(options) {
     `INTEGRATION_REVIEWER_TOKEN=${reviewerToken}`,
     `INTEGRATION_FIXTURE_TITLE=${fixture.title}`
   ].join("\n") + "\n", { encoding: "utf8", mode: 0o600 });
+  await writeFile(cleanupEnv, [
+    `INTEGRATION_ARTIFACT_DIR=${artifactDir.replaceAll("\\", "/")}`,
+    "INTEGRATION_REVIEWER_TOKEN=",
+    "INTEGRATION_FIXTURE_TITLE="
+  ].join("\n") + "\n", { encoding: "utf8", mode: 0o600 });
+  await writeFile(join(artifactDir, "recovery.json"), JSON.stringify({
+    run_id: runId,
+    project,
+    repository_root: root,
+    artifact_directory: artifactDir,
+    compose_file: composeFile,
+    cleanup_env_file: cleanupEnv,
+    inspect: [
+      { command: "docker", args: ["ps", "-aq", "--filter", `label=com.docker.compose.project=${project}`] },
+      { command: "docker", args: ["volume", "ls", "-q", "--filter", `label=com.docker.compose.project=${project}`] }
+    ],
+    cleanup: {
+      command: "docker",
+      args: ["compose", "--project-name", project, "--project-directory", root, "--env-file", cleanupEnv, "-f", composeFile, "down", "--volumes", "--remove-orphans"]
+    },
+    instruction: "Inspect every listed resource label before running the exact cleanup arguments."
+  }, null, 2) + "\n", "utf8");
   const fixtureHash = createHash("sha256").update(await readFile(fixturePath)).digest("hex");
 
   try {
@@ -233,7 +281,8 @@ async function runSuite(options) {
     await waitForDatabase(compose, log);
     await run("docker", [...compose, "run", "--rm", "--no-deps", "api", "alembic", "upgrade", "head"], { log });
     await run("docker", [...compose, "run", "--rm", "--no-deps", "--volume", `${join(root, "apps", "api", "tests", "integration").replaceAll("\\", "/")}:/integration:ro`, "--env", `INTEGRATION_FIXTURE_ID=${fixture.id}`, "--env", `INTEGRATION_FIXTURE_TITLE=${fixture.title}`, "api", "python", "/integration/seed_integration.py"], { log });
-    await run("docker", [...compose, "up", "--detach", "api", "api-gateway"], { log });
+    await run("docker", [...compose, "up", "--detach", "api"], { log });
+    await run("docker", [...compose, "up", "--detach", "api-gateway"], { log });
     apiUrl = await publishedPort(compose, "api-gateway", 8000, log);
     await waitForHealth(apiUrl);
     await run("docker", [...compose, "exec", "-T", "db", "psql", "-U", "integration", "-d", "integration", "-Atqc", "SELECT PostGIS_Version();"], { log });
@@ -255,14 +304,9 @@ async function runSuite(options) {
     let artifactError;
     let cleanupError;
     let cleanupResult = "not_attempted";
+    let cleanupFailure = null;
     const cleanup = async () => {
       if (failed && options.keepOnFailure) {
-        const cleanupEnv = join(artifactDir, "cleanup.env");
-        await writeFile(cleanupEnv, [
-          `INTEGRATION_ARTIFACT_DIR=${artifactDir.replaceAll("\\", "/")}`,
-          "INTEGRATION_REVIEWER_TOKEN=",
-          "INTEGRATION_FIXTURE_TITLE="
-        ].join("\n") + "\n", "utf8");
         await rm(envFile, { force: true });
         cleanupResult = "retained";
         console.error(`Resources retained. Cleanup: docker compose --project-name ${project} --project-directory . --env-file ${cleanupEnv} -f compose.integration.yml down --volumes`);
@@ -285,6 +329,7 @@ async function runSuite(options) {
         const digest = await run("docker", ["image", "inspect", image, "--format", "{{join .RepoDigests \",\"}}"], { log, allowFailure: true, ignoreInterrupt: true });
         imageDigests[name] = digest.output.trim() || null;
       }
+      imageIds = await inspectComposeImages(compose, log);
     } catch (error) {
       artifactError = error;
     }
@@ -292,6 +337,7 @@ async function runSuite(options) {
       await cleanup();
     } catch (error) {
       cleanupError = error;
+      cleanupFailure = error instanceof Error ? error.message.split("\n", 1)[0] : String(error);
     } finally {}
     try {
       await writeFile(join(artifactDir, "manifest.json"), JSON.stringify({
@@ -317,8 +363,10 @@ async function runSuite(options) {
         browser: "mcr.microsoft.com/playwright:v1.60.0-noble"
       },
       image_digests: imageDigests,
+      image_ids: imageIds,
       retained: cleanupResult === "retained",
-      cleanup_result: cleanupResult
+      cleanup_result: cleanupResult,
+      cleanup_failure: cleanupFailure
     }, null, 2) + "\n", "utf8");
       await writeFile(join(artifactDir, "cleanup-result.json"), JSON.stringify({
       project,
