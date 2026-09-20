@@ -43,7 +43,10 @@ export function RecordDetailPage() {
     );
   }
 
-  if (recordQuery.error instanceof ApiError && recordQuery.error.status === 503) {
+  if (
+    recordQuery.isError &&
+    !(recordQuery.error instanceof ApiError && recordQuery.error.status === 404)
+  ) {
     return (
       <main className="page-shell">
         <Link className="back-link" to="/">
@@ -58,7 +61,7 @@ export function RecordDetailPage() {
     );
   }
 
-  if (recordQuery.isError || !recordQuery.data) {
+  if (!recordQuery.data) {
     return (
       <main className="page-shell">
         <Link className="back-link" to="/">
@@ -72,7 +75,6 @@ export function RecordDetailPage() {
       </main>
     );
   }
-
   const record = recordQuery.data;
 
   return (
@@ -95,7 +97,7 @@ export function RecordDetailPage() {
           </div>
           <p className="lede">{record.description}</p>
           {datasetStatusQuery.data?.data_mode === "demo" ? (
-            <p className="muted">Demo data   not live planning data.</p>
+            <p className="muted">Demo data — not live planning data.</p>
           ) : null}
 
           <dl className="facts detail-facts">

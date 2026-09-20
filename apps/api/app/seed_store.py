@@ -29,8 +29,7 @@ def _load_seed_data() -> dict[str, Any]:
     return _seed_data
 
 
-def reset_seed_state(*, force_seed: bool = True) -> None:
-    """Reset the isolated demo session without selecting demo mode."""
+def _initialize_demo_records(*, force_seed: bool) -> None:
     global _active_data_mode, _force_seed_records
     seed = _load_seed_data()
     _development_records.clear()
@@ -39,6 +38,11 @@ def reset_seed_state(*, force_seed: bool = True) -> None:
     _staged_records.extend(copy.deepcopy(seed["staged_records"]))
     _force_seed_records = force_seed
     _active_data_mode = "demo"
+
+
+def reset_seed_state(*, force_seed: bool = True) -> None:
+    """Reset the isolated demo session without selecting demo mode."""
+    _initialize_demo_records(force_seed=force_seed)
     from app.phase3_store import reset_phase3_state
 
     reset_phase3_state(force_memory=get_settings().data_mode == "demo")
@@ -46,7 +50,7 @@ def reset_seed_state(*, force_seed: bool = True) -> None:
 
 def _ensure_loaded() -> None:
     if get_settings().data_mode == "demo" and _active_data_mode != "demo":
-        reset_seed_state(force_seed=True)
+        _initialize_demo_records(force_seed=True)
 
 
 def _load_processed_records() -> list[dict[str, Any]] | None:
@@ -103,10 +107,7 @@ def load_source_health() -> dict[str, Any]:
         payload = {"status": "unknown", "sources": [], "records": {}}
     else:
         result = read_processed_payload_result("source_health")
-        if result.availability is Availability.UNINITIALIZED:
-            payload = {"status": "unknown", "sources": [], "records": {}}
-        else:
-            payload = result.require_ready(collection="source_health")
+        payload = result.require_ready(collection="source_health")
 
     from app.phase3_store import agenda_health
 

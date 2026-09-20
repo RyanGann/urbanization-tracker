@@ -109,3 +109,37 @@ def test_live_missing_staged_collection_is_503(monkeypatch, tmp_path) -> None:
 
     assert response.status_code == 503
     assert response.json()["detail"]["code"] == "data_unavailable"
+
+
+def test_live_missing_source_health_is_503(monkeypatch, tmp_path) -> None:
+    configure_live_artifacts(monkeypatch, tmp_path)
+
+    response = client.get("/api/source-health")
+
+    assert response.status_code == 503
+    assert response.json()["detail"]["code"] == "data_unavailable"
+
+
+def test_demo_catalog_initialization_preserves_direct_phase3_submission(monkeypatch) -> None:
+    monkeypatch.setenv("DATA_MODE", "demo")
+    get_settings.cache_clear()
+    monkeypatch.setattr("app.seed_store._active_data_mode", None)
+    reset_phase3_state(force_memory=False)
+
+    created = client.post(
+        "/api/public-submissions",
+        json={
+            "title": "Direct demo submission",
+            "source_url": "https://example.test/direct-demo",
+            "notes": "Created before the demo catalog is read.",
+            "submitter_contact": "demo@example.test",
+        },
+    )
+    assert created.status_code == 200
+
+    catalog = client.get("/api/development-records")
+    submissions = client.get("/api/reviewer/public-submissions")
+
+    assert catalog.status_code == 200
+    assert submissions.status_code == 200
+    assert any(row["title"] == "Direct demo submission" for row in submissions.json())

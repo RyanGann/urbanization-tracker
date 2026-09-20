@@ -231,7 +231,7 @@ export function DevelopmentMap({
   const mapRef = useRef<MapLibreMap | null>(null);
   const popupRef = useRef<maplibregl.Popup | null>(null);
   const handlersAttachedRef = useRef(false);
-  const renderedOverlayIdsRef = useRef<string[]>([]);
+  const renderedOverlaySignaturesRef = useRef<Map<string, string>>(new Map());
   const recordsRef = useRef(records);
   const [mapReady, setMapReady] = useState(false);
   const [appliedFeatureCount, setAppliedFeatureCount] = useState(0);
@@ -310,7 +310,7 @@ export function DevelopmentMap({
     ensureDevelopmentLayers(map);
 
     const nextOverlayIds = new Set(overlays.map((overlay) => overlay.id));
-    renderedOverlayIdsRef.current
+    [...renderedOverlaySignaturesRef.current.keys()]
       .filter((overlayId) => !nextOverlayIds.has(overlayId))
       .forEach((overlayId) => {
         ["fill", "line"].forEach((kind) => {
@@ -326,6 +326,15 @@ export function DevelopmentMap({
       });
 
     overlays.forEach((overlay) => {
+      const signature = overlay.geom_type + ":" + overlay.category;
+      if (renderedOverlaySignaturesRef.current.get(overlay.id) !== signature) {
+        ["fill", "line"].forEach((kind) => {
+          const layerId = "env-" + overlay.id + "-" + kind;
+          if (map.getLayer(layerId)) {
+            map.removeLayer(layerId);
+          }
+        });
+      }
       upsertSource(map, `env-${overlay.id}`, overlay.features);
       ensureOverlayLayer(map, overlay);
       overlayLayerIds(overlay).forEach((layerId) => {
@@ -338,7 +347,9 @@ export function DevelopmentMap({
         }
       });
     });
-    renderedOverlayIdsRef.current = overlays.map((overlay) => overlay.id);
+    renderedOverlaySignaturesRef.current = new Map(
+      overlays.map((overlay) => [overlay.id, overlay.geom_type + ":" + overlay.category])
+    );
     setAppliedFeatureCount(records.length);
 
     if (!handlersAttachedRef.current) {

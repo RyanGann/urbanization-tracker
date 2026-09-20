@@ -162,7 +162,10 @@ def assert_demo_phase3_isolated(
     if demo_submission_title not in after or live_submission_title in after:
         raise AssertionError("demo mutation was not isolated from the live Phase3 store")
     checks = assert_demo(api_url, fixture_id)
-    return [*checks, "demo-phase3-submission:memory-only"]
+    after_catalog = _reviewer_submission_titles(api_url, reviewer_token)
+    if demo_submission_title not in after_catalog or live_submission_title in after_catalog:
+        raise AssertionError("demo catalog initialization reset isolated Phase3 state")
+    return [*checks, "demo-phase3-submission:memory-only", "demo-phase3-submission:preserved"]
 
 
 def assert_live_phase3_restored(

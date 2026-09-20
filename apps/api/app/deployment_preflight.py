@@ -53,6 +53,7 @@ def run_deployment_preflight(
 ) -> dict[str, Any]:
     active_settings = settings or get_settings()
     checks = [
+        _check_data_mode(active_settings),
         _check_reviewer_token(active_settings),
         _check_phase3_store(active_settings),
         _check_processed_store(active_settings),
@@ -78,6 +79,21 @@ def run_deployment_preflight(
         "summary": summary,
         "checks": [check.as_dict() for check in checks],
     }
+
+
+def _check_data_mode(settings: Settings) -> PreflightCheck:
+    if settings.data_mode != "live":
+        return PreflightCheck(
+            key="data_mode",
+            status="fail",
+            summary="DATA_MODE must be live for production.",
+            detail=f"Current data mode is {settings.data_mode!r}.",
+        )
+    return PreflightCheck(
+        key="data_mode",
+        status="pass",
+        summary="Live canonical data mode is configured.",
+    )
 
 
 def _check_reviewer_token(settings: Settings) -> PreflightCheck:

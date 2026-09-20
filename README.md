@@ -71,6 +71,8 @@ Then open:
 - Web app: http://localhost:5173
 - API health: http://localhost:8000/health
 
+The local Compose setup explicitly runs in DATA_MODE=demo and labels its bundled fixtures in the UI. For live data, keep the application default of DATA_MODE=live and provide initialized canonical stores; missing data returns an unavailable response instead of fixture fallback.
+
 For local non-Docker development, see [Developer Setup](docs/developer-setup.md).
 
 ## Huntsville Ingestion
@@ -80,10 +82,10 @@ make ingest-huntsville
 make ingest-huntsville-agendas
 ```
 
-The API will serve processed ingestion output when it exists, and otherwise falls back to seed/demo
-data. Local development uses `data/processed/`; hosted environments can use
-`PROCESSED_STORE_BACKEND=postgres` for canonical processed collections while raw payloads remain
-artifacts.
+The API serves only initialized canonical processed output in live mode; it does not fall back to
+seed data. The local Compose quick start uses explicit demo mode. Local live development uses
+data/processed/; hosted environments can use PROCESSED_STORE_BACKEND=postgres for canonical
+processed collections while raw payloads remain artifacts.
 
 ## Important Caveat
 

@@ -21,6 +21,8 @@ test(`C01 data modes real API map state: ${phase ?? "not-configured"}`, async ({
     ).toBeVisible();
     await expect(page.getByTestId("development-map")).toHaveAttribute("data-feature-count", "0");
     await expect(page.locator(".record-row")).toHaveCount(0);
+    await page.goto("/records/not-a-real-record");
+    await expect(page.getByText("Development data is unavailable")).toBeVisible();
     return;
   }
 
