@@ -1,5 +1,5 @@
 [build-system]
-requires = ["setuptools>=68"]
+requires = ["setuptools==80.10.2"]
 build-backend = "setuptools.build_meta"
 
 [project]
@@ -29,6 +29,9 @@ dev = [
 
 [tool.setuptools.packages.find]
 include = ["app*"]
+
+[tool.setuptools.package-data]
+app = ["seed/*.json", "jurisdictions/*.json", "fixtures/*.geojson"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
