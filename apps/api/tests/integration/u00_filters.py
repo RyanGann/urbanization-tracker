@@ -7,7 +7,6 @@ from urllib.error import HTTPError
 from urllib.parse import urlencode
 from urllib.request import Request, urlopen
 
-
 EXPECTED_IDS = {
     "u00-completed-development",
     "u00-proposed-submission",
@@ -60,7 +59,9 @@ def main() -> None:
 
     completed_query = {"status": ["completed"]}
     list_status, list_body = request(args.api_url, filtered_path(list_path, **completed_query))
-    geojson_status, geojson_body = request(args.api_url, filtered_path(geojson_path, **completed_query))
+    geojson_status, geojson_body = request(
+        args.api_url, filtered_path(geojson_path, **completed_query)
+    )
     assert list_status == geojson_status == 200
     assert ids_from_list(list_body) == {"u00-completed-development"}
     assert ids_from_geojson(geojson_body) == {"u00-completed-development"}
@@ -68,7 +69,9 @@ def main() -> None:
 
     submission_query = {"development_type": ["public_submission"]}
     list_status, list_body = request(args.api_url, filtered_path(list_path, **submission_query))
-    geojson_status, geojson_body = request(args.api_url, filtered_path(geojson_path, **submission_query))
+    geojson_status, geojson_body = request(
+        args.api_url, filtered_path(geojson_path, **submission_query)
+    )
     assert list_status == geojson_status == 200
     assert ids_from_list(list_body) == {
         "u00-proposed-submission",
@@ -81,7 +84,9 @@ def main() -> None:
     checks.append("subset:public-submission:list-geojson-parity")
 
     list_status, list_body = request(args.api_url, filtered_path(list_path, status=["none"]))
-    geojson_status, geojson_body = request(args.api_url, filtered_path(geojson_path, status=["none"]))
+    geojson_status, geojson_body = request(
+        args.api_url, filtered_path(geojson_path, status=["none"])
+    )
     assert list_status == geojson_status == 200
     assert ids_from_list(list_body) == ids_from_geojson(geojson_body) == set()
     checks.append("none:zero-list-geojson")
