@@ -325,6 +325,41 @@ class ReviewerDecisionImportResult(BaseModel):
     missing: list[str] = Field(default_factory=list)
 
 
+class MapLayerCoverage(BaseModel):
+    status: str
+    scope_id: str | None = None
+    reported_count: int | None = Field(default=None, ge=0)
+    fetched_count: int | None = Field(default=None, ge=0)
+
+
+class MapLayer(BaseModel):
+    id: str
+    kind: Literal["vector"]
+    title: str
+    category: str
+    data_version: str | None = None
+    display_version: str | None = None
+    delivery_status: Literal["unavailable", "processing", "ready", "failed", "withheld"]
+    tile_url: str | None = None
+    source_layer: str | None = None
+    minzoom: int | None = Field(default=None, ge=0, le=24)
+    maxzoom: int | None = Field(default=None, ge=0, le=24)
+    bounds: tuple[float, float, float, float] | None = None
+    coverage: MapLayerCoverage
+    source_name: str
+    source_url: str
+    attribution: str
+    caveat: str
+    data_as_of: str | None = None
+    fetched_at: str | None = None
+    default_visible: bool = False
+
+
+class MapLayerCatalog(BaseModel):
+    data_mode: Literal["live", "demo"]
+    catalog_revision: str
+    layers: list[MapLayer] = Field(default_factory=list)
+
 class EnvironmentalOverlay(BaseModel):
     id: str
     name: str

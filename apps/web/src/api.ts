@@ -7,8 +7,8 @@ import type {
   DevelopmentRecordCollection,
   DatasetStatus,
   DuplicateCandidate,
-  EnvironmentalOverlay,
   Jurisdiction,
+  MapLayerCatalog,
   Phase3StoreStatus,
   ProcessedStoreStatus,
   RecordFilters,
@@ -91,7 +91,6 @@ async function request<T>(path: string, init?: ApiRequestInit): Promise<T> {
 
   const payload = (await response.json()) as T;
   if (path.split("?")[0] === "/api/development-records") performanceMark("records-received");
-  if (path === "/api/environmental-overlays") performanceMark("overlays-received");
   return payload;
 }
 
@@ -111,8 +110,8 @@ export function fetchDevelopmentRecord(publicId: string): Promise<DevelopmentRec
   return request<DevelopmentRecord>(`/api/development-records/${publicId}`);
 }
 
-export function fetchEnvironmentalOverlays(): Promise<EnvironmentalOverlay[]> {
-  return request<EnvironmentalOverlay[]>("/api/environmental-overlays");
+export function fetchMapLayerCatalog(): Promise<MapLayerCatalog> {
+  return request<MapLayerCatalog>("/api/map/layers");
 }
 
 export function fetchStagedRecords(): Promise<StagedDevelopmentRecord[]> {

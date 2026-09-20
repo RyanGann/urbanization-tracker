@@ -17,7 +17,7 @@ LIST_COLLECTIONS = (
     "staged_development_records",
     "environmental_overlays",
 )
-SINGLETON_COLLECTIONS = ("source_health",)
+SINGLETON_COLLECTIONS = ("source_health", "map_layer_catalog")
 PROCESSED_COLLECTIONS = (*LIST_COLLECTIONS, *SINGLETON_COLLECTIONS)
 RAW_ARTIFACT_COLLECTIONS = ("raw_records",)
 

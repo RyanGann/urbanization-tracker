@@ -2,10 +2,10 @@ import "maplibre-gl/dist/maplibre-gl.css";
 
 import { useQuery } from "@tanstack/react-query";
 import { ExternalLink, Filter, Layers, ListFilter, MapPin, RotateCcw } from "lucide-react";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Link } from "react-router-dom";
 
-import { fetchDatasetStatus, fetchDevelopmentRecords, fetchEnvironmentalOverlays } from "../api";
+import { fetchDatasetStatus, fetchDevelopmentRecords, fetchMapLayerCatalog } from "../api";
 import { DevelopmentMap } from "../components/DevelopmentMap";
 import { StatusBadge } from "../components/StatusBadge";
 import type { ConfidenceLevel, DevelopmentRecord } from "../types";
@@ -23,13 +23,6 @@ import { performanceMark } from "../utils/performance";
 const INITIAL_STATUSES = STATUS_OPTIONS.map((option) => option.value);
 const INITIAL_CONFIDENCE: ConfidenceLevel[] = ["high", "medium", "low"];
 const INITIAL_TYPES = DEVELOPMENT_TYPE_OPTIONS.map((option) => option.value);
-const INITIAL_OVERLAYS = [
-  "pilot-boundary",
-  "wetlands",
-  "floodplain",
-  "hydrography",
-  "parks-open-space"
-];
 
 function toggleValue<T extends string>(values: T[], value: T): T[] {
   return values.includes(value) ? values.filter((candidate) => candidate !== value) : [...values, value];
@@ -41,7 +34,8 @@ export function MapPage() {
     useState<ConfidenceLevel[]>(INITIAL_CONFIDENCE);
   const [developmentTypes, setDevelopmentTypes] = useState<string[]>(INITIAL_TYPES);
   const [flagTypes, setFlagTypes] = useState<string[] | undefined>(undefined);
-  const [visibleOverlayIds, setVisibleOverlayIds] = useState<string[]>(INITIAL_OVERLAYS);
+  const [visibleOverlayIds, setVisibleOverlayIds] = useState<string[]>([]);
+  const catalogInitialized = useRef(false);
   const [selectedRecord, setSelectedRecord] = useState<DevelopmentRecord | null>(null);
 
   const filters = useMemo(
@@ -54,9 +48,10 @@ export function MapPage() {
     queryFn: () => fetchDevelopmentRecords(filters)
   });
 
-  const overlaysQuery = useQuery({
-    queryKey: ["environmental-overlays"],
-    queryFn: fetchEnvironmentalOverlays
+  const catalogQuery = useQuery({
+    queryKey: ["map-layers"],
+    queryFn: fetchMapLayerCatalog,
+    staleTime: 60_000
   });
 
   const datasetStatusQuery = useQuery({
@@ -65,8 +60,20 @@ export function MapPage() {
   });
 
   const records = recordsQuery.isError ? [] : recordsQuery.data?.records ?? [];
-  const overlays = overlaysQuery.isError ? [] : overlaysQuery.data ?? [];
-  const dataMode = recordsQuery.data?.data_mode ?? datasetStatusQuery.data?.data_mode;
+  const catalogLayers = catalogQuery.data?.layers ?? [];
+  const dataMode = recordsQuery.data?.data_mode ?? catalogQuery.data?.data_mode ?? datasetStatusQuery.data?.data_mode;
+
+  useEffect(() => {
+    if (!catalogQuery.data) return;
+    const ids = new Set(catalogQuery.data.layers.map((layer) => layer.id));
+    setVisibleOverlayIds((current) => {
+      if (catalogInitialized.current) return current.filter((id) => ids.has(id));
+      catalogInitialized.current = true;
+      return catalogQuery.data.layers
+        .filter((layer) => layer.default_visible)
+        .map((layer) => layer.id);
+    });
+  }, [catalogQuery.data]);
 
   useEffect(() => {
     if (!selectedRecord) return;
@@ -89,7 +96,6 @@ export function MapPage() {
     setConfidenceLevels(INITIAL_CONFIDENCE);
     setDevelopmentTypes(INITIAL_TYPES);
     setFlagTypes(undefined);
-    setVisibleOverlayIds(INITIAL_OVERLAYS);
   };
 
   const handleSelect = useCallback((record: DevelopmentRecord) => {
@@ -206,26 +212,43 @@ export function MapPage() {
               Layers
             </span>
           </div>
-          {overlaysQuery.isError ? (
+          {catalogQuery.isLoading ? <p className="muted">Loading environmental layer catalog...</p> : null}
+          {catalogQuery.isError ? (
             <p className="error-text" role="alert">
-              Environmental context is unavailable. Try again after initialization completes.
+              Environmental layer metadata is unavailable. Try again after initialization completes.
             </p>
-          ) : (
+          ) : null}
+          {!catalogQuery.isLoading && !catalogQuery.isError && catalogLayers.length === 0 ? (
+            <p className="muted">No environmental layers are available for this dataset.</p>
+          ) : null}
+          {!catalogQuery.isLoading && !catalogQuery.isError && catalogLayers.length > 0 ? (
             <div className="layer-list">
-              {overlays.map((overlay) => (
-                <label key={overlay.id} className="check-row">
-                  <input
-                    type="checkbox"
-                    checked={visibleOverlayIds.includes(overlay.id)}
-                    onChange={() =>
-                      setVisibleOverlayIds((current) => toggleValue(current, overlay.id))
-                    }
-                  />
-                  <span>{overlay.name}</span>
-                </label>
-              ))}
+              {catalogLayers.map((layer) => {
+                const preparing = layer.delivery_status === "processing";
+                const ready = layer.delivery_status === "ready";
+                return (
+                  <div key={layer.id}>
+                    <label className="check-row">
+                      <input
+                        type="checkbox"
+                        checked={visibleOverlayIds.includes(layer.id)}
+                        disabled={!ready}
+                        onChange={() =>
+                          setVisibleOverlayIds((current) => toggleValue(current, layer.id))
+                        }
+                      />
+                      <span>{layer.title}</span>
+                    </label>
+                    {preparing ? <p className="muted">Tiles are being prepared for this layer.</p> : null}
+                    {!preparing && !ready ? (
+                      <p className="muted">This layer is currently unavailable.</p>
+                    ) : null}
+                    <p className="muted">{layer.attribution}</p>
+                  </div>
+                );
+              })}
             </div>
-          )}
+          ) : null}
         </section>
 
         <section className="panel record-list-panel">
@@ -270,8 +293,6 @@ export function MapPage() {
       <section className="map-column">
         <DevelopmentMap
           records={records}
-          overlays={overlays}
-          visibleOverlayIds={visibleOverlayIds}
           selectedId={selectedRecord?.public_id ?? null}
           onSelect={handleSelect}
         />

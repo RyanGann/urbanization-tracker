@@ -14,6 +14,7 @@ from app.ingestion.artifacts import (
 )
 from app.ingestion.connectors.arcgis import ArcGISLayerConfig, ArcGISRestConnector
 from app.ingestion.normalize import normalize_development_feature
+from app.map_layer_catalog import build_catalog
 from app.ingestion.proximity import compute_proximity_flags
 from app.ingestion.sources.huntsville import (
     BUILDING_PERMITS,
@@ -48,6 +49,7 @@ def ingest_huntsville(
     published_records: list[dict[str, Any]] = []
     raw_records: list[dict[str, Any]] = []
     environmental_collections: list[tuple[ArcGISLayerConfig, dict[str, Any]]] = []
+    environmental_catalog_sources: list[tuple[ArcGISLayerConfig, dict[str, Any]]] = []
 
     try:
         for source in DEVELOPMENT_SOURCES:
@@ -70,11 +72,13 @@ def ingest_huntsville(
             source_result = _fetch_source(connector, source_config, data_dir, run_id, checked_at)
             source_health.append(source_result["health"])
             environmental_collections.append((source, source_result["collection"]))
+            environmental_catalog_sources.append((source, source_result["health"]))
 
         staged_records = _dedupe_records(staged_records, key="id")
         published_records = _dedupe_records(published_records, key="public_id")
         compute_proximity_flags(published_records, environmental_collections)
         overlays = _environmental_overlays(environmental_collections)
+        catalog = build_catalog(environmental_catalog_sources)
 
         health = _write_processed_state(
             data_dir=data_dir,
@@ -85,6 +89,7 @@ def ingest_huntsville(
             staged_records=staged_records,
             published_records=published_records,
             overlays=overlays,
+            catalog=catalog,
         )
         write_json(data_dir / "runs" / f"{run_id}.json", health)
         return health
@@ -298,6 +303,7 @@ def _write_processed_state(
     staged_records: list[dict[str, Any]],
     published_records: list[dict[str, Any]],
     overlays: list[dict[str, Any]] | None = None,
+    catalog: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     processed_dir = data_dir / "processed"
     raw_source_keys = {
@@ -355,6 +361,8 @@ def _write_processed_state(
     )
     if overlays is not None:
         write_processed_list("environmental_overlays", overlays, data_dir=data_dir)
+    if catalog is not None:
+        write_processed_payload("map_layer_catalog", catalog, data_dir=data_dir)
 
     merged_sources = _merge_source_health(data_dir, source_health)
     health = {

@@ -10,15 +10,13 @@ import type {
 import maplibreWorkerUrl from "maplibre-gl/dist/maplibre-gl-worker.mjs?worker&url";
 import { useEffect, useMemo, useRef, useState } from "react";
 
-import type { DevelopmentRecord, EnvironmentalOverlay } from "../types";
+import type { DevelopmentRecord } from "../types";
 import { statusLabel } from "../utils/records";
 import { performanceEnabled, performanceMark } from "../utils/performance";
 
 maplibregl.setWorkerUrl(maplibreWorkerUrl);
 interface DevelopmentMapProps {
   records: DevelopmentRecord[];
-  overlays: EnvironmentalOverlay[];
-  visibleOverlayIds: string[];
   selectedId: string | null;
   onSelect: (record: DevelopmentRecord) => void;
 }
@@ -90,21 +88,6 @@ function pointFeatures(records: DevelopmentRecord[]): FeatureCollection {
   );
 }
 
-function overlayColor(overlay: EnvironmentalOverlay): string {
-  if (overlay.category === "wetlands") return "#3f8f73";
-  if (overlay.category === "floodplain") return "#4f85c7";
-  if (overlay.category === "waterways") return "#2d6fb7";
-  if (overlay.category === "protected_area") return "#76a857";
-  return "#384a50";
-}
-
-function overlayLayerIds(overlay: EnvironmentalOverlay): string[] {
-  if (overlay.geom_type === "polygon" && overlay.category !== "boundary") {
-    return [`env-${overlay.id}-fill`, `env-${overlay.id}-line`];
-  }
-  return [`env-${overlay.id}-line`];
-}
-
 function ensureDevelopmentLayers(map: MapLibreMap) {
   if (!map.getLayer("development-polygons-fill")) {
     map.addLayer({
@@ -157,61 +140,6 @@ function ensureDevelopmentLayers(map: MapLibreMap) {
   }
 }
 
-function ensureOverlayLayer(map: MapLibreMap, overlay: EnvironmentalOverlay) {
-  const sourceId = `env-${overlay.id}`;
-  const color = overlayColor(overlay);
-
-  if (overlay.geom_type === "polygon" && overlay.category !== "boundary") {
-    if (!map.getLayer(`env-${overlay.id}-fill`)) {
-      map.addLayer(
-        {
-          id: `env-${overlay.id}-fill`,
-          type: "fill",
-          source: sourceId,
-          paint: {
-            "fill-color": color,
-            "fill-opacity": overlay.category === "floodplain" ? 0.2 : 0.18
-          }
-        },
-        "development-polygons-fill"
-      );
-    }
-    if (!map.getLayer(`env-${overlay.id}-line`)) {
-      map.addLayer(
-        {
-          id: `env-${overlay.id}-line`,
-          type: "line",
-          source: sourceId,
-          paint: {
-            "line-color": color,
-            "line-width": 1.1,
-            "line-opacity": 0.76
-          }
-        },
-        "development-polygons-fill"
-      );
-    }
-    return;
-  }
-
-  if (!map.getLayer(`env-${overlay.id}-line`)) {
-    map.addLayer(
-      {
-        id: `env-${overlay.id}-line`,
-        type: "line",
-        source: sourceId,
-        paint: {
-          "line-color": color,
-          "line-width": overlay.category === "boundary" ? 2 : 2.5,
-          "line-dasharray": overlay.category === "boundary" ? [2, 2] : [1, 0],
-          "line-opacity": overlay.category === "boundary" ? 0.8 : 0.95
-        }
-      },
-      "development-polygons-fill"
-    );
-  }
-}
-
 function escapeHtml(value: string) {
   return value
     .replaceAll("&", "&amp;")
@@ -223,8 +151,6 @@ function escapeHtml(value: string) {
 
 export function DevelopmentMap({
   records,
-  overlays,
-  visibleOverlayIds,
   selectedId,
   onSelect
 }: DevelopmentMapProps) {
@@ -232,7 +158,6 @@ export function DevelopmentMap({
   const mapRef = useRef<MapLibreMap | null>(null);
   const popupRef = useRef<maplibregl.Popup | null>(null);
   const handlersAttachedRef = useRef(false);
-  const renderedOverlaySignaturesRef = useRef<Map<string, string>>(new Map());
   const recordsRef = useRef(records);
   const [mapReady, setMapReady] = useState(false);
   const [appliedFeatureCount, setAppliedFeatureCount] = useState(0);
@@ -342,47 +267,6 @@ export function DevelopmentMap({
     upsertSource(map, "development-points", pointFeatures(records));
     ensureDevelopmentLayers(map);
 
-    const nextOverlayIds = new Set(overlays.map((overlay) => overlay.id));
-    [...renderedOverlaySignaturesRef.current.keys()]
-      .filter((overlayId) => !nextOverlayIds.has(overlayId))
-      .forEach((overlayId) => {
-        ["fill", "line"].forEach((kind) => {
-          const layerId = "env-" + overlayId + "-" + kind;
-          if (map.getLayer(layerId)) {
-            map.removeLayer(layerId);
-          }
-        });
-        const sourceId = "env-" + overlayId;
-        if (map.getSource(sourceId)) {
-          map.removeSource(sourceId);
-        }
-      });
-
-    overlays.forEach((overlay) => {
-      const signature = overlay.geom_type + ":" + overlay.category;
-      if (renderedOverlaySignaturesRef.current.get(overlay.id) !== signature) {
-        ["fill", "line"].forEach((kind) => {
-          const layerId = "env-" + overlay.id + "-" + kind;
-          if (map.getLayer(layerId)) {
-            map.removeLayer(layerId);
-          }
-        });
-      }
-      upsertSource(map, `env-${overlay.id}`, overlay.features);
-      ensureOverlayLayer(map, overlay);
-      overlayLayerIds(overlay).forEach((layerId) => {
-        if (map.getLayer(layerId)) {
-          map.setLayoutProperty(
-            layerId,
-            "visibility",
-            visibleOverlayIds.includes(overlay.id) ? "visible" : "none"
-          );
-        }
-      });
-    });
-    renderedOverlaySignaturesRef.current = new Map(
-      overlays.map((overlay) => [overlay.id, overlay.geom_type + ":" + overlay.category])
-    );
     setAppliedFeatureCount(records.length);
     if (!handlersAttachedRef.current) {
       const handleClick = (event: MapLayerMouseEvent) => {
@@ -415,7 +299,7 @@ export function DevelopmentMap({
       });
       handlersAttachedRef.current = true;
     }
-  }, [records, overlays, visibleOverlayIds, onSelect, mapReady]);
+  }, [records, onSelect, mapReady]);
 
   useEffect(() => {
     const map = mapRef.current;
