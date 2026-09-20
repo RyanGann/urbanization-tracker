@@ -5,7 +5,7 @@ Status: **Planned; no application implementation in this guide.** Baseline: `dbd
 | Field | Assignment |
 | --- | --- |
 | Track / gate | Operations / G3 |
-| Depends on | [S01](S01-frontend-dependency-update.md), [C01](C01-explicit-data-modes.md), [P05](P05-versioned-vector-tile-api.md), [P07](P07-bounded-development-map-api.md), [O01](O01-durable-artifact-uploads.md) |
+| Depends on | [S01](S01-frontend-dependency-update.md), [C01](C01-explicit-data-modes.md), [P05](P05-versioned-vector-tile-api.md), [P07](P07-bounded-development-map-api.md), [O01](O01-durable-artifact-uploads.md), [S03](S03-watch-confirmation-unsubscribe.md) |
 | Review | Lead review |
 | PR boundary | One configuration/preflight PR; no deployment action. |
 

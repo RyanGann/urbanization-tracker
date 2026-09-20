@@ -33,7 +33,7 @@ These are inspection starting points, not a requirement to put all new code in e
 
 3. Store a permanent alias from the retired public ID to the survivor. Public detail requests resolve/redirect consistently, search/map excludes the duplicate, and old versions remain inspectable with clear merged-into metadata.
 
-4. Record a substantive merge event with explicit notification policy: no burst of baseline/history alerts; watchers of either record follow the survivor for future changes. Preserve existing outbox idempotency keys.
+4. Record a substantive merge event with explicit notification policy: no burst of baseline/history alerts. Preserve watch-area geometry/filters and existing outbox idempotency keys; historical or queued links to the retired ID resolve through its alias. Future notifications match the survivor through C07's ordinary spatial/filter rules, including its before-state rules for leaving an area. Do not invent automatic follow-record subscriptions or move a user's watch area because records merged.
 
 5. Reject circular aliases, merge-to-self, stale revisions and already-merged conflicting requests. Include a dry-run JSON export and an audit trail sufficient to support a deliberate corrective split later.
 
@@ -44,7 +44,7 @@ These are inspection starting points, not a requirement to put all new code in e
 - [ ] Merge two records -> one map feature, both old URLs resolve, all source links/history remain, and future source refreshes update the survivor.
 - [ ] Concurrent source refresh/reviewer merge yields a safe conflict or serial outcome without losing fields.
 - [ ] Retry apply -> one merge event, no duplicate aliases or alerts; invalid cycles fail.
-- [ ] A failed intermediate write rolls back alias, record, event, index and watch reassignment together.
+- [ ] A failed intermediate write rolls back alias, record, event and index together. Watch-area definitions remain unchanged, and historical/queued notification links still resolve after a successful merge.
 - [ ] Run the affected existing lint/types/tests plus the real-stack scenarios above; retain exact commands, SHA, fixture checksum and results. Do not claim an unrun check passed.
 - [ ] Update API/client schemas and user-facing error states together when their contract changes; report any departure from the shared contract before merging.
 

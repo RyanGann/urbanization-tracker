@@ -119,7 +119,7 @@ A PR can merge before its broader gate is complete if its intermediate state is 
 | Guide | Depends on | Review |
 | --- | --- | --- |
 | [O01: Upload and verify ingestion artifacts before activating data](O01-durable-artifact-uploads.md) | C02 | Lead review |
-| [O02: Update hosted configuration and readiness checks for the new contracts](O02-deployment-guardrails.md) | S01, C01, P05, P07, O01 | Lead review |
+| [O02: Update hosted configuration and readiness checks for the new contracts](O02-deployment-guardrails.md) | S01, C01, P05, P07, O01, S03 | Lead review |
 | [O04: Prepare code-license, data-use, and public disclosure decisions](O04-release-data-use-decisions.md) | D01, P02 | Owner decision after prepared evidence |
 | [O03: Rehearse migration, recovery, and resident/reviewer workflows](O03-restricted-alpha-rehearsal.md) | C08, C09, U03, D02, P09, O02, O04, D01 | Lead review |
 

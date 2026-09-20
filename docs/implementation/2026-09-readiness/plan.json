@@ -500,7 +500,8 @@
         "C01",
         "P05",
         "P07",
-        "O01"
+        "O01",
+        "S03"
       ],
       "review": "Lead review",
       "pr_boundary": "One configuration/preflight PR; no deployment action.",
@@ -666,11 +667,11 @@
     "D02",
     "P07",
     "C08",
-    "O02",
     "P08",
     "S03",
     "U01",
     "U02",
+    "O02",
     "P09",
     "U03",
     "U04",
