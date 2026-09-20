@@ -180,20 +180,26 @@ export function MapPage() {
               Layers
             </span>
           </div>
-          <div className="layer-list">
-            {overlays.map((overlay) => (
-              <label key={overlay.id} className="check-row">
-                <input
-                  type="checkbox"
-                  checked={visibleOverlayIds.includes(overlay.id)}
-                  onChange={() =>
-                    setVisibleOverlayIds((current) => toggleValue(current, overlay.id))
-                  }
-                />
-                <span>{overlay.name}</span>
-              </label>
-            ))}
-          </div>
+          {overlaysQuery.isError ? (
+            <p className="error-text" role="alert">
+              Environmental context is unavailable. Try again after initialization completes.
+            </p>
+          ) : (
+            <div className="layer-list">
+              {overlays.map((overlay) => (
+                <label key={overlay.id} className="check-row">
+                  <input
+                    type="checkbox"
+                    checked={visibleOverlayIds.includes(overlay.id)}
+                    onChange={() =>
+                      setVisibleOverlayIds((current) => toggleValue(current, overlay.id))
+                    }
+                  />
+                  <span>{overlay.name}</span>
+                </label>
+              ))}
+            </div>
+          )}
         </section>
 
         <section className="panel record-list-panel">

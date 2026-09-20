@@ -231,6 +231,7 @@ export function DevelopmentMap({
   const mapRef = useRef<MapLibreMap | null>(null);
   const popupRef = useRef<maplibregl.Popup | null>(null);
   const handlersAttachedRef = useRef(false);
+  const renderedOverlayIdsRef = useRef<string[]>([]);
   const recordsRef = useRef(records);
   const [mapReady, setMapReady] = useState(false);
   const [appliedFeatureCount, setAppliedFeatureCount] = useState(0);
@@ -308,6 +309,22 @@ export function DevelopmentMap({
     upsertSource(map, "development-points", pointFeatures(records));
     ensureDevelopmentLayers(map);
 
+    const nextOverlayIds = new Set(overlays.map((overlay) => overlay.id));
+    renderedOverlayIdsRef.current
+      .filter((overlayId) => !nextOverlayIds.has(overlayId))
+      .forEach((overlayId) => {
+        ["fill", "line"].forEach((kind) => {
+          const layerId = "env-" + overlayId + "-" + kind;
+          if (map.getLayer(layerId)) {
+            map.removeLayer(layerId);
+          }
+        });
+        const sourceId = "env-" + overlayId;
+        if (map.getSource(sourceId)) {
+          map.removeSource(sourceId);
+        }
+      });
+
     overlays.forEach((overlay) => {
       upsertSource(map, `env-${overlay.id}`, overlay.features);
       ensureOverlayLayer(map, overlay);
@@ -321,6 +338,7 @@ export function DevelopmentMap({
         }
       });
     });
+    renderedOverlayIdsRef.current = overlays.map((overlay) => overlay.id);
     setAppliedFeatureCount(records.length);
 
     if (!handlersAttachedRef.current) {
@@ -358,7 +376,12 @@ export function DevelopmentMap({
 
   useEffect(() => {
     const map = mapRef.current;
-    if (!map || !selectedRecord) {
+    if (!map) {
+      return;
+    }
+    if (!selectedRecord) {
+      popupRef.current?.remove();
+      popupRef.current = null;
       return;
     }
 

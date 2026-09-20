@@ -100,3 +100,12 @@ def test_live_invalid_record_schema_is_unavailable_in_status_and_reads(
     assert status.json()["availability"] == "unavailable"
     assert records.status_code == 503
     assert records.json()["detail"]["code"] == "data_unavailable"
+
+
+def test_live_missing_staged_collection_is_503(monkeypatch, tmp_path) -> None:
+    configure_live_artifacts(monkeypatch, tmp_path)
+
+    response = client.get("/api/reviewer/staged-records")
+
+    assert response.status_code == 503
+    assert response.json()["detail"]["code"] == "data_unavailable"

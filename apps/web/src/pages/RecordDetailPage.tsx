@@ -2,7 +2,12 @@ import { useQuery } from "@tanstack/react-query";
 import { ArrowLeft, ExternalLink, MapPin } from "lucide-react";
 import { Link, useParams } from "react-router-dom";
 
-import { ApiError, fetchDevelopmentRecord, fetchRecordVersions } from "../api";
+import {
+  ApiError,
+  fetchDatasetStatus,
+  fetchDevelopmentRecord,
+  fetchRecordVersions
+} from "../api";
 import { StatusBadge } from "../components/StatusBadge";
 import { developmentTypeLabel, formatArea, statusLabel } from "../utils/records";
 
@@ -24,6 +29,10 @@ export function RecordDetailPage() {
     queryKey: ["record-versions", publicId],
     queryFn: () => fetchRecordVersions(publicId ?? ""),
     enabled: Boolean(publicId)
+  });
+  const datasetStatusQuery = useQuery({
+    queryKey: ["dataset-status"],
+    queryFn: fetchDatasetStatus
   });
 
   if (recordQuery.isLoading) {
@@ -85,6 +94,9 @@ export function RecordDetailPage() {
             <StatusBadge value={record.review_status} kind="review" />
           </div>
           <p className="lede">{record.description}</p>
+          {datasetStatusQuery.data?.data_mode === "demo" ? (
+            <p className="muted">Demo data   not live planning data.</p>
+          ) : null}
 
           <dl className="facts detail-facts">
             <div>

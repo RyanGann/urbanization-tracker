@@ -250,7 +250,12 @@ def list_staged_records() -> list[StagedDevelopmentRecord]:
         records = copy.deepcopy(_staged_records)
     else:
         processed_staged = _load_processed_staged_records()
-        records = copy.deepcopy(processed_staged or [])
+        if processed_staged is None:
+            raise DataUnavailableError(
+                collection="staged_development_records",
+                availability=Availability.UNINITIALIZED,
+            )
+        records = copy.deepcopy(processed_staged)
     from app.phase3_store import list_phase3_staged_records
 
     records.extend(list_phase3_staged_records())

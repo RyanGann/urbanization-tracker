@@ -13,7 +13,12 @@ test(`C01 data modes real API map state: ${phase ?? "not-configured"}`, async ({
 
   if (phase === "unavailable") {
     expect(response.status()).toBe(503);
-    await expect(page.getByRole("alert")).toContainText("Development data is unavailable");
+    await expect(
+      page.getByText("Development data is unavailable. Try again after initialization completes.")
+    ).toBeVisible();
+    await expect(
+      page.getByText("Environmental context is unavailable. Try again after initialization completes.")
+    ).toBeVisible();
     await expect(page.getByTestId("development-map")).toHaveAttribute("data-feature-count", "0");
     await expect(page.locator(".record-row")).toHaveCount(0);
     return;
@@ -30,6 +35,9 @@ test(`C01 data modes real API map state: ${phase ?? "not-configured"}`, async ({
   if (phase === "demo") {
     await expect(page.getByText(/Demo data.*not live planning data/)).toBeVisible();
     await expect(page.locator(".record-row")).not.toHaveCount(0);
+
+    await page.goto("/records/hsv-westmoore-landing-ph1");
+    await expect(page.getByText(/Demo data.*not live planning data/)).toBeVisible();
     return;
   }
 
