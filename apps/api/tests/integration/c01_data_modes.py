@@ -150,7 +150,8 @@ def assert_demo_phase3_isolated(
     live_submission_title: str,
     demo_submission_title: str,
 ) -> list[str]:
-    checks = assert_demo(api_url, fixture_id)
+    # This must be the first request after a demo API recreation: reviewer/write
+    # paths cannot rely on a catalog read to select their isolated store.
     before = _reviewer_submission_titles(api_url, reviewer_token)
     if live_submission_title in before:
         raise AssertionError("demo reviewer state included the live Phase3 submission")
@@ -158,6 +159,7 @@ def assert_demo_phase3_isolated(
     after = _reviewer_submission_titles(api_url, reviewer_token)
     if demo_submission_title not in after or live_submission_title in after:
         raise AssertionError("demo mutation was not isolated from the live Phase3 store")
+    checks = assert_demo(api_url, fixture_id)
     return [*checks, "demo-phase3-submission:memory-only"]
 
 

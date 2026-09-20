@@ -1,20 +1,20 @@
 # C01 explicit data modes evidence
 
 Base: `9ed339bb23c8a4b15c8f7c1f04d8f4cc6c137ff8` (merged T01/S01 main)
-Tested commit: `c80b80f`
+Tested commit: `1a147bd846738c828a1a5644c0a5900132a70c1b`
 
 ## Real stack
 
 Command: `node scripts/run-integration.mjs --suite api --scenario c01-data-modes`
 
-Passed on September 20, 2026. Manifest: `tmp/integration/2026-09-20T03-04-34-633Z-a1bff65c/manifest.json`. The isolated Compose project `urbanization_t01_a399842b48b0` finished with `cleanup_result: removed`.
+Passed on September 20, 2026. Manifest: `tmp/integration/2026-09-20T03-09-44-934Z-cc80af9a/manifest.json`. The isolated Compose project `urbanization_t01_ce7488afb48b` finished with `cleanup_result: removed`.
 
 The scenario used the T01 PostGIS Compose stack and real HTTP through its fixed gateway. It verified:
 
 - Initialized empty PostgreSQL returns live/ready metadata, an empty record and GeoJSON collection, and 404 for an unknown detail.
 - A seeded PostgreSQL fixture survives a database stop and restart; while stopped, list, detail, and GeoJSON return 503 with `detail.code=data_unavailable` and no seed fallback.
 - Missing, empty, and corrupt live artifact collections distinguish uninitialized, ready-empty, and unavailable states.
-- Explicit demo reports `data_mode=demo`, returns demo-only records, and does not mix the live fixture. A real live public submission is visible to authenticated reviewer reads, excluded in demo, while a demo-created submission stays memory-only and is absent after returning to the same live Postgres backend.
+- Explicit demo reports `data_mode=demo`, returns demo-only records, and does not mix the live fixture. The first request after switching to demo is an authenticated reviewer read, before any catalog request. A real live public submission is excluded there; a following demo-created submission stays memory-only and is absent after returning to the same live Postgres backend.
 - Browser checks against the real internal API distinguish empty, unavailable with no map features or record rows, and labelled demo data.
 
 Fixture SHA-256: `932eacb03655a3dee1a2838abf9ddf8d5dfa44f744482408611b61a2561bbee2`.
