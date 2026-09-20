@@ -4,6 +4,7 @@ import json
 import os
 from pathlib import Path
 
+from app.map_layer_catalog import backfill_map_layer_catalog
 from app.processed_store import write_processed_list, write_processed_payload
 
 
@@ -68,6 +69,7 @@ def main() -> None:
     write_processed_list("staged_development_records", [])
     write_processed_list("environmental_overlays", fixture["environmental_overlays"])
     write_processed_payload("source_health", fixture["source_health"])
+    backfill_map_layer_catalog()
 
 
 if __name__ == "__main__":

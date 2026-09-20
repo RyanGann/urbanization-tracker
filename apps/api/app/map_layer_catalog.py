@@ -4,13 +4,17 @@ import copy
 import hashlib
 import json
 from pathlib import Path
-from typing import Any
+from typing import Any, cast
 
 from pydantic import ValidationError
 
 from app.config import get_settings
 from app.data_availability import Availability, DataUnavailableError
-from app.processed_store import read_processed_payload_result
+from app.processed_store import (
+    read_processed_list_result,
+    read_processed_payload_result,
+    write_processed_payload,
+)
 from app.schemas import MapLayerCatalog
 
 CATALOG_COLLECTION = "map_layer_catalog"
@@ -29,7 +33,10 @@ def build_catalog(
 ) -> dict[str, Any]:
     layers: list[dict[str, Any]] = []
     for config, health in environmental_sources:
-        metadata = health.get("metadata") if isinstance(health.get("metadata"), dict) else {}
+        raw_metadata = health.get("metadata")
+        metadata: dict[str, Any] = (
+            raw_metadata if isinstance(raw_metadata, dict) else {}
+        )
         source_status = str(health.get("status", "unknown"))
         layers.append(
             {
@@ -65,8 +72,37 @@ def build_catalog(
     return payload
 
 
+def backfill_map_layer_catalog() -> MapLayerCatalog:
+    """Offline compatibility backfill; this is intentionally allowed to read bulk overlays."""
+    result = read_processed_list_result("environmental_overlays")
+    overlays = result.require_ready(collection="environmental_overlays")
+    layers: list[dict[str, Any]] = []
+    for overlay in overlays:
+        feature_count = len(overlay.get("features", {}).get("features", []))
+        layers.append({
+            "id": overlay["id"], "kind": "vector", "title": overlay["name"],
+            "category": overlay["category"], "data_version": None, "display_version": None,
+            "delivery_status": "processing", "tile_url": None, "source_layer": None,
+            "minzoom": None, "maxzoom": None, "bounds": None,
+            "coverage": {"status": "unknown", "scope_id": None, "reported_count": None,
+                         "fetched_count": feature_count},
+            "source_name": overlay["attribution"], "source_url": overlay["source_url"],
+            "attribution": overlay["attribution"], "caveat": overlay["caveat"],
+            "data_as_of": None, "fetched_at": None, "default_visible": True,
+        })
+    payload = {"data_mode": "live", "catalog_revision": "", "layers": layers}
+    payload["catalog_revision"] = catalog_revision({"data_mode": "live", "layers": layers})
+    catalog = MapLayerCatalog.model_validate(payload)
+    write_processed_payload(CATALOG_COLLECTION, catalog.model_dump(mode="json"))
+    return catalog
+
 def _load_demo_catalog() -> dict[str, Any]:
-    return json.loads(DEMO_CATALOG_PATH.read_text(encoding="utf-8"))
+    payload = json.loads(DEMO_CATALOG_PATH.read_text(encoding="utf-8"))
+    if not isinstance(payload, dict):
+        raise DataUnavailableError(
+            collection=CATALOG_COLLECTION, availability=Availability.UNAVAILABLE
+        )
+    return cast(dict[str, Any], payload)
 
 
 def load_map_layer_catalog() -> MapLayerCatalog:
@@ -75,13 +111,28 @@ def load_map_layer_catalog() -> MapLayerCatalog:
     else:
         result = read_processed_payload_result(CATALOG_COLLECTION)
         payload = result.require_ready(collection=CATALOG_COLLECTION)
+    if not isinstance(payload, dict):
+        raise DataUnavailableError(
+            collection=CATALOG_COLLECTION, availability=Availability.UNAVAILABLE
+        )
     if payload.get("data_mode") != get_settings().data_mode:
         raise DataUnavailableError(
             collection=CATALOG_COLLECTION, availability=Availability.UNAVAILABLE
         )
     try:
-        return MapLayerCatalog.model_validate(copy.deepcopy(payload))
+        catalog = MapLayerCatalog.model_validate(copy.deepcopy(payload))
     except ValidationError as exc:
         raise DataUnavailableError(
             collection=CATALOG_COLLECTION, availability=Availability.UNAVAILABLE
         ) from exc
+    expected_revision = catalog_revision(
+        {
+            "data_mode": catalog.data_mode,
+            "layers": [layer.model_dump(mode="json") for layer in catalog.layers],
+        }
+    )
+    if catalog.catalog_revision != expected_revision:
+        raise DataUnavailableError(
+            collection=CATALOG_COLLECTION, availability=Availability.UNAVAILABLE
+        )
+    return catalog

@@ -14,7 +14,6 @@ from app.ingestion.artifacts import (
 )
 from app.ingestion.connectors.arcgis import ArcGISLayerConfig, ArcGISRestConnector
 from app.ingestion.normalize import normalize_development_feature
-from app.map_layer_catalog import build_catalog
 from app.ingestion.proximity import compute_proximity_flags
 from app.ingestion.sources.huntsville import (
     BUILDING_PERMITS,
@@ -24,6 +23,7 @@ from app.ingestion.sources.huntsville import (
 from app.ingestion.sources.madison_county import (
     DEVELOPMENT_SOURCES as MADISON_COUNTY_DEVELOPMENT_SOURCES,
 )
+from app.map_layer_catalog import build_catalog
 from app.processed_store import (
     read_processed_list,
     read_processed_payload,

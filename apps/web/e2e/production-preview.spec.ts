@@ -69,8 +69,11 @@ test("production preview loads the worker and selects rendered map point and pol
       body: JSON.stringify({ records: [seedRecord, polygonRecord] })
     });
   });
-  await page.route("**/api/environmental-overlays", async (route) => {
-    await route.fulfill({ contentType: "application/json", body: JSON.stringify([]) });
+  await page.route("**/api/map/layers", async (route) => {
+    await route.fulfill({
+      contentType: "application/json",
+      body: JSON.stringify({ data_mode: "demo", catalog_revision: "test", layers: [] })
+    });
   });
 
   await page.goto("/");

@@ -66,13 +66,16 @@ export function MapPage() {
   useEffect(() => {
     if (!catalogQuery.data) return;
     const ids = new Set(catalogQuery.data.layers.map((layer) => layer.id));
-    setVisibleOverlayIds((current) => {
-      if (catalogInitialized.current) return current.filter((id) => ids.has(id));
+    if (!catalogInitialized.current) {
       catalogInitialized.current = true;
-      return catalogQuery.data.layers
-        .filter((layer) => layer.default_visible)
-        .map((layer) => layer.id);
-    });
+      setVisibleOverlayIds(
+        catalogQuery.data.layers
+          .filter((layer) => layer.default_visible)
+          .map((layer) => layer.id)
+      );
+      return;
+    }
+    setVisibleOverlayIds((current) => current.filter((id) => ids.has(id)));
   }, [catalogQuery.data]);
 
   useEffect(() => {
@@ -212,14 +215,14 @@ export function MapPage() {
               Layers
             </span>
           </div>
-          {catalogQuery.isLoading ? <p className="muted">Loading environmental layer catalog...</p> : null}
+          {catalogQuery.isLoading ? <p className="muted" role="status" aria-live="polite">Loading environmental layer catalog...</p> : null}
           {catalogQuery.isError ? (
-            <p className="error-text" role="alert">
+            <p className="error-text" role="alert" aria-live="assertive">
               Environmental layer metadata is unavailable. Try again after initialization completes.
             </p>
           ) : null}
           {!catalogQuery.isLoading && !catalogQuery.isError && catalogLayers.length === 0 ? (
-            <p className="muted">No environmental layers are available for this dataset.</p>
+            <p className="muted" role="status" aria-live="polite">No environmental layers are available for this dataset.</p>
           ) : null}
           {!catalogQuery.isLoading && !catalogQuery.isError && catalogLayers.length > 0 ? (
             <div className="layer-list">
@@ -231,7 +234,7 @@ export function MapPage() {
                     <label className="check-row">
                       <input
                         type="checkbox"
-                        checked={visibleOverlayIds.includes(layer.id)}
+                        checked={ready && visibleOverlayIds.includes(layer.id)}
                         disabled={!ready}
                         onChange={() =>
                           setVisibleOverlayIds((current) => toggleValue(current, layer.id))
@@ -239,7 +242,7 @@ export function MapPage() {
                       />
                       <span>{layer.title}</span>
                     </label>
-                    {preparing ? <p className="muted">Tiles are being prepared for this layer.</p> : null}
+                    {preparing ? <p className="muted" role="status" aria-live="polite">Tiles are being prepared for this layer.</p> : null}
                     {!preparing && !ready ? (
                       <p className="muted">This layer is currently unavailable.</p>
                     ) : null}
