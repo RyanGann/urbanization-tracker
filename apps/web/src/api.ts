@@ -81,7 +81,7 @@ async function request<T>(path: string, init?: ApiRequestInit): Promise<T> {
   }
 
   const payload = (await response.json()) as T;
-  if (path.startsWith("/api/development-records")) performanceMark("records-received");
+  if (path.split("?")[0] === "/api/development-records") performanceMark("records-received");
   if (path === "/api/environmental-overlays") performanceMark("overlays-received");
   return payload;
 }

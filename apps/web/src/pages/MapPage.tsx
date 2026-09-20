@@ -61,8 +61,7 @@ export function MapPage() {
   const overlays = overlaysQuery.data ?? [];
   useEffect(() => {
     if (recordsQuery.isSuccess) performanceMark("list-ready");
-    if (overlaysQuery.isSuccess) performanceMark("catalog-ready");
-  }, [recordsQuery.isSuccess, overlaysQuery.isSuccess]);
+  }, [recordsQuery.isSuccess]);
   const availableFlags = uniqueFlagTypes(recordsQuery.data?.records ?? records);
 
   const resetFilters = () => {

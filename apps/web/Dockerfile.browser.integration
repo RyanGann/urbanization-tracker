@@ -10,7 +10,6 @@ COPY apps/web/package.json ./apps/web/package.json
 RUN npm ci
 
 COPY apps/web/playwright.live.config.ts ./apps/web/playwright.live.config.ts
-COPY apps/web/e2e/performance-baseline.mjs ./apps/web/e2e/performance-baseline.mjs
 COPY apps/web/e2e ./apps/web/e2e
 
 WORKDIR /workspace/apps/web

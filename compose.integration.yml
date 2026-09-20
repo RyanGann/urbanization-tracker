@@ -92,9 +92,7 @@ services:
       P01_PERFORMANCE_SCENARIO: ${P01_PERFORMANCE_SCENARIO:-}
       P01_API_INTERNAL_URL: ${P01_API_INTERNAL_URL:-http://api:8000}
       P01_OUTPUT: ${P01_OUTPUT:-/artifacts/performance/unused.json}
-      P01_COLD_CONTEXTS: ${P01_COLD_CONTEXTS:-10}
-      P01_INTERACTION_CYCLES: ${P01_INTERACTION_CYCLES:-20}
-      P01_API_REQUESTS: ${P01_API_REQUESTS:-100}
+      P01_SMOKE: ${P01_SMOKE:-false}
     depends_on:
       web:
         condition: service_healthy

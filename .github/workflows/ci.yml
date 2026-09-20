@@ -67,19 +67,14 @@ jobs:
       - name: Run Playwright smoke
         run: npm --workspace apps/web run e2e
 
-      - name: Run real API and browser smoke
-        run: node scripts/run-integration.mjs --suite live
-
-      - name: Upload integration artifacts
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: integration-artifacts
-          path: tmp/integration
-          if-no-files-found: ignore
-
       - name: Run production Playwright smoke
         run: npm --workspace apps/web run e2e:production
+
+      - name: Test performance measurement counters
+        run: node --test apps/web/e2e/performance/metrics.test.mjs
+
+      - name: Run performance functional precheck
+        run: node scripts/run-integration.mjs --suite performance --scenario functional --profile desktop --smoke
 
       - name: Run real API and browser smoke
         run: node scripts/run-integration.mjs --suite live

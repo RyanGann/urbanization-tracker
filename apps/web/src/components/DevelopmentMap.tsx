@@ -12,7 +12,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 
 import type { DevelopmentRecord, EnvironmentalOverlay } from "../types";
 import { statusLabel } from "../utils/records";
-import { performanceMark } from "../utils/performance";
+import { performanceEnabled, performanceMark } from "../utils/performance";
 
 maplibregl.setWorkerUrl(maplibreWorkerUrl);
 interface DevelopmentMapProps {
@@ -279,6 +279,32 @@ export function DevelopmentMap({
         }
       ).__urbanizationTrackerMapLibre = maplibregl;
     }
+    if (performanceEnabled) {
+      // Read-only, benchmark-build-only probe. Query a tiny known pixel region;
+      // do not serialize the entire viewport's dense environmental geometry.
+      (window as typeof window & { __urbanizationPerformance?: unknown }).__urbanizationPerformance = {
+        probe: (coordinate: [number, number], layers: string[]) => {
+          const point = map.project(coordinate);
+          const rect = map.getCanvas().getBoundingClientRect();
+          const present = layers.filter((layer) => !!map.getLayer(layer));
+          const insideCanvas = point.x >= 0 && point.y >= 0 && point.x < rect.width && point.y < rect.height;
+          const features = insideCanvas && present.length ? map.queryRenderedFeatures(
+            [[point.x - 2, point.y - 2], [point.x + 2, point.y + 2]], { layers: present }
+          ) : [];
+          return {
+            time: performance.now(),
+            moving: map.isMoving(),
+            loaded: map.loaded(),
+            center: map.getCenter().toArray(),
+            zoom: map.getZoom(),
+            point: { x: rect.left + point.x, y: rect.top + point.y },
+            visible: insideCanvas && rect.left + point.x >= 0 && rect.left + point.x < innerWidth && rect.top + point.y >= 0 && rect.top + point.y < innerHeight,
+            visibility: present.map((layer) => map.getLayoutProperty(layer, "visibility") ?? "visible"),
+            features: features.map((feature) => ({ id: feature.properties?.fixture_feature_id ?? feature.id, public_id: feature.properties?.public_id, layer: feature.layer.id }))
+          };
+        }
+      };
+    }
     mapRef.current = map;
 
     return () => {
@@ -294,6 +320,9 @@ export function DevelopmentMap({
             __urbanizationTrackerMapLibre?: typeof maplibregl;
           }
         ).__urbanizationTrackerMapLibre;
+      }
+      if (performanceEnabled) {
+        delete (window as typeof window & { __urbanizationPerformance?: unknown }).__urbanizationPerformance;
       }
       map.remove();
       mapRef.current = null;
@@ -326,20 +355,6 @@ export function DevelopmentMap({
       });
     });
     setAppliedFeatureCount(records.length);
-    map.once("idle", () => {
-      const renderedDevelopment = map.queryRenderedFeatures(undefined, {
-        layers: ["development-points", "development-polygons-fill"]
-      });
-      if (renderedDevelopment.length > 0) performanceMark("feature-rendered");
-      const renderedOverlay = overlays.some((overlay) => {
-        if (!visibleOverlayIds.includes(overlay.id)) return false;
-        return overlayLayerIds(overlay).some((layerId) =>
-          map.getLayer(layerId) && map.queryRenderedFeatures(undefined, { layers: [layerId] }).length > 0
-        );
-      });
-      if (renderedOverlay) performanceMark("overlay-rendered");
-    });
-
     if (!handlersAttachedRef.current) {
       const handleClick = (event: MapLayerMouseEvent) => {
         const feature = event.features?.[0];
