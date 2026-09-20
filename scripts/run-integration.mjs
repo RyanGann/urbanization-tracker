@@ -154,6 +154,23 @@ async function waitForDatabase(compose, log, timeoutMs = 60_000) {
   throw new Error(`database SQL readiness probe timed out: ${lastError}`);
 }
 
+async function waitForWeb(compose, log, timeoutMs = 90_000) {
+  const deadline = Date.now() + timeoutMs;
+  let lastError = "not attempted";
+  while (Date.now() < deadline) {
+    if (interrupted) throw new Error("integration run interrupted");
+    const probe = await run("docker", [...compose, "exec", "-T", "web", "wget", "-q", "-O", "/dev/null", "http://127.0.0.1/"], {
+      log,
+      allowFailure: true,
+      timeoutMs: 10_000
+    });
+    if (probe.code === 0) return;
+    lastError = probe.output.trim();
+    await new Promise((resolveDelay) => setTimeout(resolveDelay, 500));
+  }
+  throw new Error(`web readiness probe timed out: ${lastError}`);
+}
+
 async function assertApi(apiUrl, reviewerToken, fixture, assertFailure) {
   const health = await fetchWithTimeout(`${apiUrl}/health`);
   if (!health.ok) throw new Error(`health request returned ${health.status}`);
@@ -294,6 +311,7 @@ async function runSuite(options) {
     await assertApi(apiUrl, reviewerToken, fixture, false);
     if (options.suite === "live") {
       await run("docker", [...compose, "up", "--detach", "web"], { log, timeoutMs: 300_000 });
+      await waitForWeb(compose, log);
       await run("docker", [...compose, "run", "--rm", "browser"], { log, timeoutMs: 300_000 });
     }
   } catch (error) {
@@ -327,7 +345,7 @@ async function runSuite(options) {
         browser: "mcr.microsoft.com/playwright:v1.60.0-noble"
       })) {
         const digest = await run("docker", ["image", "inspect", image, "--format", "{{join .RepoDigests \",\"}}"], { log, allowFailure: true, ignoreInterrupt: true });
-        imageDigests[name] = digest.output.trim() || null;
+        imageDigests[name] = digest.code === 0 ? digest.output.trim() || null : null;
       }
       imageIds = await inspectComposeImages(compose, log);
     } catch (error) {
@@ -339,6 +357,10 @@ async function runSuite(options) {
       cleanupError = error;
       cleanupFailure = error instanceof Error ? error.message.split("\n", 1)[0] : String(error);
     } finally {}
+    const finalError = cleanupError ?? artifactError;
+    const manifestFailure = failureMessage ?? (
+      finalError instanceof Error ? finalError.message.split("\n", 1)[0] : finalError ? String(finalError) : null
+    );
     try {
       await writeFile(join(artifactDir, "manifest.json"), JSON.stringify({
       run_id: runId,
@@ -354,8 +376,8 @@ async function runSuite(options) {
         assert_failure: options.assertFailure,
         isolation_check: options.isolationCheck
       },
-      outcome: failed ? "failed" : "passed",
-      failure: failureMessage,
+      outcome: failed || finalError ? "failed" : "passed",
+      failure: manifestFailure,
       commit_sha: commitSha,
       images: {
         database: "postgis/postgis:16-3.4",

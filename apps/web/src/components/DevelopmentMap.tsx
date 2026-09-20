@@ -1,16 +1,19 @@
 import type { Feature, FeatureCollection, GeoJsonProperties, Geometry } from "geojson";
-import maplibregl, {
-  type GeoJSONSource,
-  type LngLatBoundsLike,
-  type Map as MapLibreMap,
-  type MapLayerMouseEvent,
-  type StyleSpecification
+import * as maplibregl from "maplibre-gl";
+import type {
+  GeoJSONSource,
+  LngLatBoundsLike,
+  Map as MapLibreMap,
+  MapLayerMouseEvent,
+  StyleSpecification
 } from "maplibre-gl";
+import maplibreWorkerUrl from "maplibre-gl/dist/maplibre-gl-worker.mjs?worker&url";
 import { useEffect, useMemo, useRef, useState } from "react";
 
 import type { DevelopmentRecord, EnvironmentalOverlay } from "../types";
 import { statusLabel } from "../utils/records";
 
+maplibregl.setWorkerUrl(maplibreWorkerUrl);
 interface DevelopmentMapProps {
   records: DevelopmentRecord[];
   overlays: EnvironmentalOverlay[];
@@ -266,6 +269,11 @@ export function DevelopmentMap({
           __urbanizationTrackerMap?: MapLibreMap;
         }
       ).__urbanizationTrackerMap = map;
+      (
+        window as typeof window & {
+          __urbanizationTrackerMapLibre?: typeof maplibregl;
+        }
+      ).__urbanizationTrackerMapLibre = maplibregl;
     }
     mapRef.current = map;
 
@@ -277,6 +285,11 @@ export function DevelopmentMap({
             __urbanizationTrackerMap?: MapLibreMap;
           }
         ).__urbanizationTrackerMap;
+        delete (
+          window as typeof window & {
+            __urbanizationTrackerMapLibre?: typeof maplibregl;
+          }
+        ).__urbanizationTrackerMapLibre;
       }
       map.remove();
       mapRef.current = null;

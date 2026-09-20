@@ -63,6 +63,11 @@ services:
         condition: service_started
     ports:
       - "127.0.0.1::80"
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q -O /dev/null http://127.0.0.1/ || exit 1"]
+      interval: 2s
+      timeout: 3s
+      retries: 30
     networks:
       - private
 
@@ -84,7 +89,7 @@ services:
       PLAYWRIGHT_JUNIT_OUTPUT_NAME: /artifacts/playwright/live.junit.xml
     depends_on:
       web:
-        condition: service_started
+        condition: service_healthy
     volumes:
       - ${INTEGRATION_ARTIFACT_DIR}:/artifacts
     networks:
