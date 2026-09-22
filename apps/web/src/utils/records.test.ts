@@ -1,7 +1,13 @@
 import { describe, expect, it } from "vitest";
 
 import type { DevelopmentRecord } from "../types";
-import { filterRecords, formatArea, statusLabel, uniqueFlagTypes } from "./records";
+import {
+  filterRecords,
+  formatArea,
+  serializeRecordFilters,
+  statusLabel,
+  uniqueFlagTypes
+} from "./records";
 
 const baseRecord: DevelopmentRecord = {
   public_id: "seed-a",
@@ -66,5 +72,19 @@ describe("record utilities", () => {
     });
 
     expect(filtered).toEqual([baseRecord]);
+  });
+
+  it("treats undefined as all and an empty selection as none", () => {
+    expect(filterRecords([baseRecord], {})).toEqual([baseRecord]);
+    expect(filterRecords([baseRecord], { statuses: [] })).toEqual([]);
+    expect(filterRecords([baseRecord], { flagTypes: [] })).toEqual([]);
+  });
+
+  it("serializes repeated filters while preserving explicit none", () => {
+    expect(serializeRecordFilters({})).toBe("");
+    expect(serializeRecordFilters({ flagTypes: [] })).toBe("?flag=none");
+    expect(
+      serializeRecordFilters({ statuses: ["completed", "proposed"], developmentTypes: [] })
+    ).toBe("?status=completed&status=proposed&development_type=none");
   });
 });

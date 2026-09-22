@@ -9,6 +9,7 @@ import { preparePerformance, enableMeasurementLimits, captureDatabase, startReso
 const root = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const composeFile = join(root, "compose.integration.yml");
 const fixturePath = join(root, "apps", "api", "tests", "integration", "fixture.json");
+const u00FixturePath = join(root, "apps", "api", "tests", "integration", "u00_filter_fixture.json");
 const supportedSuites = new Set(["api", "live", "concurrency", "performance"]);
 const requestedArgs = process.argv.slice(2);
 let interrupted = false;
@@ -28,7 +29,7 @@ for (const signal of ["SIGINT", "SIGTERM"]) {
 
 function usage(message) {
   if (message) console.error(`Error: ${message}`);
-  console.error("Usage: node scripts/run-integration.mjs --suite api|live|concurrency|performance [--scenario functional|representative|snapshot|c01-data-modes] [--snapshot-dir DISPOSABLE_COPY] [--profile desktop|mobile] [--smoke] [--keep-on-failure]");
+  console.error("Usage: node scripts/run-integration.mjs --suite api|live|concurrency|performance [--scenario functional|representative|snapshot|c01-data-modes|u00-filters] [--snapshot-dir DISPOSABLE_COPY] [--profile desktop|mobile] [--smoke] [--keep-on-failure]");
   process.exitCode = 2;
 }
 
@@ -60,9 +61,12 @@ function parseArgs(argv) {
     if (!["desktop", "mobile"].includes(options.profile)) throw new Error("Performance profile must be desktop or mobile");
   } else {
     if (options.profile || options.smoke || options.snapshotDir) throw new Error("Performance options require --suite performance");
-    if (options.scenario && options.scenario !== "c01-data-modes") throw new Error(`Scenario '${options.scenario}' is not implemented`);
+    if (options.scenario && !["c01-data-modes", "u00-filters"].includes(options.scenario)) throw new Error(`Scenario '${options.scenario}' is not implemented`);
     if (options.scenario === "c01-data-modes" && (options.suite !== "api" || options.assertFailure || options.isolationCheck || options.child)) {
       throw new Error("--scenario c01-data-modes requires the top-level api suite without assertion or isolation flags");
+    }
+    if (options.scenario === "u00-filters" && (options.suite !== "live" || options.assertFailure || options.isolationCheck || options.child)) {
+      throw new Error("--scenario u00-filters requires the top-level live suite without assertion or isolation flags");
     }
   }
   if (options.assertFailure && options.suite !== "api") {
@@ -277,10 +281,16 @@ async function runSuite(options) {
   const log = [];
   const reviewerToken = randomBytes(24).toString("base64url");
   const sentinel = randomBytes(6).toString("hex");
-  const fixture = {
-    id: `t01-postgis-${sentinel}`,
-    title: `T01 PostGIS Fixture ${sentinel}`
-  };
+  const fixture = options.scenario === "u00-filters"
+    ? {
+        id: "u00-completed-development",
+        title: "U00 Completed Development",
+        count: 3
+      }
+    : {
+        id: `t01-postgis-${sentinel}`,
+        title: `T01 PostGIS Fixture ${sentinel}`
+      };
   const liveSubmissionTitle = `C01 live submission ${sentinel}`;
   const demoSubmissionTitle = `C01 demo submission ${sentinel}`;
   let apiUrl = "";
@@ -350,7 +360,8 @@ async function runSuite(options) {
     },
     instruction: "Inspect every listed resource label before running the exact cleanup arguments."
   }, null, 2) + "\n", "utf8");
-  const fixtureHash = performance?.manifest.sha256 ?? createHash("sha256").update(await readFile(fixturePath)).digest("hex");
+  const selectedFixturePath = options.scenario === "u00-filters" ? u00FixturePath : fixturePath;
+  const fixtureHash = performance?.manifest.sha256 ?? createHash("sha256").update(await readFile(selectedFixturePath)).digest("hex");
 
   const runC01HttpAssertions = async (phase) => {
     const resultPath = `/c01-data/results/${phase}.json`;
@@ -375,6 +386,27 @@ async function runSuite(options) {
       "run", "--rm", "--env", `C01_BROWSER_PHASE=${phase}`,
       "browser", "--grep", "C01 data modes"
     ], { log, timeoutMs: 300_000 });
+  };
+
+  const runU00HttpAssertions = async (phase) => {
+    const resultPath = `/results/u00-filters-${phase}.json`;
+    await run("docker", [
+      ...compose,
+      "run", "--rm", "--no-deps",
+      "--volume", `${join(root, "apps", "api", "tests", "integration").replaceAll("\\", "/")}:/integration:ro`,
+      "--volume", `${artifactDir.replaceAll("\\", "/")}:/results`,
+      "api", "python", "/integration/u00_filters.py",
+      "--api-url", "http://api-gateway:8000",
+      "--result", resultPath
+    ], { log });
+    scenarioArtifacts[phase] = resultPath;
+  };
+
+  const runU00BrowserAssertions = async () => {
+    await run("docker", [...compose, "run", "--rm", "--env", "U00_FILTERS=1", "browser", "--grep", "U00 filters"], {
+      log,
+      timeoutMs: 300_000
+    });
   };
 
   const reconfigureC01Api = async (updates) => {
@@ -473,7 +505,16 @@ async function runSuite(options) {
     await run("docker", [...compose, "up", "--detach", "db", "mail"], { log, timeoutMs: 300_000 });
     await waitForDatabase(compose, log);
     await run("docker", [...compose, "run", "--rm", "--no-deps", "api", "alembic", "upgrade", "head"], { log });
-    if (options.scenario !== "c01-data-modes") await run("docker", [...compose, "run", "--rm", "--no-deps", "--volume", `${join(root, "apps", "api", "tests", "integration").replaceAll("\\", "/")}:/integration:ro`, "--env", `INTEGRATION_FIXTURE_ID=${fixture.id}`, "--env", `INTEGRATION_FIXTURE_TITLE=${fixture.title}`, ...(performance ? ["--volume", `${artifactDir.replaceAll("\\", "/")}:/performance:ro`, "--env", "INTEGRATION_FIXTURE_PATH=/performance/fixture.json", "--env", "INTEGRATION_PRESERVE_IDS=1", "--env", "P01_VALIDATE_GEOMETRY=1"] : []), "api", "python", "/integration/seed_integration.py"], { log, timeoutMs: 600_000 });
+    if (options.scenario === "u00-filters") {
+      await run("docker", [
+        ...compose,
+        "run", "--rm", "--no-deps",
+        "--volume", `${join(root, "apps", "api", "tests", "integration").replaceAll("\\", "/")}:/integration:ro`,
+        "api", "python", "/integration/seed_u00_filters.py"
+      ], { log, timeoutMs: 600_000 });
+    } else if (options.scenario !== "c01-data-modes") {
+      await run("docker", [...compose, "run", "--rm", "--no-deps", "--volume", `${join(root, "apps", "api", "tests", "integration").replaceAll("\\", "/")}:/integration:ro`, "--env", `INTEGRATION_FIXTURE_ID=${fixture.id}`, "--env", `INTEGRATION_FIXTURE_TITLE=${fixture.title}`, ...(performance ? ["--volume", `${artifactDir.replaceAll("\\", "/")}:/performance:ro`, "--env", "INTEGRATION_FIXTURE_PATH=/performance/fixture.json", "--env", "INTEGRATION_PRESERVE_IDS=1", "--env", "P01_VALIDATE_GEOMETRY=1"] : []), "api", "python", "/integration/seed_integration.py"], { log, timeoutMs: 600_000 });
+    }
     if (performance) await enableMeasurementLimits(performance);
 
     await run("docker", [...compose, "up", "--detach", "api"], { log });
@@ -484,6 +525,12 @@ async function runSuite(options) {
     await run("docker", [...compose, "exec", "-T", "api", "alembic", "current"], { log });
     if (options.scenario === "c01-data-modes") {
       await runC01DataModes();
+    } else if (options.scenario === "u00-filters") {
+      await runU00HttpAssertions("before-restart");
+      await run("docker", [...compose, "restart", "api"], { log });
+      apiUrl = await publishedPort(compose, "api-gateway", 8000, log);
+      await waitForHealth(apiUrl);
+      await runU00HttpAssertions("after-restart");
     } else {
       await assertApi(apiUrl, reviewerToken, fixture, options.assertFailure);
       if (options.suite === "concurrency") await runC02Transactions("create");
@@ -505,7 +552,11 @@ async function runSuite(options) {
     if (options.suite === "live" || performance) {
       await run("docker", [...compose, "up", "--detach", "web"], { log, timeoutMs: 300_000 });
       await waitForWeb(compose, log);
-      await run("docker", [...compose, "run", "--rm", ...(performance ? ["--entrypoint", "node"] : []), "browser", ...(performance ? ["e2e/performance-baseline.mjs"] : [])], { log, timeoutMs: performance ? 14_400_000 : 300_000 });
+      if (options.scenario === "u00-filters") {
+        await runU00BrowserAssertions();
+      } else {
+        await run("docker", [...compose, "run", "--rm", ...(performance ? ["--entrypoint", "node"] : []), "browser", ...(performance ? ["e2e/performance-baseline.mjs"] : [])], { log, timeoutMs: performance ? 14_400_000 : 300_000 });
+      }
     }
   } catch (error) {
     failed = true;

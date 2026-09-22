@@ -1,8 +1,10 @@
 import pytest
+from fastapi import HTTPException
 from fastapi.testclient import TestClient
 
 from app.alert_delivery import send_queued_email_alerts
 from app.config import Settings, get_settings
+from app.filters import parse_record_filters
 from app.main import app
 from app.phase3_store import list_alerts, list_watch_areas
 from app.seed_store import reset_seed_state
@@ -48,6 +50,39 @@ def test_filters_records_by_status() -> None:
     assert response.status_code == 200
     records = response.json()["records"]
     assert [record["status"] for record in records] == ["layout"]
+
+
+@pytest.mark.parametrize("parameter", ["status", "development_type", "confidence", "flag"])
+def test_explicit_none_filter_returns_zero_for_list_and_geojson(parameter: str) -> None:
+    params = [(parameter, "none")]
+
+    list_response = client.get("/api/development-records", params=params)
+    geojson_response = client.get("/api/map/development-records.geojson", params=params)
+
+    assert list_response.status_code == 200
+    assert geojson_response.status_code == 200
+    assert list_response.json()["records"] == []
+    assert geojson_response.json()["features"] == []
+
+
+@pytest.mark.parametrize("parameter", ["status", "development_type", "confidence", "flag"])
+def test_none_cannot_be_combined_with_a_real_filter_value(parameter: str) -> None:
+    with pytest.raises(HTTPException) as raised:
+        parse_record_filters(**{parameter: ["none", "layout"]})
+
+    assert raised.value.status_code == 422
+    assert raised.value.detail["code"] == "invalid_filter"
+    assert raised.value.detail["field"] == parameter
+
+
+@pytest.mark.parametrize("parameter", ["status", "development_type", "confidence", "flag"])
+def test_unknown_filter_value_is_rejected(parameter: str) -> None:
+    with pytest.raises(HTTPException) as raised:
+        parse_record_filters(**{parameter: ["not-a-supported-value"]})
+
+    assert raised.value.status_code == 422
+    assert raised.value.detail["code"] == "invalid_filter"
+    assert raised.value.detail["field"] == parameter
 
 
 def test_geojson_endpoint_returns_features() -> None:

@@ -27,6 +27,7 @@ import type {
   WatchAreaReceipt
 } from "./types";
 import { performanceMark } from "./utils/performance";
+import { serializeRecordFilters } from "./utils/records";
 
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL ?? "http://localhost:8000";
 const REVIEWER_TOKEN_KEY = "urbanization-tracker:reviewer-token";
@@ -94,28 +95,12 @@ async function request<T>(path: string, init?: ApiRequestInit): Promise<T> {
   return payload;
 }
 
-function appendArrayParams(
-  params: URLSearchParams,
-  key: string,
-  values: string[] | undefined
-) {
-  values?.forEach((value) => params.append(key, value));
-}
-
-function filterQuery(filters: Partial<RecordFilters>): string {
-  const params = new URLSearchParams();
-  appendArrayParams(params, "status", filters.statuses);
-  appendArrayParams(params, "confidence", filters.confidenceLevels);
-  appendArrayParams(params, "development_type", filters.developmentTypes);
-  appendArrayParams(params, "flag", filters.flagTypes);
-  const query = params.toString();
-  return query ? `?${query}` : "";
-}
-
 export function fetchDevelopmentRecords(
   filters: Partial<RecordFilters>
 ): Promise<DevelopmentRecordCollection> {
-  return request<DevelopmentRecordCollection>(`/api/development-records${filterQuery(filters)}`);
+  return request<DevelopmentRecordCollection>(
+    `/api/development-records${serializeRecordFilters(filters)}`
+  );
 }
 
 export function fetchDatasetStatus(): Promise<DatasetStatus> {

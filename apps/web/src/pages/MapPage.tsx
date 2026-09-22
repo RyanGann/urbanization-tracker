@@ -8,19 +8,21 @@ import { Link } from "react-router-dom";
 import { fetchDatasetStatus, fetchDevelopmentRecords, fetchEnvironmentalOverlays } from "../api";
 import { DevelopmentMap } from "../components/DevelopmentMap";
 import { StatusBadge } from "../components/StatusBadge";
-import type { ConfidenceLevel, DevelopmentRecord, DevelopmentStatus } from "../types";
+import type { ConfidenceLevel, DevelopmentRecord } from "../types";
 import {
   CONFIDENCE_OPTIONS,
+  DEVELOPMENT_TYPE_OPTIONS,
+  FLAG_OPTIONS,
   STATUS_OPTIONS,
   developmentTypeLabel,
+  filterRecords,
   formatArea,
-  uniqueFlagTypes
 } from "../utils/records";
 import { performanceMark } from "../utils/performance";
 
-const INITIAL_STATUSES: DevelopmentStatus[] = ["layout", "preliminary", "final", "issued_permit"];
+const INITIAL_STATUSES = STATUS_OPTIONS.map((option) => option.value);
 const INITIAL_CONFIDENCE: ConfidenceLevel[] = ["high", "medium", "low"];
-const INITIAL_TYPES = ["subdivision", "building_permit"];
+const INITIAL_TYPES = DEVELOPMENT_TYPE_OPTIONS.map((option) => option.value);
 const INITIAL_OVERLAYS = [
   "pilot-boundary",
   "wetlands",
@@ -34,11 +36,11 @@ function toggleValue<T extends string>(values: T[], value: T): T[] {
 }
 
 export function MapPage() {
-  const [statuses, setStatuses] = useState<DevelopmentStatus[]>(INITIAL_STATUSES);
+  const [statuses, setStatuses] = useState(INITIAL_STATUSES);
   const [confidenceLevels, setConfidenceLevels] =
     useState<ConfidenceLevel[]>(INITIAL_CONFIDENCE);
   const [developmentTypes, setDevelopmentTypes] = useState<string[]>(INITIAL_TYPES);
-  const [flagTypes, setFlagTypes] = useState<string[]>([]);
+  const [flagTypes, setFlagTypes] = useState<string[] | undefined>(undefined);
   const [visibleOverlayIds, setVisibleOverlayIds] = useState<string[]>(INITIAL_OVERLAYS);
   const [selectedRecord, setSelectedRecord] = useState<DevelopmentRecord | null>(null);
 
@@ -64,12 +66,20 @@ export function MapPage() {
 
   const records = recordsQuery.isError ? [] : recordsQuery.data?.records ?? [];
   const overlays = overlaysQuery.isError ? [] : overlaysQuery.data ?? [];
-  const availableFlags = uniqueFlagTypes(records);
   const dataMode = recordsQuery.data?.data_mode ?? datasetStatusQuery.data?.data_mode;
 
   useEffect(() => {
-    if (recordsQuery.isError) setSelectedRecord(null);
-  }, [recordsQuery.isError]);
+    if (!selectedRecord) return;
+    const stillMatchesFilters = filterRecords([selectedRecord], filters).length > 0;
+    const returnedByQuery = records.some((record) => record.public_id === selectedRecord.public_id);
+    if (
+      recordsQuery.isError ||
+      !stillMatchesFilters ||
+      (!recordsQuery.isFetching && !returnedByQuery)
+    ) {
+      setSelectedRecord(null);
+    }
+  }, [filters, records, recordsQuery.isError, recordsQuery.isFetching, selectedRecord]);
   useEffect(() => {
     if (recordsQuery.isSuccess) performanceMark("list-ready");
   }, [recordsQuery.isSuccess]);
@@ -78,7 +88,7 @@ export function MapPage() {
     setStatuses(INITIAL_STATUSES);
     setConfidenceLevels(INITIAL_CONFIDENCE);
     setDevelopmentTypes(INITIAL_TYPES);
-    setFlagTypes([]);
+    setFlagTypes(undefined);
     setVisibleOverlayIds(INITIAL_OVERLAYS);
   };
 
@@ -95,7 +105,13 @@ export function MapPage() {
               <Filter size={17} aria-hidden />
               Filters
             </span>
-            <button className="icon-button" type="button" onClick={resetFilters} title="Reset filters">
+            <button
+              className="icon-button"
+              type="button"
+              onClick={resetFilters}
+              title="Reset filters"
+              aria-label="Reset filters"
+            >
               <RotateCcw size={16} aria-hidden />
             </button>
           </div>
@@ -103,7 +119,7 @@ export function MapPage() {
           <div className="control-group">
             <h2>Status</h2>
             <div className="check-grid">
-              {STATUS_OPTIONS.slice(0, 4).map((option) => (
+              {STATUS_OPTIONS.map((option) => (
                 <label key={option.value} className="check-row">
                   <input
                     type="checkbox"
@@ -136,44 +152,50 @@ export function MapPage() {
 
           <div className="control-group">
             <h2>Record Type</h2>
-            <label className="check-row">
-              <input
-                type="checkbox"
-                checked={developmentTypes.includes("subdivision")}
-                onChange={() =>
-                  setDevelopmentTypes((current) => toggleValue(current, "subdivision"))
-                }
-              />
-              <span>Subdivisions</span>
-            </label>
-            <label className="check-row">
-              <input
-                type="checkbox"
-                checked={developmentTypes.includes("building_permit")}
-                onChange={() =>
-                  setDevelopmentTypes((current) => toggleValue(current, "building_permit"))
-                }
-              />
-              <span>Building permits</span>
-            </label>
+            {DEVELOPMENT_TYPE_OPTIONS.map((option) => (
+              <label key={option.value} className="check-row">
+                <input
+                  type="checkbox"
+                  checked={developmentTypes.includes(option.value)}
+                  onChange={() =>
+                    setDevelopmentTypes((current) => toggleValue(current, option.value))
+                  }
+                />
+                <span>{option.label}</span>
+              </label>
+            ))}
           </div>
 
           <div className="control-group">
             <h2>Context Flags</h2>
-            {availableFlags.length ? (
-              availableFlags.map((flag) => (
-                <label key={flag} className="check-row">
-                  <input
-                    type="checkbox"
-                    checked={flagTypes.includes(flag)}
-                    onChange={() => setFlagTypes((current) => toggleValue(current, flag))}
-                  />
-                  <span>{flag.replaceAll("_", " ")}</span>
-                </label>
-              ))
-            ) : (
-              <p className="muted">No active flags in the current result set.</p>
-            )}
+            <p className="muted" aria-live="polite">
+              {flagTypes === undefined
+                ? "No flag restriction (all records)"
+                : flagTypes.length
+                  ? "Selected flags"
+                  : "No flags selected — no results"}
+            </p>
+            {flagTypes !== undefined ? (
+              <button
+                className="secondary-action"
+                type="button"
+                onClick={() => setFlagTypes(undefined)}
+              >
+                Clear flag restriction
+              </button>
+            ) : null}
+            {FLAG_OPTIONS.map((option) => (
+              <label key={option.value} className="check-row">
+                <input
+                  type="checkbox"
+                  checked={flagTypes?.includes(option.value) ?? false}
+                  onChange={() =>
+                    setFlagTypes((current) => toggleValue(current ?? [], option.value))
+                  }
+                />
+                <span>{option.label}</span>
+              </label>
+            ))}
           </div>
         </section>
 
@@ -212,14 +234,16 @@ export function MapPage() {
               <ListFilter size={17} aria-hidden />
               Records
             </span>
-            <strong>{records.length}</strong>
+            <strong aria-live="polite">{records.length}</strong>
           </div>
           {recordsQuery.isLoading ? <p className="muted">Loading development records...</p> : null}
           {recordsQuery.isError ? (
             <p className="error-text" role="alert">Development data is unavailable. Try again after initialization completes.</p>
           ) : null}
           {!recordsQuery.isLoading && !recordsQuery.isError && records.length === 0 ? (
-            <p className="muted">No development records are available for these filters.</p>
+            <p className="muted" role="status" aria-live="polite">
+              No development records are available for these filters.
+            </p>
           ) : null}
           {dataMode === "demo" ? <p className="muted">Demo data — not live planning data.</p> : null}
           <div className="record-list">
