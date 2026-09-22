@@ -57,3 +57,10 @@ original saved snapshot mutation was performed.
 Record the clean committed runtime SHA, locked check commands/results, latest
 real-stack manifest/checksums, P02 catalog-preservation proof, and final PR/CI
 review evidence here before marking the guide complete.
+
+Final verification on committed `b4a32c4fb12d4cf4dc9c6b94b300baf811fa3cb0`:
+
+- Locked Python 3.12: `ruff check .`, `mypy app`, and `PYTHONPATH=/src/apps/api pytest` passed: 122 tests passed, with two upstream FastAPI/Starlette deprecation warnings.
+- Real-stack clean run `2026-09-22T14-35-42-247Z-fa1b56ce` passed with `working_tree_dirty: false`; cleanup removed project `urbanization_t01_88af523756a9`.
+- The restored API returned `bookmarked-legacy-id` with `date_discovered: 2025-01-02`; the restored mapping count was three. The result SHA-256 was `b9127000aae57559093b7d33ea647edc74af36bffbcd77371faad1f691106e70`.
+- The same-UoW adapter test seeded a ready catalog layer, processed a failed environmental source refresh, and verified that the prior ready layer remained unchanged.
