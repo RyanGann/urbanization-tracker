@@ -29,6 +29,10 @@ and feature counts; full geometry never crosses into the release process. The
 database may inspect the legacy JSON, once per missing catalog, under C02's five
 second statement timeout. A timeout or corrupt catalog fails the release without
 replacing existing metadata. No source network request occurs.
+All legacy PostgreSQL catalog writers (ingestion, explicit backfill, and artifact
+migration) use the same C02 lock and singleton item upsert. Callers already owning
+a transaction must write through their existing unit of work instead of opening
+an independent transaction through the convenience writer.
 
 For an existing installation, release the API and verify `/api/map/layers` before
 releasing the catalog-dependent web build. The two Render services' automatic
@@ -122,3 +126,13 @@ The browser again completed both cold loads and physical record selections;
 environmental usable-context completeness remains false. Raw manifests, runtime
 image digests, commands, browser results and screenshots are retained in the
 ignored run directory. Final remote CI also checks U00 filters and C02 concurrency.
+
+The catalog-writer race found in subsequent review was reproduced as a lock
+serialization regression in the real stack. Run
+`2026-09-22T13-39-46-756Z-aeb4e52a` passed with exact-project cleanup, using the
+same fixture checksum and base `daf469a8944ad9ccaabcf67ff94d8fe95f50fc2b` plus
+uncommitted locking changes. The regression observed the convenience writer
+waiting in PostgreSQL `pg_locks`, then completing after release, and the upgrade
+preserving its result. The final helper placement also covers artifact migration
+writers. Locked lint, mypy and 14 focused tests were rerun successfully after that
+placement change; final CI exercises the exact committed path.

@@ -255,6 +255,19 @@ def _write_postgres_items(name: str, items: list[dict[str, Any]]) -> None:
     from app.db import SessionLocal
     from app.models import ProcessedCollectionItem
 
+    if name == "map_layer_catalog":
+        from app.transactional_store import CollectionUnitOfWork
+
+        # Cover legacy ingestion, backfill, and artifact migration callers.
+        # Transaction-owning callers use their existing UoW instead.
+        if len(items) != 1:
+            raise ValueError("The map layer catalog must contain one singleton")
+        with SessionLocal.begin() as session:
+            unit = CollectionUnitOfWork(session)
+            with unit.canonical_mutation():
+                unit.upsert_processed(name, "latest", items[0])
+        return
+
     with SessionLocal.begin() as db:
         db.execute(
             delete(ProcessedCollectionItem).where(ProcessedCollectionItem.collection_name == name)

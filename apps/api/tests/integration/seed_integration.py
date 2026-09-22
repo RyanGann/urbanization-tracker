@@ -2,7 +2,10 @@ from __future__ import annotations
 
 import json
 import os
+from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
+from threading import Event
+from time import monotonic, sleep
 
 from app.map_layer_catalog import (
     backfill_map_layer_catalog,
@@ -109,6 +112,50 @@ def main() -> None:
         assert read_processed_payload("map_layer_catalog") == ready
         write_processed_payload("map_layer_catalog", persisted)
     print(json.dumps({"catalog_upgrade": "created_or_preserved", "idempotence": "passed"}))
+    assert_catalog_writer_serialization(persisted)
+
+
+def assert_catalog_writer_serialization(payload: dict) -> None:
+    from sqlalchemy import text
+
+    from app.db import SessionLocal
+    from app.transactional_store import (
+        CANONICAL_MUTATION_LOCK_KEY,
+        CANONICAL_MUTATION_LOCK_NAMESPACE,
+        CollectionUnitOfWork,
+    )
+
+    started = Event()
+
+    def publish_catalog() -> None:
+        started.set()
+        write_processed_payload("map_layer_catalog", payload)
+
+    with ThreadPoolExecutor(max_workers=1) as pool:
+        with SessionLocal.begin() as session:
+            with CollectionUnitOfWork(session).canonical_mutation():
+                publishing = pool.submit(publish_catalog)
+                assert started.wait(timeout=2)
+                deadline = monotonic() + 1
+                while monotonic() < deadline:
+                    waiting = session.scalar(text("""
+                        SELECT count(*) FROM pg_locks
+                        WHERE locktype = 'advisory' AND NOT granted
+                          AND classid = :namespace AND objid = :key
+                    """), {
+                        "namespace": CANONICAL_MUTATION_LOCK_NAMESPACE,
+                        "key": CANONICAL_MUTATION_LOCK_KEY,
+                    })
+                    if waiting:
+                        break
+                    sleep(0.02)
+                else:
+                    raise AssertionError("Catalog writer bypassed the shared mutation lock")
+                assert not publishing.done()
+        publishing.result(timeout=5)
+    assert upgrade_map_layer_catalog() == {"status": "preserved"}
+    assert read_processed_payload("map_layer_catalog") == payload
+    print(json.dumps({"catalog_writer_serialization": "passed"}))
 
 
 if __name__ == "__main__":
