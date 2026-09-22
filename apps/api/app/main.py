@@ -10,6 +10,7 @@ from app.config import get_settings
 from app.data_availability import DataUnavailableError
 from app.filters import parse_record_filters
 from app.jurisdictions import connector_health, list_jurisdictions
+from app.map_layer_catalog import load_map_layer_catalog
 from app.phase3_store import (
     change_log_for,
     create_public_submission,
@@ -36,6 +37,7 @@ from app.schemas import (
     EnvironmentalOverlay,
     FeatureCollection,
     Jurisdiction,
+    MapLayerCatalog,
     Phase3StoreStatus,
     ProcessedStoreStatus,
     RecordVersion,
@@ -82,6 +84,7 @@ app.add_middleware(
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
+    expose_headers=["ETag"],
 )
 
 
@@ -89,6 +92,7 @@ app.add_middleware(
 def data_unavailable_error(_request: Request, _exc: DataUnavailableError) -> JSONResponse:
     return JSONResponse(
         status_code=503,
+        headers={"Cache-Control": "no-store"},
         content={
             "detail": {
                 "code": "data_unavailable",
@@ -184,6 +188,16 @@ def get_development_records_geojson(
     payload["data_mode"] = get_settings().data_mode
     return payload
 
+
+@app.get("/api/map/layers", response_model=MapLayerCatalog)
+def get_map_layers(request: Request, response: Response) -> MapLayerCatalog | Response:
+    catalog = load_map_layer_catalog()
+    etag = '"' + catalog.catalog_revision + '"'
+    headers = {"ETag": etag, "Cache-Control": "public, max-age=60, must-revalidate"}
+    if request.headers.get("if-none-match") == etag:
+        return Response(status_code=304, headers=headers)
+    response.headers.update(headers)
+    return catalog
 
 @app.get("/api/environmental-overlays", response_model=list[EnvironmentalOverlay])
 def get_environmental_overlays() -> list[EnvironmentalOverlay]:

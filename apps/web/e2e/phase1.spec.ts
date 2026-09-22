@@ -66,21 +66,20 @@ test("map shell renders seed records with mocked API", async ({ page }) => {
       body: JSON.stringify({ records: [seedRecord, polygonRecord] })
     });
   });
-  await page.route("**/api/environmental-overlays", async (route) => {
+  await page.route("**/api/map/layers", async (route) => {
     await route.fulfill({
       contentType: "application/json",
-      body: JSON.stringify([
-        {
-          id: "third-party-fixture",
-          name: "Third-party fixture",
-          category: "wetlands",
-          source_url: "https://example.test/source",
-          attribution: "Fixture attribution is exercised through the DEV map hook",
-          caveat: "Fixture",
-          geom_type: "polygon",
-          features: { type: "FeatureCollection", features: [] }
-        }
-      ])
+      body: JSON.stringify({
+        data_mode: "demo",
+        catalog_revision: "test",
+        layers: [{
+          id: "ready-fixture-layer",
+          title: "Ready fixture layer",
+          delivery_status: "ready",
+          default_visible: true,
+          attribution: "Fixture attribution"
+        }]
+      })
     });
   });
 
@@ -91,6 +90,10 @@ test("map shell renders seed records with mocked API", async ({ page }) => {
   await expect(page.getByTestId("development-map")).toBeVisible();
   await expect(page.locator(".maplibregl-canvas")).toBeVisible();
   await expect(page.getByTestId("development-map")).toHaveAttribute("data-feature-count", "2");
+  const environmentalControl = page.getByRole("checkbox", { name: "Ready fixture layer" });
+  await expect(environmentalControl).toBeDisabled();
+  await expect(environmentalControl).not.toBeChecked();
+  await expect(page.getByText("Environmental map rendering is being prepared for this layer.")).toBeVisible();
 
   await expect
     .poll(

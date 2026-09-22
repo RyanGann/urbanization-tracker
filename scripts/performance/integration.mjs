@@ -5,7 +5,7 @@ import { prepareSnapshot } from './snapshot.mjs';
 
 export async function preparePerformance({ options, root, artifactDir, run, log }) {
   const fixturePath = join(artifactDir, 'fixture.json');
-  const profile = options.scenario === 'functional' ? 'A' : 'B';
+  const profile = ['functional', 'catalog-development'].includes(options.scenario) ? 'A' : 'B';
   if (options.snapshotDir) await prepareSnapshot(root, options.snapshotDir, fixturePath);
   else await run(process.execPath, [join(root, 'scripts/performance/generate-fixture.mjs'), '--profile', profile, '--output', fixturePath], { log, timeoutMs: 600_000 });
   const manifest = JSON.parse(await readFile(`${fixturePath}.manifest.json`, 'utf8'));

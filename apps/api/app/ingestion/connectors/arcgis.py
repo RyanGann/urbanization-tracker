@@ -31,6 +31,7 @@ class ArcGISLayerConfig:
     license_notes: str | None = None
     category: str | None = None
     caveat: str | None = None
+    default_visible: bool = True
     connector_config: Mapping[str, Any] = field(default_factory=dict)
 
     @property

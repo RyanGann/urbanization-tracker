@@ -81,6 +81,41 @@ export interface StagedDevelopmentRecord {
   normalization_notes: string;
 }
 
+export interface MapLayerCoverage {
+  status: string;
+  scope_id: string | null;
+  reported_count: number | null;
+  fetched_count: number | null;
+}
+
+export interface MapLayer {
+  id: string;
+  kind: "vector";
+  title: string;
+  category: string;
+  data_version: string | null;
+  display_version: string | null;
+  delivery_status: "unavailable" | "processing" | "ready" | "failed" | "withheld";
+  tile_url: string | null;
+  source_layer: string | null;
+  minzoom: number | null;
+  maxzoom: number | null;
+  bounds: [number, number, number, number] | null;
+  coverage: MapLayerCoverage;
+  source_name: string;
+  source_url: string;
+  attribution: string;
+  caveat: string;
+  data_as_of: string | null;
+  fetched_at: string | null;
+  default_visible: boolean;
+}
+
+export interface MapLayerCatalog {
+  data_mode: "live" | "demo";
+  catalog_revision: string;
+  layers: MapLayer[];
+}
 export interface EnvironmentalOverlay {
   id: string;
   name: string;

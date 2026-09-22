@@ -17,7 +17,7 @@ test(`C01 data modes real API map state: ${phase ?? "not-configured"}`, async ({
       page.getByText("Development data is unavailable. Try again after initialization completes.")
     ).toBeVisible();
     await expect(
-      page.getByText("Environmental context is unavailable. Try again after initialization completes.")
+      page.getByText("Environmental layer metadata is unavailable. Try again after initialization completes.")
     ).toBeVisible();
     await expect(page.getByTestId("development-map")).toHaveAttribute("data-feature-count", "0");
     await expect(page.locator(".record-row")).toHaveCount(0);

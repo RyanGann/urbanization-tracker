@@ -29,7 +29,7 @@ for (const signal of ["SIGINT", "SIGTERM"]) {
 
 function usage(message) {
   if (message) console.error(`Error: ${message}`);
-  console.error("Usage: node scripts/run-integration.mjs --suite api|live|concurrency|performance [--scenario functional|representative|snapshot|c01-data-modes|u00-filters] [--snapshot-dir DISPOSABLE_COPY] [--profile desktop|mobile] [--smoke] [--keep-on-failure]");
+  console.error("Usage: node scripts/run-integration.mjs --suite api|live|concurrency|performance [--scenario functional|representative|snapshot|catalog-development|c01-data-modes|u00-filters] [--snapshot-dir DISPOSABLE_COPY] [--profile desktop|mobile] [--smoke] [--keep-on-failure]");
   process.exitCode = 2;
 }
 
@@ -56,7 +56,7 @@ function parseArgs(argv) {
   if (options.suite === "performance") {
     options.scenario ??= options.snapshotDir ? "snapshot" : "representative";
     options.profile ??= "desktop";
-    if (!["functional", "representative", "snapshot"].includes(options.scenario)) throw new Error("Performance scenario must be functional, representative or snapshot");
+    if (!["functional", "representative", "snapshot", "catalog-development"].includes(options.scenario)) throw new Error("Performance scenario must be functional, representative, snapshot, or catalog-development");
     if ((options.scenario === "snapshot") !== !!options.snapshotDir) throw new Error("Snapshot scenario requires --snapshot-dir; other scenarios forbid it");
     if (!["desktop", "mobile"].includes(options.profile)) throw new Error("Performance profile must be desktop or mobile");
   } else {
@@ -279,7 +279,8 @@ async function runSuite(options) {
   const envFile = join(artifactDir, ".compose.env");
   const cleanupEnv = join(artifactDir, "cleanup.env");
   const log = [];
-  const reviewerToken = randomBytes(24).toString("base64url");
+  // Always exercise argparse's leading-hyphen token boundary in real scenarios.
+  const reviewerToken = `-${randomBytes(24).toString("base64url")}`;
   const sentinel = randomBytes(6).toString("hex");
   const fixture = options.scenario === "u00-filters"
     ? {
@@ -373,7 +374,7 @@ async function runSuite(options) {
       "--api-url", "http://api-gateway:8000",
       "--phase", phase,
       "--fixture-id", fixture.id,
-      "--reviewer-token", reviewerToken,
+      `--reviewer-token=${reviewerToken}`,
       "--live-submission-title", liveSubmissionTitle,
       "--demo-submission-title", demoSubmissionTitle,
       "--result", resultPath
@@ -492,7 +493,7 @@ async function runSuite(options) {
       "--volume", `${join(root, "apps", "api", "tests", "integration").replaceAll("\\", "/")}:/integration:ro`,
       "api", "python", "/integration/c02_transactions.py",
       "--api-url", "http://api-gateway:8000",
-      "--reviewer-token", reviewerToken,
+      `--reviewer-token=${reviewerToken}`,
       "--fixture-id", fixture.id,
       "--result", "/c02-data/results.json",
       "--phase", phase
@@ -555,7 +556,7 @@ async function runSuite(options) {
       if (options.scenario === "u00-filters") {
         await runU00BrowserAssertions();
       } else {
-        await run("docker", [...compose, "run", "--rm", ...(performance ? ["--entrypoint", "node"] : []), "browser", ...(performance ? ["e2e/performance-baseline.mjs"] : [])], { log, timeoutMs: performance ? 14_400_000 : 300_000 });
+        await run("docker", [...compose, "run", "--rm", ...(performance ? ["--entrypoint", "node"] : []), "browser", ...(performance ? [options.scenario === "catalog-development" ? "e2e/catalog-development.mjs" : "e2e/performance-baseline.mjs"] : [])], { log, timeoutMs: performance ? 14_400_000 : 300_000 });
       }
     }
   } catch (error) {
