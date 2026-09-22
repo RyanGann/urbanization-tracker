@@ -29,7 +29,7 @@ for (const signal of ["SIGINT", "SIGTERM"]) {
 
 function usage(message) {
   if (message) console.error(`Error: ${message}`);
-  console.error("Usage: node scripts/run-integration.mjs --suite api|live|concurrency|performance [--scenario functional|representative|snapshot|catalog-development|c01-data-modes|u00-filters] [--snapshot-dir DISPOSABLE_COPY] [--profile desktop|mobile] [--smoke] [--keep-on-failure]");
+  console.error("Usage: node scripts/run-integration.mjs --suite api|live|concurrency|performance [--scenario functional|representative|snapshot|catalog-development|c01-data-modes|u00-filters|c03-source-identity] [--snapshot-dir DISPOSABLE_COPY] [--profile desktop|mobile] [--smoke] [--keep-on-failure]");
   process.exitCode = 2;
 }
 
@@ -61,12 +61,15 @@ function parseArgs(argv) {
     if (!["desktop", "mobile"].includes(options.profile)) throw new Error("Performance profile must be desktop or mobile");
   } else {
     if (options.profile || options.smoke || options.snapshotDir) throw new Error("Performance options require --suite performance");
-    if (options.scenario && !["c01-data-modes", "u00-filters"].includes(options.scenario)) throw new Error(`Scenario '${options.scenario}' is not implemented`);
+    if (options.scenario && !["c01-data-modes", "u00-filters", "c03-source-identity"].includes(options.scenario)) throw new Error(`Scenario '${options.scenario}' is not implemented`);
     if (options.scenario === "c01-data-modes" && (options.suite !== "api" || options.assertFailure || options.isolationCheck || options.child)) {
       throw new Error("--scenario c01-data-modes requires the top-level api suite without assertion or isolation flags");
     }
     if (options.scenario === "u00-filters" && (options.suite !== "live" || options.assertFailure || options.isolationCheck || options.child)) {
       throw new Error("--scenario u00-filters requires the top-level live suite without assertion or isolation flags");
+    }
+    if (options.scenario === "c03-source-identity" && (options.suite !== "api" || options.assertFailure || options.isolationCheck || options.child)) {
+      throw new Error("--scenario c03-source-identity requires the top-level api suite without assertion or isolation flags");
     }
   }
   if (options.assertFailure && options.suite !== "api") {
@@ -500,6 +503,27 @@ async function runSuite(options) {
     ], { log, timeoutMs: 90_000 });
   };
 
+  const runC03SourceIdentity = async () => {
+    await run("docker", [
+      ...compose,
+      "run", "--rm", "--no-deps",
+      "--volume", `${join(root, "apps", "api", "tests", "integration").replaceAll("\\", "/")}:/integration:ro`,
+      "api", "python", "/integration/c03_source_identity.py",
+      "--api-url", "http://api-gateway:8000",
+      "--result", "/c03-data/results.json"
+    ], { log, timeoutMs: 120_000 });
+    const restore = await run("docker", [
+      ...compose,
+      "exec", "-T", "db", "sh", "-ec",
+      "createdb -U integration c03_restore && pg_dump -U integration -Fc -f /tmp/c03.dump integration && pg_restore --exit-on-error -U integration -d c03_restore /tmp/c03.dump >/dev/null && psql -U integration -d c03_restore -Atqc \"SELECT count(*) FROM source_identity_registry WHERE public_id = 'bookmarked-legacy-id'\" && dropdb -U integration c03_restore && rm -f /tmp/c03.dump"
+    ], { log, timeoutMs: 120_000 });
+    if (restore.output.trim() !== "1") throw new Error(`C03 restored mapping check failed: ${restore.output}`);
+    scenarioArtifacts.c03_results_sha256 = createHash("sha256")
+      .update(await readFile(join(artifactDir, "c03-data", "results.json")))
+      .digest("hex");
+    scenarioArtifacts.c03_restore_mapping_count = 1;
+  };
+
   try {
     const requiresBrowser = options.suite === "live" || performance || options.scenario === "c01-data-modes";
     await run("docker", [...compose, "build", "api", ...(requiresBrowser ? ["web", "browser"] : [])], { log, timeoutMs: 300_000 });
@@ -539,6 +563,7 @@ async function runSuite(options) {
       apiUrl = await publishedPort(compose, "api-gateway", 8000, log);
       await waitForHealth(apiUrl);
       await assertApi(apiUrl, reviewerToken, fixture, false);
+      if (options.scenario === "c03-source-identity") await runC03SourceIdentity();
       if (performance) {
         await captureDatabase({ compose, run, log, artifactDir });
         stopSampling = await startResourceSampling({ compose, run, log, artifactDir });

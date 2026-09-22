@@ -13,6 +13,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.models import SourceIdentityRegistry, SourceIngestionBatch, SourceObservation
+from app.public_fields import public_source_fields
 from app.transactional_store import CollectionUnitOfWork
 
 Coverage = Literal["complete", "partial", "failed", "unknown"]
@@ -142,9 +143,13 @@ def _merge_locked(
         )
         if registry is None:
             if any(
-                    record.get("source_url") == input_record.published.get("source_url")
-                    and record.get("public_id") not in registered_public_ids
-                    for record in current.values()
+                _requires_registry_backfill(
+                    record,
+                    source_key=batch.source_key,
+                    source_url=input_record.published.get("source_url"),
+                )
+                and record.get("public_id") not in registered_public_ids
+                for record in current.values()
             ):
                 raise RegistryInitializationRequired(
                         f"{batch.source_key} has unresolved canonical rows without a registry "
@@ -264,7 +269,8 @@ def public_fingerprint(record: dict[str, Any]) -> str:
     }
     allowed["geometry"] = _canonical_geometry(record.get("geometry"))
     allowed["proximity_flags"] = _unordered_collection(record.get("proximity_flags"))
-    allowed["source_fields"] = _allowed_source_fields(record.get("source_fields"))
+    source_fields = record.get("source_fields")
+    allowed["source_fields"] = public_source_fields(source_fields) if isinstance(source_fields, dict) else {}
     encoded = json.dumps(
         _canonical(allowed), sort_keys=True, separators=(",", ":"), ensure_ascii=True
     )
@@ -279,51 +285,10 @@ def _canonical(value: Any) -> Any:
     return value
 
 
-PUBLIC_SOURCE_FIELD_NAMES = frozenset(
-    {
-        "SubdID",
-        "Subdivision",
-        "Phase",
-        "Status",
-        "HousingUnits",
-        "HousingUnitType",
-        "Layout_date",
-        "Prelim_date",
-        "Final_date",
-        "AsBuilt_date",
-        "PermitID",
-        "Permit_Issue_DateTime",
-        "OccupancyType",
-        "OccupancySubtype",
-        "TypeOfWork",
-        "NumberOfUnits",
-        "Subd_ID",
-        "Subd_Name",
-        "Subd_Type",
-        "Parcels",
-        "Book",
-        "Page",
-        "DocNum",
-        "YearFiled",
-        "DateFiled",
-    }
-)
-
-
-def _allowed_source_fields(value: Any) -> dict[str, Any]:
-    if not isinstance(value, dict):
-        return {}
-    return {
-        key: _canonical(value[key])
-        for key in sorted(value)
-        if key in PUBLIC_SOURCE_FIELD_NAMES
-    }
-
-
 def _unordered_collection(value: Any) -> list[Any]:
     if not isinstance(value, list):
         return []
-    canonical = [_canonical(item) for item in value]
+    canonical = [_public_flag(item) for item in value]
     return sorted(
         canonical,
         key=lambda item: json.dumps(item, sort_keys=True, separators=(",", ":"), ensure_ascii=True),
@@ -363,21 +328,73 @@ def _canonical_ring(value: Any, *, clockwise: bool) -> Any:
     body = points[:-1] if len(points) > 1 and points[0] == points[-1] else points
     if not body or any(not isinstance(point, list) or len(point) < 2 for point in body):
         return points
-    area = sum(
-        float(body[index][0]) * float(body[(index + 1) % len(body)][1])
-        - float(body[(index + 1) % len(body)][0]) * float(body[index][1])
-        for index in range(len(body))
-    )
-    should_reverse = area > 0 if clockwise else area < 0
-    if should_reverse:
-        body.reverse()
-    start = min(range(len(body)), key=lambda index: _json_sort_key(body[index]))
-    rotated = [*body[start:], *body[:start]]
+    del clockwise  # Ring role is retained by _canonical_polygon; orientation is semantic noise.
+    forward = _least_rotation(body)
+    reverse = _least_rotation(list(reversed(body)))
+    rotated = forward if _sequence_sort_key(forward) <= _sequence_sort_key(reverse) else reverse
     return [*rotated, copy.deepcopy(rotated[0])]
 
 
 def _json_sort_key(value: Any) -> str:
     return json.dumps(value, sort_keys=True, separators=(",", ":"), ensure_ascii=True)
+
+
+def _least_rotation(values: list[Any]) -> list[Any]:
+    """Booth's linear-time least rotation, using canonical JSON tokens."""
+    if len(values) < 2:
+        return values
+    tokens = [_json_sort_key(value) for value in values]
+    doubled = [*tokens, *tokens]
+    first, second, offset = 0, 1, 0
+    size = len(tokens)
+    while first < size and second < size and offset < size:
+        left = doubled[first + offset]
+        right = doubled[second + offset]
+        if left == right:
+            offset += 1
+            continue
+        if left > right:
+            first += offset + 1
+            if first == second:
+                first += 1
+        else:
+            second += offset + 1
+            if first == second:
+                second += 1
+        offset = 0
+    start = min(first, second)
+    return [*values[start:], *values[:start]]
+
+
+def _sequence_sort_key(values: list[Any]) -> tuple[str, ...]:
+    return tuple(_json_sort_key(value) for value in values)
+
+
+PUBLIC_FLAG_FIELDS = frozenset({"id", "type", "category", "label", "title", "source"})
+
+
+def _public_flag(value: Any) -> Any:
+    if not isinstance(value, dict):
+        return _canonical(value)
+    return {
+        key: _canonical(value[key])
+        for key in sorted(value)
+        if key in PUBLIC_FLAG_FIELDS
+    }
+
+
+def _requires_registry_backfill(
+    record: dict[str, Any], *, source_key: str, source_url: Any
+) -> bool:
+    """Do not mistake a manual submission's citation for source provenance."""
+    if record.get("source_key") == source_key:
+        return True
+    return (
+        record.get("source_key") is None
+        and record.get("source_url") == source_url
+        and record.get("development_type") != "public_submission"
+        and record.get("review_status") == "published"
+    )
 
 
 def _discovery_date(before: dict[str, Any] | None, registry: SourceIdentityRegistry) -> str:

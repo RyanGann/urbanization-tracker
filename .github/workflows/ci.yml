@@ -88,6 +88,9 @@ jobs:
       - name: Check transactional PostgreSQL creation paths
         run: node scripts/run-integration.mjs --suite concurrency
 
+      - name: Check source identity batches and copied restore
+        run: node scripts/run-integration.mjs --suite api --scenario c03-source-identity
+
       - name: Upload integration artifacts
         if: always()
         uses: actions/upload-artifact@v4

@@ -10,6 +10,11 @@ from app.deployment_preflight import run_deployment_preflight
 from app.ingestion.agenda_pipeline import ingest_huntsville_agendas
 from app.ingestion.pipeline import ingest_huntsville, ingest_madison_county
 from app.map_layer_catalog import backfill_map_layer_catalog, upgrade_map_layer_catalog
+from app.ingestion.source_backfill import (
+    apply_source_identity_backfill,
+    dry_run_source_identity_backfill,
+    export_source_identity_mapping,
+)
 from app.phase3_store import migrate_artifact_collections_to_postgres, phase3_store_status
 from app.processed_store import (
     migrate_processed_artifacts_to_postgres,
@@ -108,6 +113,19 @@ def main() -> None:
         "phase3-store-status",
         help="Report Phase 3 operational collection counts for artifact and Postgres stores.",
     )
+    source_backfill = subparsers.add_parser(
+        "backfill-source-identities",
+        help="Dry-run or apply reviewed source identity mappings in PostgreSQL.",
+    )
+    source_backfill.add_argument(
+        "--apply-report-digest",
+        help="Apply only the exact reviewed dry-run digest; omitted means dry-run.",
+    )
+    source_backfill.add_argument(
+        "--mapping-export",
+        type=Path,
+        help="Optional explicit JSON output path for the stable source-to-public mapping.",
+    )
     send_alerts = subparsers.add_parser(
         "send-alerts",
         help="Deliver queued email alerts through the configured SMTP provider.",
@@ -181,6 +199,23 @@ def main() -> None:
         print(json.dumps(result, indent=2, sort_keys=True))
     elif args.command == "phase3-store-status":
         result = phase3_store_status()
+        print(json.dumps(result, indent=2, sort_keys=True))
+    elif args.command == "backfill-source-identities":
+        from app.db import SessionLocal
+
+        with SessionLocal.begin() as session:
+            result = (
+                apply_source_identity_backfill(session, expected_digest=args.apply_report_digest)
+                if args.apply_report_digest
+                else dry_run_source_identity_backfill(session)
+            )
+            mapping = export_source_identity_mapping(session)
+        if args.mapping_export is not None:
+            args.mapping_export.parent.mkdir(parents=True, exist_ok=True)
+            args.mapping_export.write_text(
+                json.dumps(mapping, indent=2, sort_keys=True) + "\n", encoding="utf-8"
+            )
+            result = {**result, "mapping_export": str(args.mapping_export)}
         print(json.dumps(result, indent=2, sort_keys=True))
     elif args.command == "send-alerts":
         result = send_queued_email_alerts(limit=args.limit)

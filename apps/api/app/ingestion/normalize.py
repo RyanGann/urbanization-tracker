@@ -8,6 +8,7 @@ from app.ingestion.geometry import approx_area_sq_m, centroid, validate_geometry
 from app.ingestion.identity import provisional_public_id, source_record_id
 from app.ingestion.sources.huntsville import BUILDING_PERMITS, NEW_SUBDIVISIONS
 from app.ingestion.sources.madison_county import MADISON_COUNTY_SUBDIVISIONS
+from app.public_fields import public_source_fields
 
 SOURCE_CAVEAT = (
     "Public-source screening record. Verify source agency materials before making legal, "
@@ -93,7 +94,7 @@ def normalize_new_subdivision(
         "area_sq_m": approx_area_sq_m(geometry),
         "address": None,
         "parcel_ids": [],
-        "source_fields": _public_source_fields(properties, NEW_SUBDIVISION_PUBLIC_FIELDS),
+        "source_fields": public_source_fields(properties),
         "proximity_flags": [],
     }
     return staged, published, validation_errors
@@ -168,7 +169,7 @@ def normalize_building_permit(
         "area_sq_m": None,
         "address": None,
         "parcel_ids": [],
-        "source_fields": _public_source_fields(properties, BUILDING_PERMIT_PUBLIC_FIELDS),
+        "source_fields": public_source_fields(properties),
         "proximity_flags": [],
     }
     return staged, published, validation_errors
@@ -238,7 +239,7 @@ def normalize_madison_county_subdivision(
         "area_sq_m": approx_area_sq_m(geometry),
         "address": None,
         "parcel_ids": [],
-        "source_fields": _public_source_fields(properties, MADISON_COUNTY_PUBLIC_FIELDS),
+        "source_fields": public_source_fields(properties),
         "proximity_flags": [],
     }
     return staged, published, validation_errors
@@ -294,32 +295,6 @@ def _string(value: Any) -> str | None:
         return None
     text = str(value).strip()
     return text or None
-
-
-NEW_SUBDIVISION_PUBLIC_FIELDS = frozenset(
-    {
-        "SubdID", "Subdivision", "Phase", "Status", "HousingUnits", "HousingUnitType",
-        "Layout_date", "Prelim_date", "Final_date", "AsBuilt_date", "SubdStatus",
-    }
-)
-BUILDING_PERMIT_PUBLIC_FIELDS = frozenset(
-    {
-        "PermitID", "Permit_Issue_DateTime", "Subdivision", "OccupancyType",
-        "OccupancySubtype", "TypeOfWork", "NumberOfUnits",
-    }
-)
-MADISON_COUNTY_PUBLIC_FIELDS = frozenset(
-    {
-        "Subd_ID", "Subd_Name", "Subd_Type", "Parcels", "Book", "Page", "DocNum",
-        "YearFiled", "DateFiled",
-    }
-)
-
-
-def _public_source_fields(
-    properties: dict[str, Any], allowed_fields: frozenset[str]
-) -> dict[str, Any]:
-    return {key: value for key, value in properties.items() if key in allowed_fields}
 
 
 def _arcgis_date(value: Any) -> str | None:
