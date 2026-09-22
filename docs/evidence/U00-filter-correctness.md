@@ -1,5 +1,9 @@
 # U00 filter correctness evidence
 
+## Merged verification
+
+[PR #20](https://github.com/RyanGann/urbanization-tracker/pull/20) merged as `fbd5ad8a5e6d4af474d7eb07a4abbcb8b655c046`. Codex completed a clean review of final head `3468b8c67f1f93534af602d57932c6beb33cc309`; no review threads remained open. [CI run 35489697612](https://github.com/RyanGann/urbanization-tracker/actions/runs/35489697612) passed on that head, including the ordinary checks and isolated integration scenarios. The local evidence below retains its original run SHA and limitations.
+
 This change verifies that the map list, GeoJSON query, and selection state use the same filter semantics against the real PostGIS-backed API. The fixture is deterministic and contains three published records: one completed subdivision and two public submissions (one proposed and one final).
 
 ## Reproduction

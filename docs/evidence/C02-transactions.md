@@ -5,6 +5,16 @@ It uses one PostgreSQL transaction and advisory lock `(2088694651, 1)` for the
 public-submission and watch-area creation paths. The follow-on evidence and CI
 wiring commit does not change that application behavior.
 
+## Merged verification
+
+[PR #21](https://github.com/RyanGann/urbanization-tracker/pull/21) merged as
+`54f6c57b7a581c258aafe95026f46d852e83c85f` after lead acceptance, a completed
+Codex review with no findings or open threads, and successful
+[CI run 35488936703](https://github.com/RyanGann/urbanization-tracker/actions/runs/35488936703).
+The reviewed and tested PR head was `1fc4fff8d0044da8b26dfc86a2caebcc48077934`.
+CI included the ordinary API/web checks and the P01, T01, C01, and C02 real-stack
+scenarios. The merge used that expected head SHA.
+
 ## Real stack
 
 Command:
