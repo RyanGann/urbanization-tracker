@@ -22,7 +22,8 @@ PUBLIC_SOURCE_FIELD_NAMES = frozenset(
         "Subd_ID", "Subd_Name", "Subd_Type", "OBJECTID", "Parcels", "Lots", "Book",
         "Page", "PlatBook", "PlatPage", "DocNum", "YearFiled", "DateFiled",
         # Agenda/reviewer provenance
-        "source_document", "id", "title", "document_date", "meeting_label",
+        "source_document", "source_document_id", "source_document_title", "id", "title",
+        "document_date", "meeting_label",
         "parse_confidence", "lot_count", "unit_count", "location",
         # Public submission receipt provenance
         "submission_id", "source_url", "review_required",

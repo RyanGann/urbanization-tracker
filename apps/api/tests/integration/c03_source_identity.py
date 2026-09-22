@@ -227,6 +227,11 @@ def main() -> None:
     args.result.write_text(json.dumps({
         "backfill_digest": report["digest"],
         "mapping": mapping,
+        "bookmarked_record": {
+            "public_id": canonical["public_id"],
+            "date_discovered": canonical["date_discovered"],
+            "title": canonical["title"],
+        },
         "batch_coverages": [batch.coverage for batch in batches],
         "observations": [{"state": row.state, "fingerprint": row.content_fingerprint} for row in observations],
         "results": {

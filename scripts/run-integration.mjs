@@ -512,16 +512,54 @@ async function runSuite(options) {
       "--api-url", "http://api-gateway:8000",
       "--result", "/c03-data/results.json"
     ], { log, timeoutMs: 120_000 });
-    const restore = await run("docker", [
-      ...compose,
-      "exec", "-T", "db", "sh", "-ec",
-      "createdb -U integration c03_restore && pg_dump -U integration -Fc -f /tmp/c03.dump integration && pg_restore --exit-on-error -U integration -d c03_restore /tmp/c03.dump >/dev/null && psql -U integration -d c03_restore -Atqc \"SELECT count(*) FROM source_identity_registry WHERE public_id = 'bookmarked-legacy-id'\" && dropdb -U integration c03_restore && rm -f /tmp/c03.dump"
-    ], { log, timeoutMs: 120_000 });
-    if (restore.output.trim() !== "1") throw new Error(`C03 restored mapping check failed: ${restore.output}`);
+    const resultPath = join(artifactDir, "c03-data", "results.json");
+    const expected = JSON.parse(await readFile(resultPath, "utf8"));
+    const restoredApi = `${project}-c03-restored-api`;
+    const restoreSnapshotSql = "SELECT json_build_object('mapping', COALESCE((SELECT json_agg(item) FROM (SELECT json_build_object('source_key', source_key, 'source_record_id', source_record_id, 'public_id', public_id) AS item FROM source_identity_registry ORDER BY source_key, source_record_id, id) mappings), '[]'::json), 'bookmarked_record', (SELECT json_build_object('public_id', payload_json->>'public_id', 'date_discovered', payload_json->>'date_discovered', 'title', payload_json->>'title') FROM processed_collection_items WHERE collection_name = 'development_records' AND item_id = 'bookmarked-legacy-id'))::text";
+    let restored = false;
+    try {
+      await run("docker", [
+        ...compose,
+        "exec", "-T", "db", "sh", "-ec",
+        "createdb -U integration c03_restore && pg_dump -U integration -Fc -f /tmp/c03.dump integration && pg_restore --exit-on-error -U integration -d c03_restore /tmp/c03.dump >/dev/null"
+      ], { log, timeoutMs: 120_000 });
+      restored = true;
+      const snapshot = await run("docker", [
+        ...compose, "exec", "-T", "db", "psql", "-U", "integration", "-d", "c03_restore", "-Atqc", restoreSnapshotSql
+      ], { log, timeoutMs: 30_000 });
+      const restoredSnapshot = JSON.parse(snapshot.output.trim());
+      const expectedSnapshot = {
+        mapping: expected.mapping.map((item) => ({ source_key: item.source_key, source_record_id: item.source_record_id, public_id: item.public_id })),
+        bookmarked_record: {
+          public_id: expected.bookmarked_record.public_id,
+          date_discovered: expected.bookmarked_record.date_discovered,
+          title: expected.bookmarked_record.title
+        }
+      };
+      if (JSON.stringify(restoredSnapshot) !== JSON.stringify(expectedSnapshot)) {
+        throw new Error(`C03 restored mapping/bookmark mismatch: ${snapshot.output}`);
+      }
+      await run("docker", [
+        ...compose, "run", "--detach", "--no-deps", "--name", restoredApi,
+        "--env", "DATABASE_URL=postgresql+psycopg://integration:integration@db:5432/c03_restore",
+        "--env", "PROCESSED_STORE_BACKEND=postgres", "--env", "PHASE3_STORE_BACKEND=postgres",
+        "--entrypoint", "uvicorn", "api", "app.main:app", "--host", "0.0.0.0", "--port", "8001"
+      ], { log, timeoutMs: 30_000 });
+      const probe = `import json,time\nfrom urllib.request import urlopen\nurl='http://${restoredApi}:8001/api/development-records/bookmarked-legacy-id'\nlast=None\nfor _ in range(30):\n  try:\n    with urlopen(url, timeout=2) as response: payload=json.loads(response.read())\n    if response.status == 200 and payload.get('public_id') == 'bookmarked-legacy-id' and payload.get('date_discovered') == '2025-01-02': break\n    last=payload\n  except Exception as exc: last=repr(exc)\n  time.sleep(0.25)\nelse: raise RuntimeError(f'restored API record failed: {last}')\nprint(json.dumps({'public_id':payload['public_id'],'date_discovered':payload['date_discovered']}))`;
+      const apiCheck = await run("docker", [
+        ...compose, "run", "--rm", "--no-deps", "--entrypoint", "python", "api", "-c", probe
+      ], { log, timeoutMs: 30_000 });
+      const restoredApiOutput = apiCheck.output.trim().split(/\r?\n/).findLast((line) => line.startsWith("{"));
+      if (!restoredApiOutput) throw new Error(`C03 restored API did not return JSON: ${apiCheck.output}`);
+      scenarioArtifacts.c03_restored_api = JSON.parse(restoredApiOutput);
+      scenarioArtifacts.c03_restore_mapping_count = restoredSnapshot.mapping.length;
+    } finally {
+      await run("docker", ["rm", "-f", restoredApi], { log, allowFailure: true, ignoreInterrupt: true });
+      if (restored) await run("docker", [...compose, "exec", "-T", "db", "sh", "-ec", "dropdb -U integration c03_restore && rm -f /tmp/c03.dump"], { log, allowFailure: true, ignoreInterrupt: true });
+    }
     scenarioArtifacts.c03_results_sha256 = createHash("sha256")
-      .update(await readFile(join(artifactDir, "c03-data", "results.json")))
+      .update(await readFile(resultPath))
       .digest("hex");
-    scenarioArtifacts.c03_restore_mapping_count = 1;
   };
 
   try {
