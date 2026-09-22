@@ -5,6 +5,9 @@ from __future__ import annotations
 import argparse
 import copy
 import json
+import subprocess
+import sys
+import time
 from pathlib import Path
 from unittest.mock import patch
 
@@ -15,6 +18,7 @@ from sqlalchemy.exc import IntegrityError, SQLAlchemyError
 from app.db import SessionLocal
 from app.ingestion import environmental_import as importer
 from app.ingestion.environmental_import import ImportBusyError, ImportOptions, import_session
+from app.ingestion.environmental_output import import_environmental_output
 from app.ingestion.environmental_stream import (
     InputChangedError,
     inspect_overlay_file,
@@ -255,6 +259,13 @@ def verify(api_url: str, output: Path, snapshot: Path | None = None) -> dict:
     replay = importer.import_environmental_file(path, options, dry_run=False)
     assert replay["replayed"] and counts() == after_resume
     checks.append("interruption-checkpoint-resume-and-idempotent-replay")
+    with SessionLocal() as session:
+        stored = session.scalar(
+            select(EnvironmentalLayer).where(
+                EnvironmentalLayer.data_version == resumed["data_version"]
+            )
+        )
+        assert stored is not None and "failure" not in stored.diagnostics_json
 
     with SessionLocal() as session:
         rows = session.execute(
@@ -288,6 +299,41 @@ def verify(api_url: str, output: Path, snapshot: Path | None = None) -> dict:
             else:
                 raise AssertionError("Managed feature identity constraint was not enforced")
     checks.append("original-hole-multipolygon-precision-and-public-attributes")
+
+    # Kill a real owned import process only after its first committed checkpoint.
+    marker = output / "committed-checkpoint"
+    child_code = """
+import sys, time
+from pathlib import Path
+from app.ingestion import environmental_import as module
+original = module.update_import_progress
+def pause(metadata, report):
+    original(metadata, report)
+    if report['checkpoint'] >= 1:
+        Path(sys.argv[2]).write_text('committed')
+        time.sleep(60)
+module.update_import_progress = pause
+module.import_environmental_file(Path(sys.argv[1]), module.ImportOptions(
+    'p03-environment', scope_id='hard-kill', batch_size=1), dry_run=False)
+"""
+    child = subprocess.Popen(
+        [sys.executable, "-c", child_code, str(path), str(marker)],
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.DEVNULL,
+    )
+    try:
+        deadline = time.monotonic() + 20
+        while not marker.exists() and time.monotonic() < deadline and child.poll() is None:
+            time.sleep(0.05)
+        assert marker.exists(), "Child did not reach its committed checkpoint"
+    finally:
+        child.kill()
+        child.wait(timeout=10)
+    killed_resume = importer.import_environmental_file(
+        path, ImportOptions(options.layer_id, scope_id="hard-kill", batch_size=1), dry_run=False
+    )
+    assert killed_resume["accepted"] == 2 and killed_resume["status"] == "validated"
+    checks.append("hard-process-kill-releases-lock-and-resumes-committed-checkpoint")
 
     version = importer.data_version(checksum, options)
     with import_session(options.layer_id, version):
@@ -352,6 +398,13 @@ def verify(api_url: str, output: Path, snapshot: Path | None = None) -> dict:
     assert rejected["status"] == "failed" and rejected["rejected"] == 5
     assert rejected["diagnostics"]["reasons"]["geometry_family_mismatch"] == 1
     assert rejected["duplicates"] == 2 and rejected["coverage"] == "partial"
+    with SessionLocal() as session:
+        stored = session.scalar(
+            select(EnvironmentalLayer).where(
+                EnvironmentalLayer.data_version == rejected["data_version"]
+            )
+        )
+        assert stored is not None and stored.diagnostics_json == rejected["diagnostics"]
     mismatch = importer.import_environmental_file(
         path,
         ImportOptions(
@@ -395,6 +448,28 @@ def verify(api_url: str, output: Path, snapshot: Path | None = None) -> dict:
     assert len(body["imports"]) == 1 and body["imports"][0]["status"] == "failed"
     assert len(response.content) <= 50 * 1024 and "private-p03" not in response.text
     checks.append("real-api-progress-bounded-and-prior-ready-catalog-preserved")
+
+    # New producer output takes the streaming bridge, with no network source fetch.
+    first_layer = fixture()[0]
+    first_layer.update({"id": "new-layer-private-key", "name": "New environmental fixture"})
+    first_layer["features"]["features"][0].pop("id")
+    bridge = import_environmental_output(
+        [first_layer],
+        source_health=[
+            {
+                "source_url": first_layer["source_url"],
+                "status": "healthy",
+                "metadata": {"reported_count": True, "fetched_count": 2},
+            }
+        ],
+    )
+    assert bridge[0]["status"] == "failed" and bridge[0]["expected"] is None
+    assert bridge[0]["accepted"] == 1 and bridge[0]["rejected"] == 1
+    refreshed = httpx.get(f"{api_url}/api/map/layers", timeout=10).json()
+    assert refreshed["layers"][0] == ready["layers"][0]
+    new_layer = next(layer for layer in refreshed["layers"] if layer["id"] == first_layer["id"])
+    assert new_layer["title"] == first_layer["name"] and new_layer["delivery_status"] == "failed"
+    checks.append("new-output-streamed-bridge-adds-human-title-without-changing-ready-layer")
 
     snapshot_reports = verify_snapshot(snapshot) if snapshot else None
     return {

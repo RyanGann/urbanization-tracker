@@ -328,7 +328,11 @@ def _report(layer: EnvironmentalLayer) -> dict[str, Any]:
         "duplicates": layer.duplicate_count or 0,
         "checkpoint": layer.import_checkpoint or 0,
         "bounds": layer.bounds_json,
-        "diagnostics": layer.diagnostics_json or {"reasons": {}, "samples": []},
+        # Detach JSON before accumulating reasons. Mutating the mapped JSON value
+        # in place would hide changes from SQLAlchemy's assignment comparison.
+        "diagnostics": json.loads(
+            json.dumps(layer.diagnostics_json or {"reasons": {}, "samples": []})
+        ),
     }
 
 

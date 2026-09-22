@@ -309,6 +309,22 @@ def update_import_progress(metadata: dict[str, str], report: dict[str, Any]) -> 
             else:
                 catalog = _validate_catalog(existing)
             payload = catalog.model_dump(mode="json")
+            current = next(
+                (item for item in payload["layers"] if item["id"] == metadata["id"]), None
+            )
+            if current is None:
+                current = _project_legacy_catalog([(metadata, report["seen"])]).model_dump(
+                    mode="json"
+                )["layers"][0]
+                payload["layers"].append(current)
+            if current["delivery_status"] != "ready":
+                current["delivery_status"] = (
+                    "failed" if report["status"] == "failed" else "processing"
+                )
+                current["coverage"].update({
+                    "status": report["coverage"], "fetched_count": report["seen"],
+                    "reported_count": report["expected"],
+                })
             pending = [
                 item for item in payload.get("imports", []) if item["layer_id"] != metadata["id"]
             ]
