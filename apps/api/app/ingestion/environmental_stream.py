@@ -111,7 +111,7 @@ def stream_overlay_features(
     try:
         yield from _stream_overlay_features(path, index=index, expected_checksum=expected_checksum)
     except (ijson.JSONError, OverflowError):
-        raise ValueError("invalid_overlay_json") from None
+        raise InputChangedError("input_changed_or_invalid_json") from None
 
 
 def _stream_overlay_features(

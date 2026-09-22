@@ -94,6 +94,9 @@ jobs:
       - name: Check public input limits and shared two-worker quotas
         run: node scripts/run-integration.mjs --suite api --scenario input-limits
 
+      - name: Check environmental shadow imports and recovery
+        run: node scripts/run-integration.mjs --suite live --scenario layer-import
+
       - name: Upload integration artifacts
         if: always()
         uses: actions/upload-artifact@v4

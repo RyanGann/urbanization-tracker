@@ -5,6 +5,7 @@ from __future__ import annotations
 import hashlib
 import json
 import math
+import sys
 from collections.abc import Iterator
 from contextlib import contextmanager
 from dataclasses import dataclass
@@ -228,7 +229,9 @@ def _geometry(feature: dict[str, Any]) -> dict[str, Any]:
     return {"type": kind, "coordinates": coordinates}
 
 
-def _prepare(feature: dict[str, Any], options: ImportOptions) -> dict[str, Any]:
+def _prepare(
+    feature: dict[str, Any], options: ImportOptions, *, geom_type: str | None = None
+) -> dict[str, Any]:
     if feature.get("_import_error"):
         code = feature["_import_error"]
         raise ValueError(
@@ -240,6 +243,13 @@ def _prepare(feature: dict[str, Any], options: ImportOptions) -> dict[str, Any]:
     if identity is None:
         raise ValueError("missing_or_invalid_source_id")
     geometry = _geometry(feature)
+    families = {
+        "polygon": {"Polygon", "MultiPolygon"},
+        "line": {"LineString", "MultiLineString"},
+        "point": {"Point", "MultiPoint"},
+    }
+    if geom_type is not None and geometry["type"] not in families.get(geom_type, set()):
+        raise ValueError("geometry_family_mismatch")
     properties = feature.get("properties")
     attributes = {
         key: value
@@ -306,6 +316,9 @@ def _report(layer: EnvironmentalLayer) -> dict[str, Any]:
         "layer_id": layer.layer_key,
         "data_version": layer.data_version,
         "source_checksum": layer.source_checksum,
+        "source_url": layer.source_url,
+        "attribution": layer.license_notes,
+        "scope": layer.scope_json,
         "status": layer.import_status,
         "coverage": layer.coverage_status,
         "expected": layer.expected_count,
@@ -369,6 +382,8 @@ def import_environmental_file(
         )
         if layer is not None and layer.import_status == "validated":
             return {**_report(layer), "replayed": True, "dry_run": False}
+        if layer is not None and (layer.diagnostics_json or {}).get("failure") == "input_changed":
+            raise InputChangedError("input_changed_version_quarantined")
         if layer is None:
             layer = _new_layer(selected, checksum, version, options)
             if not dry_run:
@@ -411,7 +426,7 @@ def import_environmental_file(
                 report["checkpoint"] = ordinal
                 prepared = None
                 try:
-                    prepared = _prepare(feature, options)
+                    prepared = _prepare(feature, options, geom_type=selected.metadata["geom_type"])
                 except ValueError as exc:
                     _reject(report, str(exc), _identity(feature, options.id_field))
                 if prepared is not None:
@@ -440,7 +455,10 @@ def import_environmental_file(
             if report["rejected"] or (
                 options.expected_count is not None and options.expected_count != report["seen"]
             ):
-                report["coverage"] = "partial"
+                if report["coverage"] != "failed":
+                    report["coverage"] = "partial"
+            if report["status"] == "validated":
+                report["diagnostics"].pop("failure", None)
             if not dry_run:
                 _checkpoint(layer, report)
                 layer.import_status, layer.coverage_status = report["status"], report["coverage"]
@@ -472,6 +490,26 @@ def import_environmental_file(
         """)
         )
         report["precision"] = "original EPSG:4326 accepted double precision; no repair or rounding"
+        try:
+            import resource
+
+            peak = resource.getrusage(resource.RUSAGE_SELF).ru_maxrss
+            report["process_peak_rss_bytes"] = peak if sys.platform == "darwin" else peak * 1024
+        except ImportError:
+            report["process_peak_rss_bytes"] = None
+        report["memory_scope"] = "process lifetime high-water RSS, not a per-import delta"
+        report["legacy_unmanaged_features"] = session.scalar(
+            text("SELECT count(*) FROM environmental_features WHERE NOT import_managed")
+        )
+        report["legacy_duplicate_groups"] = session.scalar(
+            text("""
+            SELECT count(*) FROM (
+                SELECT environmental_layer_id, source_feature_id FROM environmental_features
+                WHERE NOT import_managed AND source_feature_id IS NOT NULL
+                GROUP BY environmental_layer_id, source_feature_id HAVING count(*) > 1
+            ) legacy_duplicates
+        """)
+        )
         return report
 
 

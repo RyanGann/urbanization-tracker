@@ -92,6 +92,11 @@ def test_source_cannot_inject_diagnostic_text() -> None:
     assert str(error.value) == "invalid_feature"
 
 
+def test_declared_polygon_cannot_accept_point_geometry() -> None:
+    with pytest.raises(ValueError, match="geometry_family_mismatch"):
+        _prepare(point_feature(), ImportOptions("synthetic"), geom_type="polygon")
+
+
 def test_parser_errors_do_not_include_input_snippets(tmp_path) -> None:
     path = tmp_path / "invalid.json"
     path.write_text('[{"private_email":"secret@example.test",BROKEN}]')
