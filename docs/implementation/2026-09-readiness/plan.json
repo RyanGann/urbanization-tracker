@@ -244,7 +244,7 @@
       "id": "P02",
       "title": "Serve a small layer catalog and stop eager bulk overlay downloads",
       "path": "P02-layer-catalog-startup-relief.md",
-      "status": "in_review",
+      "status": "complete",
       "track": "Performance",
       "gate": "G1",
       "depends_on": [
@@ -254,13 +254,13 @@
       "review": "Routine coding agent",
       "pr_boundary": "One immediate startup-relief PR; tiles remain a later step.",
       "implementation_pr": "https://github.com/RyanGann/urbanization-tracker/pull/22",
-      "evidence": null
+      "evidence": "../../evidence/P02-layer-catalog.md"
     },
     {
       "id": "P03",
       "title": "Import versioned environmental geometry into indexed PostGIS storage",
       "path": "P03-canonical-environmental-storage.md",
-      "status": "planned",
+      "status": "in_progress",
       "track": "Performance",
       "gate": "G1",
       "depends_on": [
@@ -476,7 +476,7 @@
       "id": "O01",
       "title": "Upload and verify ingestion artifacts before activating data",
       "path": "O01-durable-artifact-uploads.md",
-      "status": "planned",
+      "status": "in_progress",
       "track": "Operations",
       "gate": "G1",
       "depends_on": [
