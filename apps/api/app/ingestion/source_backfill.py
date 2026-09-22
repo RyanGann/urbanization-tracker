@@ -21,7 +21,6 @@ from app.ingestion.sources.madison_county import MADISON_COUNTY_SUBDIVISIONS
 from app.models import SourceIdentityRegistry
 from app.transactional_store import CollectionUnitOfWork
 
-
 SOURCE_URLS = {
     NEW_SUBDIVISIONS.layer_url: NEW_SUBDIVISIONS.key,
     BUILDING_PERMITS.layer_url: BUILDING_PERMITS.key,
@@ -37,6 +36,13 @@ def dry_run_source_identity_backfill(session: Session) -> dict[str, Any]:
     diagnostics: list[dict[str, str]] = []
     skipped: list[dict[str, str]] = []
     by_anchor: dict[tuple[str, str], list[str]] = {}
+    records_by_public_id: dict[str, dict[str, Any]] = {}
+    public_id_counts: dict[str, int] = {}
+    for record in records:
+        public_id = record.get("public_id")
+        if isinstance(public_id, str) and public_id:
+            public_id_counts[public_id] = public_id_counts.get(public_id, 0) + 1
+    duplicate_public_ids = {public_id for public_id, count in public_id_counts.items() if count > 1}
     registered = {
         (row.source_key, row.source_record_id): row.public_id
         for row in session.scalars(select(SourceIdentityRegistry)).all()
@@ -60,6 +66,7 @@ def dry_run_source_identity_backfill(session: Session) -> dict[str, Any]:
                 {"code": "missing_authoritative_anchor", "public_id": public_id, "detail": str(exc)}
             )
             continue
+        records_by_public_id.setdefault(public_id, record)
         by_anchor.setdefault((source_key, anchor), []).append(public_id)
 
     for (source_key, anchor), public_ids in sorted(by_anchor.items()):
@@ -74,6 +81,9 @@ def dry_run_source_identity_backfill(session: Session) -> dict[str, Any]:
             )
             continue
         public_id = public_ids[0]
+        if public_id in duplicate_public_ids:
+            diagnostics.append({"code": "duplicate_public_id", "public_id": public_id})
+            continue
         existing = registered.get((source_key, anchor))
         if existing is not None and existing != public_id:
             diagnostics.append(
@@ -86,11 +96,9 @@ def dry_run_source_identity_backfill(session: Session) -> dict[str, Any]:
             )
             continue
         if existing is None:
-            discovery = _validated_discovery_value(record)
+            discovery = _validated_discovery_value(records_by_public_id[public_id])
             if discovery is None:
-                diagnostics.append(
-                    {"code": "invalid_discovery_date", "public_id": public_id}
-                )
+                diagnostics.append({"code": "invalid_discovery_date", "public_id": public_id})
                 continue
             candidates.append(
                 {

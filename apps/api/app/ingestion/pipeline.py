@@ -4,7 +4,9 @@ import hashlib
 import json
 from datetime import datetime
 from pathlib import Path
-from typing import Any
+from typing import Any, Literal
+
+from sqlalchemy import func, select
 
 from app.config import get_settings
 from app.ingestion.artifacts import (
@@ -18,7 +20,7 @@ from app.ingestion.connectors.arcgis import ArcGISLayerConfig, ArcGISRestConnect
 from app.ingestion.identity import SourceIdentityError, source_record_id
 from app.ingestion.normalize import normalize_development_feature
 from app.ingestion.proximity import compute_proximity_flags
-from app.ingestion.source_merge import SourceBatch, SourceRecord, merge_postgres_batch
+from app.ingestion.source_merge import Coverage, SourceBatch, SourceRecord, merge_postgres_batch
 from app.ingestion.sources.huntsville import (
     BUILDING_PERMITS,
     DEVELOPMENT_SOURCES,
@@ -28,6 +30,7 @@ from app.ingestion.sources.madison_county import (
     DEVELOPMENT_SOURCES as MADISON_COUNTY_DEVELOPMENT_SOURCES,
 )
 from app.map_layer_catalog import build_catalog
+from app.models import ProcessedCollectionItem
 from app.processed_store import (
     read_processed_list,
     read_processed_payload,
@@ -326,13 +329,13 @@ def _quarantine_duplicate_source_records(
         if anchor in duplicates:
             rejected_public_ids.add(str(published.get("public_id")))
 
-    for source_key, source_record_id in sorted(duplicates):
+    for source_key, duplicate_record_id in sorted(duplicates):
         health = next((item for item in source_health if item.get("key") == source_key), None)
         if health is not None:
             health["error_count"] = int(health.get("error_count", 0)) + 1
             health.setdefault("validation_errors", []).append(
                 "identity_quarantined: duplicate authoritative source ID "
-                f"{source_record_id!r}; all matching rows were retained only as raw evidence"
+                f"{duplicate_record_id!r}; all matching rows were retained only as raw evidence"
             )
     return (
         [
@@ -340,7 +343,11 @@ def _quarantine_duplicate_source_records(
             for staged in staged_records
             if str(staged.get("id", "")).removeprefix("stage-") not in rejected_public_ids
         ],
-        [published for published in published_records if str(published.get("public_id")) not in rejected_public_ids],
+        [
+            published
+            for published in published_records
+            if str(published.get("public_id")) not in rejected_public_ids
+        ],
     )
 
 
@@ -549,6 +556,14 @@ def _write_postgres_source_state(
                     ),
                     unit_of_work=unit,
                 )
+            for raw_record in raw_records:
+                source_key = str(raw_record.get("data_source_key") or "unknown")
+                payload_digest = str(raw_record.get("payload_sha256") or _sha256(raw_record))
+                raw_key = f"{source_key}:{run_id}:{payload_digest}"
+                unit.upsert_processed(
+                    "raw_records", raw_key, {**raw_record, "ingestion_run_id": run_id}
+                )
+
             existing_health = unit.get_processed("source_health", "latest") or {}
             merged_sources = {
                 str(source["key"]): source
@@ -559,13 +574,23 @@ def _write_postgres_source_state(
                 {str(source["key"]): source for source in source_health if source.get("key")}
             )
             current_published = unit.list_processed("development_records")
+            raw_observation_count = int(
+                session.scalar(
+                    select(func.count())
+                    .select_from(ProcessedCollectionItem)
+                    .where(ProcessedCollectionItem.collection_name == "raw_records")
+                )
+                or 0
+            )
             health = {
                 "run_id": run_id,
                 "checked_at": checked_at,
                 "status": _aggregate_status(list(merged_sources.values())),
                 "sources": list(merged_sources.values()),
                 "records": {
-                    "raw": len(raw_records),
+                    # This is the retained historical observation count, not
+                    # only this run's incoming payloads.
+                    "raw": raw_observation_count,
                     "staged": len(unit.list_processed("staged_development_records")),
                     "published": len(current_published),
                     "proximity_flags": sum(
@@ -575,11 +600,6 @@ def _write_postgres_source_state(
                 "batches": merge_results,
             }
             unit.upsert_processed("source_health", "latest", health)
-            for raw_record in raw_records:
-                source_key = str(raw_record.get("data_source_key") or "unknown")
-                payload_digest = str(raw_record.get("payload_sha256") or _sha256(raw_record))
-                raw_key = f"{source_key}:{run_id}:{payload_digest}"
-                unit.upsert_processed("raw_records", raw_key, {**raw_record, "ingestion_run_id": run_id})
             for overlay in overlays or []:
                 overlay_source = source_by_url.get(str(overlay.get("source_url")))
                 if overlay_source is not None and overlay_source.get("status") == "failing":
@@ -588,7 +608,9 @@ def _write_postgres_source_state(
     return health
 
 
-def _legacy_batch_outcome(source: dict[str, Any]) -> tuple[str | None, str]:
+def _legacy_batch_outcome(
+    source: dict[str, Any],
+) -> tuple[Coverage | None, Literal["success", "failed"]]:
     if source.get("status") == "failing":
         return "failed", "failed"
     metadata = source.get("metadata")

@@ -11,18 +11,29 @@ from pathlib import Path
 from urllib.error import HTTPError
 from urllib.request import Request, urlopen
 
+import httpx
 from sqlalchemy import delete, select, text
 
 from app.db import SessionLocal
+from app.ingestion.connectors.arcgis import ArcGISRestConnector
+from app.ingestion.pipeline import (
+    _quarantine_duplicate_source_records,
+    _write_postgres_source_state,
+    ingest_madison_county,
+)
 from app.ingestion.source_backfill import (
     apply_source_identity_backfill,
     dry_run_source_identity_backfill,
     export_source_identity_mapping,
 )
 from app.ingestion.source_merge import Coverage, SourceBatch, SourceRecord, merge_postgres_batch
-from app.ingestion.pipeline import _quarantine_duplicate_source_records
 from app.ingestion.sources.huntsville import NEW_SUBDIVISIONS
-from app.models import ProcessedCollectionItem, SourceIdentityRegistry, SourceIngestionBatch, SourceObservation
+from app.models import (
+    ProcessedCollectionItem,
+    SourceIdentityRegistry,
+    SourceIngestionBatch,
+    SourceObservation,
+)
 from app.transactional_store import CollectionUnitOfWork
 
 
@@ -81,6 +92,53 @@ def staged() -> dict:
     }
 
 
+def madison_arcgis_handler(request: httpx.Request) -> httpx.Response:
+    params = request.url.params
+    if request.url.path.endswith("/0") and params.get("f") == "json":
+        return httpx.Response(
+            200,
+            json={
+                "currentVersion": 11.3,
+                "geometryType": "esriGeometryPolygon",
+                "supportedQueryFormats": "JSON, geoJSON",
+            },
+        )
+    if params.get("returnCountOnly") == "true":
+        return httpx.Response(200, json={"count": 1})
+    return httpx.Response(
+        200,
+        json={
+            "type": "FeatureCollection",
+            "features": [
+                {
+                    "type": "Feature",
+                    "properties": {
+                        "OBJECTID": 7,
+                        "Subd_ID": 95,
+                        "Subd_Name": "C03 Madison Fixture",
+                        "Parcels": "8",
+                        "YearFiled": 1987,
+                        "DateFiled": "6/24/1987",
+                    },
+                    "geometry": {
+                        "type": "Polygon",
+                        "coordinates": [
+                            [
+                                [-86.72, 34.72],
+                                [-86.71, 34.72],
+                                [-86.71, 34.73],
+                                [-86.72, 34.73],
+                                [-86.72, 34.72],
+                            ]
+                        ],
+                    },
+                }
+            ],
+            "exceededTransferLimit": False,
+        },
+    )
+
+
 def request_submission(api_url: str) -> tuple[int, dict]:
     payload = {
         "title": "C03 concurrent submission",
@@ -116,7 +174,11 @@ def seed_legacy() -> None:
     with SessionLocal.begin() as session:
         unit = CollectionUnitOfWork(session)
         with unit.canonical_mutation():
-            for collection in ("development_records", "staged_development_records", "source_health"):
+            for collection in (
+                "development_records",
+                "staged_development_records",
+                "source_health",
+            ):
                 session.execute(
                     delete(ProcessedCollectionItem).where(
                         ProcessedCollectionItem.collection_name == collection
@@ -125,14 +187,16 @@ def seed_legacy() -> None:
             # This manual row cites the official URL.  It must neither be
             # backfilled nor block future source rows.
             manual = record(title="Manual citation", status="proposed")
-            manual.update({
-                "public_id": "manual-citation",
-                "development_type": "public_submission",
-                "source_status": "submitted",
-                "date_discovered": "2025-01-01",
-                "date_last_checked": "2025-01-01",
-                "source_fields": {},
-            })
+            manual.update(
+                {
+                    "public_id": "manual-citation",
+                    "development_type": "public_submission",
+                    "source_status": "submitted",
+                    "date_discovered": "2025-01-01",
+                    "date_last_checked": "2025-01-01",
+                    "source_fields": {},
+                }
+            )
             unit.upsert_processed("development_records", "manual-citation", manual)
             legacy = record(title="Original title")
             legacy["public_id"] = "bookmarked-legacy-id"
@@ -140,14 +204,26 @@ def seed_legacy() -> None:
 
 
 def merge_batch(
-    *, run_id: str, coverage: Coverage | None, records: tuple[SourceRecord, ...],
-    scope_id: str = "fixture-scope", outcome: str = "success", quarantined_count: int = 0,
-    unit_of_work: CollectionUnitOfWork | None = None, session: object | None = None,
+    *,
+    run_id: str,
+    coverage: Coverage | None,
+    records: tuple[SourceRecord, ...],
+    scope_id: str = "fixture-scope",
+    outcome: str = "success",
+    quarantined_count: int = 0,
+    unit_of_work: CollectionUnitOfWork | None = None,
+    session: object | None = None,
 ) -> dict:
     batch = SourceBatch(
-        run_id=run_id, source_key=NEW_SUBDIVISIONS.key, scope_id=scope_id, scope_version="v1",
-        checked_at=datetime(2026, 9, 20, tzinfo=UTC), records=records, coverage=coverage,
-        outcome=outcome, quarantined_count=quarantined_count,  # type: ignore[arg-type]
+        run_id=run_id,
+        source_key=NEW_SUBDIVISIONS.key,
+        scope_id=scope_id,
+        scope_version="v1",
+        checked_at=datetime(2026, 9, 20, tzinfo=UTC),
+        records=records,
+        coverage=coverage,
+        outcome=outcome,
+        quarantined_count=quarantined_count,  # type: ignore[arg-type]
     )
     if session is not None:
         return merge_postgres_batch(session, batch, unit_of_work=unit_of_work)  # type: ignore[arg-type]
@@ -195,6 +271,12 @@ def main() -> None:
     replay = merge_batch(run_id="c03-first", coverage=None, records=(source_record,))
     partial = merge_batch(run_id="c03-partial", coverage="partial", records=())
     failed = merge_batch(run_id="c03-failed", coverage=None, records=(), outcome="failed")
+    failed_quarantined = merge_batch(
+        run_id="c03-failed-quarantined",
+        coverage="failed",
+        records=(),
+        quarantined_count=1,
+    )
     different_scope = merge_batch(
         run_id="c03-other-scope", coverage="complete", records=(), scope_id="other-scope"
     )
@@ -208,11 +290,19 @@ def main() -> None:
     appended_payload["source_fields"] = {"SubdID": "002", "Subdivision": "Appended source anchor"}
     appended_staged = {**staged(), "id": "stage-new-anchor-002", "raw_record_id": "002"}
     appended = merge_batch(
-        run_id="c03-appended", coverage="partial",
+        run_id="c03-appended",
+        coverage="partial",
         records=(SourceRecord("002", "new-anchor-002", appended_payload, appended_staged),),
     )
 
-    duplicate_health = [{"key": NEW_SUBDIVISIONS.key, "source_url": NEW_SUBDIVISIONS.layer_url, "error_count": 0, "validation_errors": []}]
+    duplicate_health = [
+        {
+            "key": NEW_SUBDIVISIONS.key,
+            "source_url": NEW_SUBDIVISIONS.layer_url,
+            "error_count": 0,
+            "validation_errors": [],
+        }
+    ]
     duplicate_one = record(title="Unsafe duplicate one")
     duplicate_one["public_id"] = "unsafe-duplicate-one"
     duplicate_two = record(title="Unsafe duplicate two")
@@ -220,7 +310,9 @@ def main() -> None:
     duplicate_staged_one = {**staged(), "id": "stage-unsafe-duplicate-one"}
     duplicate_staged_two = {**staged(), "id": "stage-unsafe-duplicate-two"}
     safe_staged, safe_published = _quarantine_duplicate_source_records(
-        [duplicate_staged_one, duplicate_staged_two], [duplicate_one, duplicate_two], duplicate_health
+        [duplicate_staged_one, duplicate_staged_two],
+        [duplicate_one, duplicate_two],
+        duplicate_health,
     )
     if safe_staged or safe_published or not duplicate_health[0]["validation_errors"]:
         raise AssertionError("duplicate source input was not fully quarantined")
@@ -229,7 +321,9 @@ def main() -> None:
     )
 
     submission_results: list[tuple[int, dict]] = []
-    thread = threading.Thread(target=lambda: submission_results.append(submission_result(args.api_url)))
+    thread = threading.Thread(
+        target=lambda: submission_results.append(submission_result(args.api_url))
+    )
     with SessionLocal.begin() as locked_session:
         locked_unit = CollectionUnitOfWork(locked_session)
         with locked_unit.canonical_mutation():
@@ -238,15 +332,25 @@ def main() -> None:
             waiting = False
             while time.monotonic() < deadline:
                 with SessionLocal() as observer:
-                    waiting = bool(observer.scalar(text("SELECT EXISTS (SELECT 1 FROM pg_locks WHERE locktype = 'advisory' AND granted = false)")))
+                    waiting = bool(
+                        observer.scalar(
+                            text(
+                                "SELECT EXISTS (SELECT 1 FROM pg_locks "
+                                "WHERE locktype = 'advisory' AND granted = false)"
+                            )
+                        )
+                    )
                 if waiting:
                     break
                 time.sleep(0.02)
             if not waiting:
                 raise AssertionError("HTTP submission never waited on the held C02 advisory lock")
             concurrent = merge_batch(
-                run_id="c03-concurrent", coverage="partial", records=(source_record,),
-                session=locked_session, unit_of_work=locked_unit,
+                run_id="c03-concurrent",
+                coverage="partial",
+                records=(source_record,),
+                session=locked_session,
+                unit_of_work=locked_unit,
             )
     thread.join(timeout=20)
     if thread.is_alive():
@@ -264,6 +368,78 @@ def main() -> None:
         raise AssertionError(f"submission did not succeed after lock release: {final_submission!r}")
     require_bookmarked_record(args.api_url)
 
+    # Exercise the actual production adapter, including its shared UoW writes,
+    # instead of claiming coverage from direct merge-helper calls alone.
+    with SessionLocal.begin() as session:
+        unit = CollectionUnitOfWork(session)
+        with unit.canonical_mutation():
+            unit.upsert_processed(
+                "environmental_overlays",
+                "retained-overlay",
+                {"id": "retained-overlay", "version": "good"},
+            )
+    adapter_health = _write_postgres_source_state(
+        run_id="c03-adapter",
+        checked_at="2026-09-20T00:00:00+00:00",
+        source_health=[
+            {
+                "key": NEW_SUBDIVISIONS.key,
+                "source_url": NEW_SUBDIVISIONS.layer_url,
+                "status": "healthy",
+                "error_count": 0,
+                "metadata": {"reported_count": 1, "fetched_count": 1},
+            },
+            {
+                "key": "huntsville_usfws_wetlands",
+                "source_url": "https://example.test/failed-environment",
+                "status": "failing",
+                "error_count": 1,
+                "metadata": {},
+            },
+        ],
+        raw_records=[
+            {
+                "data_source_key": "huntsville_usfws_wetlands",
+                "source_record_id": None,
+                "payload_json": {"private_raw": "retained only in raw evidence"},
+                "payload_sha256": "c03-raw-environment-digest",
+                "fetched_at": "2026-09-20T00:00:00+00:00",
+            }
+        ],
+        staged_records=[],
+        published_records=[],
+        overlays=[
+            {
+                "id": "retained-overlay",
+                "source_url": "https://example.test/failed-environment",
+                "version": "bad",
+            }
+        ],
+    )
+    madison_data_dir = Path("/tmp/c03-madison-artifacts")
+    with ArcGISRestConnector(transport=httpx.MockTransport(madison_arcgis_handler)) as connector:
+        madison_health = ingest_madison_county(
+            data_dir=madison_data_dir,
+            record_limit=1,
+            connector=connector,
+        )
+    artifact_manifest = json.loads(
+        (madison_data_dir / "processed" / "artifact_manifest.json").read_text(encoding="utf-8")
+    )
+    madison_artifact = next(
+        item for item in artifact_manifest if item["source_key"] == "madison_county_subdivisions"
+    )
+    madison_source_health = next(
+        item for item in madison_health["sources"] if item["key"] == "madison_county_subdivisions"
+    )
+    madison_raw_path = madison_data_dir / str(madison_artifact["local_path"])
+    if (
+        not madison_raw_path.is_file()
+        or madison_artifact["byte_size"] != madison_raw_path.stat().st_size
+        or madison_artifact["sha256"] != madison_source_health["raw_artifact_sha256"]
+    ):
+        raise AssertionError("Madison raw artifact manifest did not retain its byte/hash evidence")
+
     with SessionLocal() as session:
         unit = CollectionUnitOfWork(session)
         canonical = unit.get_processed("development_records", "bookmarked-legacy-id")
@@ -271,13 +447,30 @@ def main() -> None:
             raise AssertionError("legacy bookmarked public ID disappeared")
         if canonical["date_discovered"] != "2025-01-02" or canonical["title"] != "Changed title":
             raise AssertionError(f"source update did not preserve ID/discovery date: {canonical!r}")
-        batches = session.scalars(select(SourceIngestionBatch).order_by(SourceIngestionBatch.id)).all()
-        observations = session.scalars(select(SourceObservation).order_by(SourceObservation.id)).all()
+        batches = session.scalars(
+            select(SourceIngestionBatch).order_by(SourceIngestionBatch.id)
+        ).all()
+        observations = session.scalars(
+            select(SourceObservation).order_by(SourceObservation.id)
+        ).all()
         mapping = export_source_identity_mapping(session)
         submissions = unit.list_phase3("public_submissions")
         registry = session.scalar(
-            select(SourceIdentityRegistry).where(SourceIdentityRegistry.public_id == "bookmarked-legacy-id")
+            select(SourceIdentityRegistry).where(
+                SourceIdentityRegistry.public_id == "bookmarked-legacy-id"
+            )
         )
+        raw = unit.get_processed(
+            "raw_records", "huntsville_usfws_wetlands:c03-adapter:c03-raw-environment-digest"
+        )
+        retained_overlay = unit.get_processed("environmental_overlays", "retained-overlay")
+        manual = unit.get_processed("development_records", "manual-citation")
+        madison_records = [
+            item
+            for item in unit.list_processed("development_records")
+            if item.get("source_key") == "madison_county_subdivisions"
+        ]
+        merged_health = unit.get_processed("source_health", "latest")
     if registry is None or registry.source_record_id != "001":
         raise AssertionError("registry did not preserve the legacy public ID")
     if not any(item.get("title") == "C03 concurrent submission" for item in submissions):
@@ -285,41 +478,103 @@ def main() -> None:
     if merged["replayed"] or not replay["replayed"] or partial["source_missing"] != 0:
         raise AssertionError("replay/partial batch semantics are incorrect")
     if complete["source_missing"] != 1:
-        raise AssertionError("explicit complete empty batch did not mark prior scoped source observed row missing")
-    if failed["source_missing"] or different_scope["source_missing"] or quarantined["source_missing"] or duplicate_batch["source_missing"]:
-        raise AssertionError("failed, scope-mismatched, or quarantined batch marked source rows missing")
+        raise AssertionError(
+            "explicit complete empty batch did not mark prior scoped source observed row missing"
+        )
+    if (
+        failed["source_missing"]
+        or failed_quarantined["source_missing"]
+        or different_scope["source_missing"]
+        or quarantined["source_missing"]
+        or duplicate_batch["source_missing"]
+    ):
+        raise AssertionError(
+            "failed, scope-mismatched, or quarantined batch marked source rows missing"
+        )
     if appended["observed"] != 1:
         raise AssertionError("new stable source anchor could not append after reviewed backfill")
     if not any(batch.coverage == "unknown" for batch in batches):
         raise AssertionError("omitted legacy coverage did not persist as unknown")
+    if not any(
+        batch.run_id == "c03-failed-quarantined" and batch.coverage == "failed" for batch in batches
+    ):
+        raise AssertionError("explicit failed coverage was downgraded by quarantined input")
+    if (
+        raw is None
+        or raw.get("ingestion_run_id") != "c03-adapter"
+        or adapter_health["records"]["raw"] != 1
+    ):
+        raise AssertionError("adapter did not retain run-scoped raw evidence")
+    if retained_overlay != {"id": "retained-overlay", "version": "good"}:
+        raise AssertionError("failed environmental source replaced the prior overlay")
+    if manual is None or adapter_health["records"]["published"] < 2:
+        raise AssertionError("adapter did not preserve manual/other canonical records")
+    if {item["key"] for item in adapter_health["sources"]} != {
+        NEW_SUBDIVISIONS.key,
+        "huntsville_usfws_wetlands",
+    }:
+        raise AssertionError(f"adapter source-health merge is incomplete: {adapter_health!r}")
+    if (
+        len(madison_records) != 1
+        or madison_records[0].get("source_record_id") != "95"
+        or manual is None
+        or not isinstance(merged_health, dict)
+        or merged_health["records"]["raw"] < 2
+        or merged_health["records"]["published"] < 4
+    ):
+        raise AssertionError(
+            "real Madison PostgreSQL ingestion did not preserve source or other records"
+        )
 
     args.result.parent.mkdir(parents=True, exist_ok=True)
-    args.result.write_text(json.dumps({
-        "backfill_digest": report["digest"],
-        "mapping": mapping,
-        "bookmarked_record": {
-            "public_id": canonical["public_id"],
-            "date_discovered": canonical["date_discovered"],
-            "title": canonical["title"],
-        },
-        "batch_coverages": [batch.coverage for batch in batches],
-        "observations": [{"state": row.state, "fingerprint": row.content_fingerprint} for row in observations],
-        "results": {
-            "first": merged,
-            "replay": replay,
-            "partial": partial,
-            "failed": failed,
-            "different_scope": different_scope,
-            "quarantined": quarantined,
-            "duplicate_input": duplicate_batch,
-            "appended": appended,
-            "complete": complete,
-            "concurrent": concurrent,
-            "concurrent_submission_initial": initial_submission[0],
-            "concurrent_submission_final": final_submission[0],
-            "concurrent_waiting_lock_observed": True,
-        },
-    }, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+    args.result.write_text(
+        json.dumps(
+            {
+                "backfill_digest": report["digest"],
+                "mapping": mapping,
+                "bookmarked_record": {
+                    "public_id": canonical["public_id"],
+                    "date_discovered": canonical["date_discovered"],
+                    "title": canonical["title"],
+                },
+                "batch_coverages": [batch.coverage for batch in batches],
+                "observations": [
+                    {"state": row.state, "fingerprint": row.content_fingerprint}
+                    for row in observations
+                ],
+                "results": {
+                    "first": merged,
+                    "replay": replay,
+                    "partial": partial,
+                    "failed": failed,
+                    "failed_quarantined": failed_quarantined,
+                    "different_scope": different_scope,
+                    "quarantined": quarantined,
+                    "duplicate_input": duplicate_batch,
+                    "appended": appended,
+                    "complete": complete,
+                    "concurrent": concurrent,
+                    "concurrent_submission_initial": initial_submission[0],
+                    "concurrent_submission_final": final_submission[0],
+                    "concurrent_waiting_lock_observed": True,
+                    "adapter": {
+                        "raw_retained": True,
+                        "failed_overlay_skipped": True,
+                        "manual_preserved": True,
+                    },
+                },
+                "madison_postgres_driver": {
+                    "raw_artifact_bytes": madison_artifact["byte_size"],
+                    "raw_observations": merged_health["records"]["raw"],
+                    "published": merged_health["records"]["published"],
+                },
+            },
+            indent=2,
+            sort_keys=True,
+        )
+        + "\n",
+        encoding="utf-8",
+    )
 
 
 if __name__ == "__main__":

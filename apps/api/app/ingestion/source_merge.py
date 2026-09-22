@@ -93,53 +93,54 @@ def _merge_locked(
 ) -> dict[str, int | bool]:
     """Merge after the caller has acquired the shared C02 mutation lock."""
     existing_batch = session.scalar(
-            select(SourceIngestionBatch).where(
-                SourceIngestionBatch.run_id == batch.run_id,
-                SourceIngestionBatch.source_key == batch.source_key,
-                SourceIngestionBatch.scope_id == batch.scope_id,
-                SourceIngestionBatch.scope_version == batch.scope_version,
-            )
+        select(SourceIngestionBatch).where(
+            SourceIngestionBatch.run_id == batch.run_id,
+            SourceIngestionBatch.source_key == batch.source_key,
+            SourceIngestionBatch.scope_id == batch.scope_id,
+            SourceIngestionBatch.scope_version == batch.scope_version,
+        )
     )
     if existing_batch is not None:
         return {"replayed": True, "observed": 0, "source_missing": 0}
 
-    if batch.outcome == "failed":
+    if batch.outcome == "failed" and batch.records:
+        raise ValueError("A failed source batch cannot publish canonical records")
+    if batch.outcome == "failed" or batch.coverage == "failed":
         effective_coverage: Coverage = "failed"
     elif batch.quarantined_count:
         effective_coverage = "partial"
     else:
         effective_coverage = batch.coverage or "unknown"
     persisted_batch = SourceIngestionBatch(
-            run_id=batch.run_id,
-            source_key=batch.source_key,
-            scope_id=batch.scope_id,
-            scope_version=batch.scope_version,
-            coverage=effective_coverage,
-            outcome=batch.outcome,
-            counts_json={"received": len(batch.records), "observed": 0, "source_missing": 0},
-            finished_at=batch.checked_at,
+        run_id=batch.run_id,
+        source_key=batch.source_key,
+        scope_id=batch.scope_id,
+        scope_version=batch.scope_version,
+        coverage=effective_coverage,
+        outcome=batch.outcome,
+        counts_json={"received": len(batch.records), "observed": 0, "source_missing": 0},
+        finished_at=batch.checked_at,
     )
     session.add(persisted_batch)
     session.flush()
     current = {
-            item["public_id"]: item
-            for item in unit_of_work.list_processed("development_records")
+        item["public_id"]: item for item in unit_of_work.list_processed("development_records")
     }
     registered_public_ids = set(
-            session.scalars(
-                select(SourceIdentityRegistry.public_id).where(
-                    SourceIdentityRegistry.source_key == batch.source_key
-                )
-            ).all()
+        session.scalars(
+            select(SourceIdentityRegistry.public_id).where(
+                SourceIdentityRegistry.source_key == batch.source_key
+            )
+        ).all()
     )
     publication = CanonicalPublicationWriter(unit_of_work)
     observed_registry_ids: set[int] = set()
     for input_record in batch.records:
         registry = session.scalar(
-                select(SourceIdentityRegistry).where(
-                    SourceIdentityRegistry.source_key == batch.source_key,
-                    SourceIdentityRegistry.source_record_id == input_record.source_record_id,
-                )
+            select(SourceIdentityRegistry).where(
+                SourceIdentityRegistry.source_key == batch.source_key,
+                SourceIdentityRegistry.source_record_id == input_record.source_record_id,
+            )
         )
         if registry is None:
             if any(
@@ -152,16 +153,16 @@ def _merge_locked(
                 for record in current.values()
             ):
                 raise RegistryInitializationRequired(
-                        f"{batch.source_key} has unresolved canonical rows without a registry "
-                        "anchor; "
-                        "run the dry-run backfill and resolve its diagnostics first"
+                    f"{batch.source_key} has unresolved canonical rows without a registry "
+                    "anchor; "
+                    "run the dry-run backfill and resolve its diagnostics first"
                 )
             registry = SourceIdentityRegistry(
-                    source_key=batch.source_key,
-                    source_record_id=input_record.source_record_id,
-                    public_id=input_record.provisional_public_id,
-                    first_discovered_at=batch.checked_at,
-                    last_observed_at=batch.checked_at,
+                source_key=batch.source_key,
+                source_record_id=input_record.source_record_id,
+                public_id=input_record.provisional_public_id,
+                first_discovered_at=batch.checked_at,
+                last_observed_at=batch.checked_at,
             )
             session.add(registry)
             session.flush()
@@ -187,54 +188,54 @@ def _merge_locked(
         staged["raw_record_id"] = input_record.source_record_id
         unit_of_work.upsert_processed("staged_development_records", staged["id"], staged)
         session.add(
-                SourceObservation(
-                    batch_id=persisted_batch.id,
-                    registry_id=registry.id,
-                    state="observed",
-                    content_fingerprint=after["content_fingerprint"],
-                    fingerprint_version=FINGERPRINT_VERSION,
-                    observed_at=batch.checked_at,
-                )
+            SourceObservation(
+                batch_id=persisted_batch.id,
+                registry_id=registry.id,
+                state="observed",
+                content_fingerprint=after["content_fingerprint"],
+                fingerprint_version=FINGERPRINT_VERSION,
+                observed_at=batch.checked_at,
+            )
         )
 
     missing = 0
     if batch.outcome == "success" and effective_coverage == "complete":
         scoped_registry_ids = set(
-                session.scalars(
-                    select(SourceObservation.registry_id)
-                    .join(
-                        SourceIngestionBatch,
-                        SourceObservation.batch_id == SourceIngestionBatch.id,
-                    )
-                    .where(
-                        SourceIngestionBatch.source_key == batch.source_key,
-                        SourceIngestionBatch.scope_id == batch.scope_id,
-                        SourceIngestionBatch.scope_version == batch.scope_version,
-                        SourceObservation.state == "observed",
-                    )
-                ).all()
+            session.scalars(
+                select(SourceObservation.registry_id)
+                .join(
+                    SourceIngestionBatch,
+                    SourceObservation.batch_id == SourceIngestionBatch.id,
+                )
+                .where(
+                    SourceIngestionBatch.source_key == batch.source_key,
+                    SourceIngestionBatch.scope_id == batch.scope_id,
+                    SourceIngestionBatch.scope_version == batch.scope_version,
+                    SourceObservation.state == "observed",
+                )
+            ).all()
         )
         for registry_id in scoped_registry_ids - observed_registry_ids:
             session.add(
-                    SourceObservation(
-                        batch_id=persisted_batch.id,
-                        registry_id=registry_id,
-                        state="source_missing",
-                        observed_at=batch.checked_at,
-                    )
+                SourceObservation(
+                    batch_id=persisted_batch.id,
+                    registry_id=registry_id,
+                    state="source_missing",
+                    observed_at=batch.checked_at,
+                )
             )
             missing += 1
     persisted_batch.counts_json = {
-            "received": len(batch.records),
-            "quarantined": batch.quarantined_count,
-            "coverage": effective_coverage,
-            "observed": len(observed_registry_ids),
-            "source_missing": missing,
+        "received": len(batch.records),
+        "quarantined": batch.quarantined_count,
+        "coverage": effective_coverage,
+        "observed": len(observed_registry_ids),
+        "source_missing": missing,
     }
     return {
-            "replayed": False,
-            "observed": len(observed_registry_ids),
-            "source_missing": missing,
+        "replayed": False,
+        "observed": len(observed_registry_ids),
+        "source_missing": missing,
     }
 
 
@@ -265,12 +266,16 @@ def public_fingerprint(record: dict[str, Any]) -> str:
             "geometry_source",
             "geometry_confidence",
             "confidence_level",
+            "address",
         )
     }
     allowed["geometry"] = _canonical_geometry(record.get("geometry"))
+    allowed["parcel_ids"] = _unordered_values(record.get("parcel_ids"))
     allowed["proximity_flags"] = _unordered_collection(record.get("proximity_flags"))
     source_fields = record.get("source_fields")
-    allowed["source_fields"] = public_source_fields(source_fields) if isinstance(source_fields, dict) else {}
+    allowed["source_fields"] = (
+        public_source_fields(source_fields) if isinstance(source_fields, dict) else {}
+    )
     encoded = json.dumps(
         _canonical(allowed), sort_keys=True, separators=(",", ":"), ensure_ascii=True
     )
@@ -295,6 +300,12 @@ def _unordered_collection(value: Any) -> list[Any]:
     )
 
 
+def _unordered_values(value: Any) -> list[Any]:
+    if not isinstance(value, list):
+        return []
+    return sorted((_canonical(item) for item in value), key=_json_sort_key)
+
+
 def _canonical_geometry(value: Any) -> Any:
     """Normalize only the fingerprint representation of equivalent GeoJSON rings."""
     if not isinstance(value, dict):
@@ -304,7 +315,9 @@ def _canonical_geometry(value: Any) -> Any:
     if geometry_type == "Polygon" and isinstance(coordinates, list):
         return {"type": geometry_type, "coordinates": _canonical_polygon(coordinates)}
     if geometry_type == "MultiPolygon" and isinstance(coordinates, list):
-        polygons = [_canonical_polygon(polygon) for polygon in coordinates if isinstance(polygon, list)]
+        polygons = [
+            _canonical_polygon(polygon) for polygon in coordinates if isinstance(polygon, list)
+        ]
         return {
             "type": geometry_type,
             "coordinates": sorted(polygons, key=_json_sort_key),
@@ -370,17 +383,24 @@ def _sequence_sort_key(values: list[Any]) -> tuple[str, ...]:
     return tuple(_json_sort_key(value) for value in values)
 
 
-PUBLIC_FLAG_FIELDS = frozenset({"id", "type", "category", "label", "title", "source"})
+PUBLIC_FLAG_FIELDS = frozenset(
+    {
+        "flag_type",
+        "label",
+        "relationship",
+        "distance_m",
+        "threshold_m",
+        "source_name",
+        "source_url",
+        "caveat",
+    }
+)
 
 
 def _public_flag(value: Any) -> Any:
     if not isinstance(value, dict):
         return _canonical(value)
-    return {
-        key: _canonical(value[key])
-        for key in sorted(value)
-        if key in PUBLIC_FLAG_FIELDS
-    }
+    return {key: _canonical(value[key]) for key in sorted(value) if key in PUBLIC_FLAG_FIELDS}
 
 
 def _requires_registry_backfill(

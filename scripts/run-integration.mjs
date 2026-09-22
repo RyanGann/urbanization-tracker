@@ -517,6 +517,7 @@ async function runSuite(options) {
     const restoredApi = `${project}-c03-restored-api`;
     const restoreSnapshotSql = "SELECT json_build_object('mapping', COALESCE((SELECT json_agg(item) FROM (SELECT json_build_object('source_key', source_key, 'source_record_id', source_record_id, 'public_id', public_id) AS item FROM source_identity_registry ORDER BY source_key, source_record_id, id) mappings), '[]'::json), 'bookmarked_record', (SELECT json_build_object('public_id', payload_json->>'public_id', 'date_discovered', payload_json->>'date_discovered', 'title', payload_json->>'title') FROM processed_collection_items WHERE collection_name = 'development_records' AND item_id = 'bookmarked-legacy-id'))::text";
     let restored = false;
+    let restoredApiStarted = false;
     try {
       await run("docker", [
         ...compose,
@@ -545,6 +546,7 @@ async function runSuite(options) {
         "--env", "PROCESSED_STORE_BACKEND=postgres", "--env", "PHASE3_STORE_BACKEND=postgres",
         "--entrypoint", "uvicorn", "api", "app.main:app", "--host", "0.0.0.0", "--port", "8001"
       ], { log, timeoutMs: 30_000 });
+      restoredApiStarted = true;
       const probe = `import json,time\nfrom urllib.request import urlopen\nurl='http://${restoredApi}:8001/api/development-records/bookmarked-legacy-id'\nlast=None\nfor _ in range(30):\n  try:\n    with urlopen(url, timeout=2) as response: payload=json.loads(response.read())\n    if response.status == 200 and payload.get('public_id') == 'bookmarked-legacy-id' and payload.get('date_discovered') == '2025-01-02': break\n    last=payload\n  except Exception as exc: last=repr(exc)\n  time.sleep(0.25)\nelse: raise RuntimeError(f'restored API record failed: {last}')\nprint(json.dumps({'public_id':payload['public_id'],'date_discovered':payload['date_discovered']}))`;
       const apiCheck = await run("docker", [
         ...compose, "run", "--rm", "--no-deps", "--entrypoint", "python", "api", "-c", probe
@@ -554,7 +556,16 @@ async function runSuite(options) {
       scenarioArtifacts.c03_restored_api = JSON.parse(restoredApiOutput);
       scenarioArtifacts.c03_restore_mapping_count = restoredSnapshot.mapping.length;
     } finally {
-      await run("docker", ["rm", "-f", restoredApi], { log, allowFailure: true, ignoreInterrupt: true });
+      if (restoredApiStarted) {
+        const owner = await run(
+          "docker",
+          ["inspect", "--format", "{{ index .Config.Labels \"com.docker.compose.project\" }}", restoredApi],
+          { log, allowFailure: true, ignoreInterrupt: true }
+        );
+        if (owner.output.trim() === project) {
+          await run("docker", ["rm", "-f", restoredApi], { log, allowFailure: true, ignoreInterrupt: true });
+        }
+      }
       if (restored) await run("docker", [...compose, "exec", "-T", "db", "sh", "-ec", "dropdb -U integration c03_restore && rm -f /tmp/c03.dump"], { log, allowFailure: true, ignoreInterrupt: true });
     }
     scenarioArtifacts.c03_results_sha256 = createHash("sha256")
