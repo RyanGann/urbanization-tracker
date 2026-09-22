@@ -32,8 +32,11 @@ def source_record_id(source_key: str, properties: dict[str, Any]) -> str:
         raise SourceIdentityError(f"{source_key} has no usable {field}")
     if isinstance(value, float) and not math.isfinite(value):
         raise SourceIdentityError(f"{source_key} has no usable {field}")
-    identifier = str(value).strip()
-    if not identifier or len(identifier) > 255:
+    # Identity must preserve the source's exact stable string.  In particular,
+    # leading zeroes and whitespace-distinct opaque IDs must not collapse into a
+    # single registry anchor.  Whitespace-only values are still unusable.
+    identifier = str(value)
+    if not identifier.strip() or len(identifier) > 255:
         raise SourceIdentityError(f"{source_key} has no usable {field}")
     return identifier
 
@@ -52,6 +55,7 @@ def _slug(value: str) -> str:
     import re
 
     text = re.sub(r"[^a-z0-9]+", "-", value.lower()).strip("-")
-    if not text:
-        raise SourceIdentityError("source identifier has no URL-safe characters")
-    return text
+    # The digest includes the exact anchor, so this readable portion is never
+    # relied on for uniqueness.  Opaque Unicode/punctuation-only authoritative
+    # IDs remain valid registry identities and get a safe generic URL label.
+    return text or "record"

@@ -45,6 +45,7 @@ def normalize_new_subdivision(
     staged = {
         "id": f"stage-{public_id}",
         "raw_record_id": source_id,
+        "source_key": NEW_SUBDIVISIONS.key,
         "title": title,
         "description": _subdivision_description(properties),
         "development_type": "subdivision",
@@ -68,6 +69,8 @@ def normalize_new_subdivision(
 
     published = {
         "public_id": public_id,
+        "source_key": NEW_SUBDIVISIONS.key,
+        "source_record_id": source_id,
         "title": title,
         "description": staged["description"],
         "development_type": "subdivision",
@@ -90,7 +93,7 @@ def normalize_new_subdivision(
         "area_sq_m": approx_area_sq_m(geometry),
         "address": None,
         "parcel_ids": [],
-        "source_fields": _public_source_fields(properties),
+        "source_fields": _public_source_fields(properties, NEW_SUBDIVISION_PUBLIC_FIELDS),
         "proximity_flags": [],
     }
     return staged, published, validation_errors
@@ -115,6 +118,7 @@ def normalize_building_permit(
     staged = {
         "id": f"stage-{public_id}",
         "raw_record_id": permit_id,
+        "source_key": BUILDING_PERMITS.key,
         "title": title,
         "description": (
             "Issued building permit point context. Point geometry is not a parcel or "
@@ -141,6 +145,8 @@ def normalize_building_permit(
 
     published = {
         "public_id": public_id,
+        "source_key": BUILDING_PERMITS.key,
+        "source_record_id": permit_id,
         "title": title,
         "description": staged["description"],
         "development_type": "building_permit",
@@ -162,7 +168,7 @@ def normalize_building_permit(
         "area_sq_m": None,
         "address": None,
         "parcel_ids": [],
-        "source_fields": _public_source_fields(properties),
+        "source_fields": _public_source_fields(properties, BUILDING_PERMIT_PUBLIC_FIELDS),
         "proximity_flags": [],
     }
     return staged, published, validation_errors
@@ -185,6 +191,7 @@ def normalize_madison_county_subdivision(
     staged = {
         "id": f"stage-{public_id}",
         "raw_record_id": source_id,
+        "source_key": MADISON_COUNTY_SUBDIVISIONS.key,
         "title": subdivision,
         "description": description,
         "development_type": "subdivision",
@@ -208,6 +215,8 @@ def normalize_madison_county_subdivision(
 
     published = {
         "public_id": public_id,
+        "source_key": MADISON_COUNTY_SUBDIVISIONS.key,
+        "source_record_id": source_id,
         "title": subdivision,
         "description": description,
         "development_type": "subdivision",
@@ -229,7 +238,7 @@ def normalize_madison_county_subdivision(
         "area_sq_m": approx_area_sq_m(geometry),
         "address": None,
         "parcel_ids": [],
-        "source_fields": _public_source_fields(properties),
+        "source_fields": _public_source_fields(properties, MADISON_COUNTY_PUBLIC_FIELDS),
         "proximity_flags": [],
     }
     return staged, published, validation_errors
@@ -287,9 +296,30 @@ def _string(value: Any) -> str | None:
     return text or None
 
 
-def _public_source_fields(properties: dict[str, Any]) -> dict[str, Any]:
-    blocked = {"Address"}
-    return {key: value for key, value in properties.items() if key not in blocked}
+NEW_SUBDIVISION_PUBLIC_FIELDS = frozenset(
+    {
+        "SubdID", "Subdivision", "Phase", "Status", "HousingUnits", "HousingUnitType",
+        "Layout_date", "Prelim_date", "Final_date", "AsBuilt_date", "SubdStatus",
+    }
+)
+BUILDING_PERMIT_PUBLIC_FIELDS = frozenset(
+    {
+        "PermitID", "Permit_Issue_DateTime", "Subdivision", "OccupancyType",
+        "OccupancySubtype", "TypeOfWork", "NumberOfUnits",
+    }
+)
+MADISON_COUNTY_PUBLIC_FIELDS = frozenset(
+    {
+        "Subd_ID", "Subd_Name", "Subd_Type", "Parcels", "Book", "Page", "DocNum",
+        "YearFiled", "DateFiled",
+    }
+)
+
+
+def _public_source_fields(
+    properties: dict[str, Any], allowed_fields: frozenset[str]
+) -> dict[str, Any]:
+    return {key: value for key, value in properties.items() if key in allowed_fields}
 
 
 def _arcgis_date(value: Any) -> str | None:
