@@ -5,12 +5,13 @@ from __future__ import annotations
 import argparse
 import json
 import threading
+import time
 from datetime import UTC, datetime
 from pathlib import Path
 from urllib.error import HTTPError
 from urllib.request import Request, urlopen
 
-from sqlalchemy import delete, select
+from sqlalchemy import delete, select, text
 
 from app.db import SessionLocal
 from app.ingestion.source_backfill import (
@@ -19,6 +20,7 @@ from app.ingestion.source_backfill import (
     export_source_identity_mapping,
 )
 from app.ingestion.source_merge import Coverage, SourceBatch, SourceRecord, merge_postgres_batch
+from app.ingestion.pipeline import _quarantine_duplicate_source_records
 from app.ingestion.sources.huntsville import NEW_SUBDIVISIONS
 from app.models import ProcessedCollectionItem, SourceIdentityRegistry, SourceIngestionBatch, SourceObservation
 from app.transactional_store import CollectionUnitOfWork
@@ -137,20 +139,20 @@ def seed_legacy() -> None:
             unit.upsert_processed("development_records", "bookmarked-legacy-id", legacy)
 
 
-def merge_batch(*, run_id: str, coverage: Coverage | None, records: tuple[SourceRecord, ...]) -> dict:
+def merge_batch(
+    *, run_id: str, coverage: Coverage | None, records: tuple[SourceRecord, ...],
+    scope_id: str = "fixture-scope", outcome: str = "success", quarantined_count: int = 0,
+    unit_of_work: CollectionUnitOfWork | None = None, session: object | None = None,
+) -> dict:
+    batch = SourceBatch(
+        run_id=run_id, source_key=NEW_SUBDIVISIONS.key, scope_id=scope_id, scope_version="v1",
+        checked_at=datetime(2026, 9, 20, tzinfo=UTC), records=records, coverage=coverage,
+        outcome=outcome, quarantined_count=quarantined_count,  # type: ignore[arg-type]
+    )
+    if session is not None:
+        return merge_postgres_batch(session, batch, unit_of_work=unit_of_work)  # type: ignore[arg-type]
     with SessionLocal.begin() as session:
-        return merge_postgres_batch(
-            session,
-            SourceBatch(
-                run_id=run_id,
-                source_key=NEW_SUBDIVISIONS.key,
-                scope_id="fixture-scope",
-                scope_version="v1",
-                checked_at=datetime(2026, 9, 20, tzinfo=UTC),
-                records=records,
-                coverage=coverage,
-            ),
-        )
+        return merge_postgres_batch(session, batch)
 
 
 def main() -> None:
@@ -161,6 +163,22 @@ def main() -> None:
     seed_legacy()
 
     with SessionLocal.begin() as session:
+        unit = CollectionUnitOfWork(session)
+        duplicate_legacy = record(title="Intentional duplicate legacy")
+        duplicate_legacy["public_id"] = "duplicate-legacy-id"
+        unit.upsert_processed("development_records", "duplicate-legacy-id", duplicate_legacy)
+        refused = dry_run_source_identity_backfill(session)
+        if not any(item["code"] == "ambiguous_anchor" for item in refused["diagnostics"]):
+            raise AssertionError(f"duplicate legacy source anchor was not diagnosed: {refused!r}")
+        try:
+            apply_source_identity_backfill(session, expected_digest=str(refused["digest"]))
+        except ValueError:
+            pass
+        else:
+            raise AssertionError("ambiguous backfill unexpectedly applied mappings")
+        if export_source_identity_mapping(session):
+            raise AssertionError("refused backfill changed registry mappings")
+        unit.delete_processed("development_records", "duplicate-legacy-id")
         report = dry_run_source_identity_backfill(session)
         if report["candidate_count"] != 1 or report["diagnostic_count"] != 0:
             raise AssertionError(f"unexpected backfill report: {report!r}")
@@ -176,12 +194,60 @@ def main() -> None:
     merged = merge_batch(run_id="c03-first", coverage=None, records=(source_record,))
     replay = merge_batch(run_id="c03-first", coverage=None, records=(source_record,))
     partial = merge_batch(run_id="c03-partial", coverage="partial", records=())
+    failed = merge_batch(run_id="c03-failed", coverage=None, records=(), outcome="failed")
+    different_scope = merge_batch(
+        run_id="c03-other-scope", coverage="complete", records=(), scope_id="other-scope"
+    )
+    quarantined = merge_batch(
+        run_id="c03-quarantined", coverage="complete", records=(), quarantined_count=1
+    )
     complete = merge_batch(run_id="c03-complete", coverage="complete", records=())
+
+    appended_payload = record(title="Appended source anchor")
+    appended_payload["public_id"] = "new-anchor-002"
+    appended_payload["source_fields"] = {"SubdID": "002", "Subdivision": "Appended source anchor"}
+    appended_staged = {**staged(), "id": "stage-new-anchor-002", "raw_record_id": "002"}
+    appended = merge_batch(
+        run_id="c03-appended", coverage="partial",
+        records=(SourceRecord("002", "new-anchor-002", appended_payload, appended_staged),),
+    )
+
+    duplicate_health = [{"key": NEW_SUBDIVISIONS.key, "source_url": NEW_SUBDIVISIONS.layer_url, "error_count": 0, "validation_errors": []}]
+    duplicate_one = record(title="Unsafe duplicate one")
+    duplicate_one["public_id"] = "unsafe-duplicate-one"
+    duplicate_two = record(title="Unsafe duplicate two")
+    duplicate_two["public_id"] = "unsafe-duplicate-two"
+    duplicate_staged_one = {**staged(), "id": "stage-unsafe-duplicate-one"}
+    duplicate_staged_two = {**staged(), "id": "stage-unsafe-duplicate-two"}
+    safe_staged, safe_published = _quarantine_duplicate_source_records(
+        [duplicate_staged_one, duplicate_staged_two], [duplicate_one, duplicate_two], duplicate_health
+    )
+    if safe_staged or safe_published or not duplicate_health[0]["validation_errors"]:
+        raise AssertionError("duplicate source input was not fully quarantined")
+    duplicate_batch = merge_batch(
+        run_id="c03-duplicate-input", coverage="complete", records=(), quarantined_count=1
+    )
 
     submission_results: list[tuple[int, dict]] = []
     thread = threading.Thread(target=lambda: submission_results.append(submission_result(args.api_url)))
-    thread.start()
-    concurrent = merge_batch(run_id="c03-concurrent", coverage="partial", records=(source_record,))
+    with SessionLocal.begin() as locked_session:
+        locked_unit = CollectionUnitOfWork(locked_session)
+        with locked_unit.canonical_mutation():
+            thread.start()
+            deadline = time.monotonic() + 1.2
+            waiting = False
+            while time.monotonic() < deadline:
+                with SessionLocal() as observer:
+                    waiting = bool(observer.scalar(text("SELECT EXISTS (SELECT 1 FROM pg_locks WHERE locktype = 'advisory' AND granted = false)")))
+                if waiting:
+                    break
+                time.sleep(0.02)
+            if not waiting:
+                raise AssertionError("HTTP submission never waited on the held C02 advisory lock")
+            concurrent = merge_batch(
+                run_id="c03-concurrent", coverage="partial", records=(source_record,),
+                session=locked_session, unit_of_work=locked_unit,
+            )
     thread.join(timeout=20)
     if thread.is_alive():
         raise AssertionError("concurrent public submission did not complete")
@@ -220,6 +286,10 @@ def main() -> None:
         raise AssertionError("replay/partial batch semantics are incorrect")
     if complete["source_missing"] != 1:
         raise AssertionError("explicit complete empty batch did not mark prior scoped source observed row missing")
+    if failed["source_missing"] or different_scope["source_missing"] or quarantined["source_missing"] or duplicate_batch["source_missing"]:
+        raise AssertionError("failed, scope-mismatched, or quarantined batch marked source rows missing")
+    if appended["observed"] != 1:
+        raise AssertionError("new stable source anchor could not append after reviewed backfill")
     if not any(batch.coverage == "unknown" for batch in batches):
         raise AssertionError("omitted legacy coverage did not persist as unknown")
 
@@ -238,10 +308,16 @@ def main() -> None:
             "first": merged,
             "replay": replay,
             "partial": partial,
+            "failed": failed,
+            "different_scope": different_scope,
+            "quarantined": quarantined,
+            "duplicate_input": duplicate_batch,
+            "appended": appended,
             "complete": complete,
             "concurrent": concurrent,
             "concurrent_submission_initial": initial_submission[0],
             "concurrent_submission_final": final_submission[0],
+            "concurrent_waiting_lock_observed": True,
         },
     }, indent=2, sort_keys=True) + "\n", encoding="utf-8")
 
