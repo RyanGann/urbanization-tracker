@@ -136,3 +136,19 @@ waiting in PostgreSQL `pg_locks`, then completing after release, and the upgrade
 preserving its result. The final helper placement also covers artifact migration
 writers. Locked lint, mypy and 14 focused tests were rerun successfully after that
 placement change; final CI exercises the exact committed path.
+
+### Merged verification
+
+[PR #22](https://github.com/RyanGann/urbanization-tracker/pull/22) merged as
+`87c2f74676154fddd140eda953c23317f8cb2e2d`. Codex completed a clean review of
+runtime head `b1c3b54bf3627add099997ea8bb20d8912e923e0`; all five prior review
+threads were addressed and resolved. The final commit
+`d84efde0a84eb261e75991b82d4e5664e95cae5d` corrected integration-driver argument
+passing for synthetic reviewer tokens beginning with a hyphen. The lead reviewed
+that narrow harness change, which also forces the edge case on every run.
+[Final CI run](https://github.com/RyanGann/urbanization-tracker/actions/runs/35736371168)
+passed before the expected-head squash merge.
+
+This completes catalog delivery and the development-only precheck. Environmental
+layers remain disabled until P06 supplies usable context; this is not a passing
+P01 performance-budget result or deployment-readiness claim.
