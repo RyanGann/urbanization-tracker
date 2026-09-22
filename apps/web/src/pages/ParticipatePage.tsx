@@ -76,7 +76,7 @@ export function ParticipatePage() {
       source_url: submissionUrl || null,
       notes: submissionNotes,
       submitter_contact: submissionContact || null,
-      geometry: boundsGeometry(bounds.west, bounds.south, bounds.east, bounds.north)
+      geometry: null
     });
   };
 
@@ -115,6 +115,7 @@ export function ParticipatePage() {
             <input
               required
               minLength={3}
+              maxLength={200}
               value={submissionTitle}
               onChange={(event) => setSubmissionTitle(event.target.value)}
             />
@@ -122,6 +123,8 @@ export function ParticipatePage() {
           <label className="form-field">
             <span>Source link</span>
             <input
+              type="url"
+              maxLength={1000}
               value={submissionUrl}
               onChange={(event) => setSubmissionUrl(event.target.value)}
               placeholder="https://"
@@ -130,6 +133,8 @@ export function ParticipatePage() {
           <label className="form-field">
             <span>Contact</span>
             <input
+              type="email"
+              maxLength={255}
               value={submissionContact}
               onChange={(event) => setSubmissionContact(event.target.value)}
               placeholder="email@example.com"
@@ -140,10 +145,12 @@ export function ParticipatePage() {
             <textarea
               required
               minLength={5}
+              maxLength={2000}
               value={submissionNotes}
               onChange={(event) => setSubmissionNotes(event.target.value)}
             />
           </label>
+          <p className="form-help">Location is unknown. A reviewer must verify a location before publication.</p>
           <button className="primary-action" type="submit" disabled={submissionMutation.isPending}>
             Submit
           </button>
@@ -151,7 +158,7 @@ export function ParticipatePage() {
             <p className="success-text">Submission added to the reviewer queue.</p>
           ) : null}
           {submissionMutation.isError ? (
-            <p className="error-text">Submission could not be saved.</p>
+            <p className="error-text" role="alert">{submissionMutation.error.message}</p>
           ) : null}
         </form>
 
@@ -167,6 +174,7 @@ export function ParticipatePage() {
             <input
               required
               minLength={3}
+              maxLength={120}
               value={watchName}
               onChange={(event) => setWatchName(event.target.value)}
             />
@@ -175,6 +183,8 @@ export function ParticipatePage() {
             <span>Email</span>
             <input
               required
+              type="email"
+              maxLength={255}
               value={watchEmail}
               onChange={(event) => setWatchEmail(event.target.value)}
               placeholder="email@example.com"
@@ -203,7 +213,7 @@ export function ParticipatePage() {
               Watch area saved with {watchMutation.data.alert_count} queued matches.
             </p>
           ) : null}
-          {watchMutation.isError ? <p className="error-text">Watch area could not be saved.</p> : null}
+          {watchMutation.isError ? <p className="error-text" role="alert">{watchMutation.error.message}</p> : null}
         </form>
       </section>
 

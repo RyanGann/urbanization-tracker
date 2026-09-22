@@ -91,6 +91,9 @@ jobs:
       - name: Check source identity batches and copied restore
         run: node scripts/run-integration.mjs --suite api --scenario c03-source-identity
 
+      - name: Check public input limits and shared two-worker quotas
+        run: node scripts/run-integration.mjs --suite api --scenario input-limits
+
       - name: Upload integration artifacts
         if: always()
         uses: actions/upload-artifact@v4

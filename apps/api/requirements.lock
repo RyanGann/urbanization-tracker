@@ -44,3 +44,8 @@ uvicorn==0.53.0
 uvloop==0.22.1
 watchfiles==1.2.0
 websockets==17.1
+dnspython==2.8.0
+email-validator==2.3.0
+numpy==2.5.3
+pyproj==3.8.0
+shapely==2.1.2

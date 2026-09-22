@@ -15,4 +15,4 @@ RUN python -m pip install --no-deps .
 
 EXPOSE 8000
 
-CMD alembic upgrade head && uvicorn app.main:app --host 0.0.0.0 --port ${PORT:-8000}
+CMD alembic upgrade head && uvicorn app.main:app --no-proxy-headers --host 0.0.0.0 --port ${PORT:-8000} --workers ${API_WORKERS:-1}

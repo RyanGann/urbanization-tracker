@@ -89,6 +89,10 @@ class Settings(BaseSettings):
     smtp_password: str | None = None
     smtp_from_email: str | None = None
     smtp_use_tls: bool = True
+    public_watch_max_area_sq_km: float = Field(default=2500, gt=0, le=2500)
+    public_write_quota_limit: int = Field(default=10, ge=1, le=1000)
+    public_write_quota_secret: str | None = Field(default=None, repr=False)
+    public_write_trusted_proxies: str = ""
 
     model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8")
 

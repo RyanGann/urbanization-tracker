@@ -76,7 +76,7 @@ export interface StagedDevelopmentRecord {
   record_confidence: ConfidenceLevel;
   geometry_source: string;
   geometry_confidence: ConfidenceLevel;
-  geometry: Geometry;
+  geometry: Geometry | null;
   source_payload: Record<string, unknown>;
   normalization_notes: string;
 }

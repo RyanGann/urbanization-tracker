@@ -299,6 +299,10 @@ def approve_staged_record(staged_id: str, notes: str | None = None) -> Developme
             return None
         return DevelopmentRecord.model_validate(published)
 
+    from app.public_geometry import require_publishable_geometry
+
+    require_publishable_geometry(staged)
+    require_publishable_geometry(staged["publish_record"])
     staged["review_status"] = "approved"
     staged["review_notes"] = notes
     published = copy.deepcopy(staged["publish_record"])

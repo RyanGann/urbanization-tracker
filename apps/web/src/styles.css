@@ -718,6 +718,10 @@ button {
   padding-bottom: 14px;
 }
 
+.form-help {
+  margin: 12px;
+}
+
 .form-field {
   padding: 12px 14px 0;
   display: grid;
