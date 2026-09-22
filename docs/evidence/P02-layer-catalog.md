@@ -12,8 +12,33 @@ returns validated live or demo metadata with a content-derived ETag and
 `Cache-Control: public, max-age=60, must-revalidate`. A missing, malformed,
 content-hash-mismatched, or cross-mode catalog is `503 data_unavailable` with
 `Cache-Control: no-store`.
-The catalog is generated during ingestion and can be reconstructed only with the
-explicit offline command:
+The catalog is generated during ingestion. Existing deployments now run an
+idempotent offline upgrade before the API release:
+
+```text
+alembic upgrade head
+python -m app.ingestion.cli upgrade-map-layer-catalog
+```
+
+The API's `render.yaml` `preDeployCommand` runs these commands in Render's separate
+release process, before API startup ([Render deployment documentation](https://render.com/docs/deploys)).
+The upgrade acquires the C02 mutation lock and rechecks the catalog, validates and
+preserves any existing catalog (including ready tile metadata), and creates only a
+missing catalog from populated legacy overlay rows. PostgreSQL projects metadata
+and feature counts; full geometry never crosses into the release process. The
+database may inspect the legacy JSON, once per missing catalog, under C02's five
+second statement timeout. A timeout or corrupt catalog fails the release without
+replacing existing metadata. No source network request occurs.
+
+For an existing installation, release the API and verify `/api/map/layers` before
+releasing the catalog-dependent web build. The two Render services' automatic
+deploys are independent and do not guarantee that order; use sequential manual
+releases for this initial upgrade. No deployment was performed during this work.
+
+Absent legacy overlay rows have no initialization marker, so they remain
+uninitialized even if source health exists. A new installation must initialize
+its source catalog through ingestion, or an operator who has verified a known
+empty processed collection can use the explicit compatibility command:
 
 ```text
 python -m app.ingestion.cli backfill-map-layer-catalog
@@ -21,8 +46,10 @@ python -m app.ingestion.cli backfill-map-layer-catalog
 
 That command is compatibility recovery for an existing processed store: it may
 read the legacy collection offline, does not fetch a source, and writes only the
-compact singleton. Removing the singleton returns the controlled unavailable state
-until the next ingestion or offline backfill. P03/C03 will migrate this writer into
+compact singleton. Unlike the idempotent release upgrade, this explicit command
+rebuilds an existing catalog and should be used only for deliberate recovery.
+Removing the singleton returns the controlled unavailable state until the next
+ingestion or offline upgrade/backfill. P03/C03 will migrate the ingestion writer into
 the durable transactional inventory; P06 will consume ready tile URLs.
 
 ## Validation
@@ -73,3 +100,25 @@ The runner manifest records the pre-commit application SHA
 `d6aeb1b7beffbb703946b80cd6227a185fb32b4b` and `working_tree_dirty: true`; the
 run includes the P02 implementation changes validated above. The final PR commit
 will retain this exact artifact reference and rerun all required remote CI.
+
+### September 22 upgrade and U00 integration verification
+
+After rebasing onto U00 merge `fbd5ad8a5e6d4af474d7eb07a4abbcb8b655c046`,
+web type checking and both runner measurement tests passed. A clean installed
+Python 3.12 project copy with the locked dependencies passed Ruff, mypy (34
+modules), and 14 focused catalog/CLI/ingestion tests. An initial check copied an
+ignored stale build directory and imported old packaged code; that attempt failed
+and is not counted as validation.
+
+The same isolated catalog-development command passed again in run
+`2026-09-22T13-30-31-553Z-bd83bfd9`, project `urbanization_t01_f609f7e3114b`.
+It recorded base SHA `bf02c9e71233a9ad2fa4baacc470ebabe127c092` with a dirty
+working tree containing the upgrade fix, fixture SHA
+`cc7114c31fa8dbce0374279ccc4b4eabb8bebf021513719781c8ba7312c1edc3`,
+and successful exact-project cleanup. The seed step exercised the real
+PostgreSQL metadata projection, absent/failed-health initialization boundary,
+idempotent replay, and preservation of a valid ready catalog and its revision.
+The browser again completed both cold loads and physical record selections;
+environmental usable-context completeness remains false. Raw manifests, runtime
+image digests, commands, browser results and screenshots are retained in the
+ignored run directory. Final remote CI also checks U00 filters and C02 concurrency.

@@ -9,7 +9,7 @@ from app.config import get_settings
 from app.deployment_preflight import run_deployment_preflight
 from app.ingestion.agenda_pipeline import ingest_huntsville_agendas
 from app.ingestion.pipeline import ingest_huntsville, ingest_madison_county
-from app.map_layer_catalog import backfill_map_layer_catalog
+from app.map_layer_catalog import backfill_map_layer_catalog, upgrade_map_layer_catalog
 from app.phase3_store import migrate_artifact_collections_to_postgres, phase3_store_status
 from app.processed_store import (
     migrate_processed_artifacts_to_postgres,
@@ -97,6 +97,10 @@ def main() -> None:
         ),
     )
     subparsers.add_parser(
+        "upgrade-map-layer-catalog",
+        help="Release step: create missing layer metadata without replacing an existing catalog.",
+    )
+    subparsers.add_parser(
         "processed-store-status",
         help="Report canonical processed ingestion collection counts by backend.",
     )
@@ -170,6 +174,8 @@ def main() -> None:
     elif args.command == "backfill-map-layer-catalog":
         catalog = backfill_map_layer_catalog()
         print(catalog.model_dump_json(indent=2))
+    elif args.command == "upgrade-map-layer-catalog":
+        print(json.dumps(upgrade_map_layer_catalog(), sort_keys=True))
     elif args.command == "processed-store-status":
         result = processed_store_status()
         print(json.dumps(result, indent=2, sort_keys=True))

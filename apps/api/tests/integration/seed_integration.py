@@ -4,8 +4,16 @@ import json
 import os
 from pathlib import Path
 
-from app.map_layer_catalog import backfill_map_layer_catalog
-from app.processed_store import write_processed_list, write_processed_payload
+from app.map_layer_catalog import (
+    backfill_map_layer_catalog,
+    catalog_revision,
+    upgrade_map_layer_catalog,
+)
+from app.processed_store import (
+    read_processed_payload,
+    write_processed_list,
+    write_processed_payload,
+)
 
 
 def validate_with_postgis(fixture: dict) -> None:
@@ -65,11 +73,42 @@ def main() -> None:
         record = fixture["development_records"][0]
         record["public_id"] = os.environ["INTEGRATION_FIXTURE_ID"]
         record["title"] = os.environ["INTEGRATION_FIXTURE_TITLE"]
+    if read_processed_payload("map_layer_catalog") is None:
+        assert upgrade_map_layer_catalog() == {"status": "uninitialized"}
+        write_processed_payload("source_health", {"status": "failed", "sources": []})
+        assert upgrade_map_layer_catalog() == {"status": "uninitialized"}
     write_processed_list("development_records", fixture["development_records"])
     write_processed_list("staged_development_records", [])
     write_processed_list("environmental_overlays", fixture["environmental_overlays"])
     write_processed_payload("source_health", fixture["source_health"])
-    backfill_map_layer_catalog()
+    # Exercise the actual idempotent release upgrade against the isolated Postgres
+    # store before bringing up the API. No geometry is transferred by this step.
+    if fixture["environmental_overlays"]:
+        assert upgrade_map_layer_catalog()["status"] in {"created", "preserved"}
+    else:
+        # Explicit fixture initialization distinguishes known empty from absent
+        # legacy overlay rows, which have no per-collection readiness marker.
+        backfill_map_layer_catalog()
+    persisted = read_processed_payload("map_layer_catalog")
+    assert persisted is not None
+    assert upgrade_map_layer_catalog() == {"status": "preserved"}
+    assert read_processed_payload("map_layer_catalog") == persisted
+    if persisted["layers"]:
+        # A later ready tile catalog must survive an upgrade unchanged as well.
+        ready = json.loads(json.dumps(persisted))
+        ready["layers"][0].update({
+            "delivery_status": "ready",
+            "tile_url": "/api/map/tiles/example/{z}/{x}/{y}.pbf",
+            "source_layer": "context",
+        })
+        ready["catalog_revision"] = catalog_revision({
+            "data_mode": ready["data_mode"], "layers": ready["layers"],
+        })
+        write_processed_payload("map_layer_catalog", ready)
+        assert upgrade_map_layer_catalog() == {"status": "preserved"}
+        assert read_processed_payload("map_layer_catalog") == ready
+        write_processed_payload("map_layer_catalog", persisted)
+    print(json.dumps({"catalog_upgrade": "created_or_preserved", "idempotence": "passed"}))
 
 
 if __name__ == "__main__":

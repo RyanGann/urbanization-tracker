@@ -7,6 +7,7 @@ from pathlib import Path
 from typing import Any, cast
 
 from pydantic import ValidationError
+from sqlalchemy import text
 
 from app.config import get_settings
 from app.data_availability import Availability, DataUnavailableError
@@ -98,9 +99,16 @@ def backfill_map_layer_catalog() -> MapLayerCatalog:
     """Offline compatibility backfill; this is intentionally allowed to read bulk overlays."""
     result = read_processed_list_result("environmental_overlays")
     overlays = result.require_ready(collection="environmental_overlays")
+    catalog = _project_legacy_catalog([
+        (overlay, len(overlay["features"]["features"])) for overlay in overlays
+    ])
+    write_processed_payload(CATALOG_COLLECTION, catalog.model_dump(mode="json"))
+    return catalog
+
+
+def _project_legacy_catalog(overlays: list[tuple[dict[str, Any], int]]) -> MapLayerCatalog:
     layers: list[dict[str, Any]] = []
-    for overlay in overlays:
-        feature_count = len(overlay.get("features", {}).get("features", []))
+    for overlay, feature_count in overlays:
         layers.append({
             "id": overlay["id"], "kind": "vector", "title": overlay["name"],
             "category": overlay["category"], "data_version": None, "display_version": None,
@@ -114,9 +122,63 @@ def backfill_map_layer_catalog() -> MapLayerCatalog:
         })
     payload = {"data_mode": "live", "catalog_revision": "", "layers": layers}
     payload["catalog_revision"] = catalog_revision({"data_mode": "live", "layers": layers})
-    catalog = MapLayerCatalog.model_validate(payload)
-    write_processed_payload(CATALOG_COLLECTION, catalog.model_dump(mode="json"))
-    return catalog
+    return MapLayerCatalog.model_validate(payload)
+
+
+def upgrade_map_layer_catalog() -> dict[str, str]:
+    """Idempotent release step; never fetch sources or overwrite an existing catalog."""
+    settings = get_settings()
+    if settings.data_mode == "demo":
+        load_map_layer_catalog()
+        return {"status": "demo"}
+    if settings.processed_store_backend != "postgres":
+        existing = read_processed_payload_result(CATALOG_COLLECTION)
+        if existing.availability is not Availability.UNINITIALIZED:
+            load_map_layer_catalog()  # Fail closed on malformed existing metadata.
+            return {"status": "preserved"}
+        overlays = read_processed_list_result("environmental_overlays")
+        if overlays.availability is Availability.UNINITIALIZED:
+            return {"status": "uninitialized"}
+        backfill_map_layer_catalog()
+        return {"status": "created"}
+
+    from app.db import SessionLocal
+    from app.transactional_store import CollectionUnitOfWork
+
+    with SessionLocal.begin() as session:
+        unit = CollectionUnitOfWork(session)
+        with unit.canonical_mutation():
+            # Recheck after locking; a concurrent release may already have populated it.
+            existing_rows = unit.list_processed(CATALOG_COLLECTION)
+            if existing_rows:
+                if len(existing_rows) != 1:
+                    raise ValueError("The map layer catalog must contain one singleton")
+                _validate_catalog(existing_rows[0])
+                return {"status": "preserved"}
+            # Project on the database side: the release process never transfers or
+            # materializes geometry. PostgreSQL may still inspect the stored JSONB.
+            rows = session.execute(text("""
+                SELECT payload_json::jsonb - 'features' AS metadata,
+                       jsonb_array_length(
+                           payload_json::jsonb #> '{features,features}'
+                       ) AS feature_count
+                FROM processed_collection_items
+                WHERE collection_name = 'environmental_overlays'
+                ORDER BY sort_order, id
+            """)).all()
+            if not rows:
+                # Empty legacy rows carry no initialization marker. Source-health
+                # alone (including failed/development-only runs) cannot prove one.
+                return {"status": "uninitialized"}
+            if any(row.feature_count is None for row in rows):
+                raise ValueError("Legacy overlay is missing its feature array")
+            catalog = _project_legacy_catalog([
+                (row.metadata, row.feature_count) for row in rows
+            ])
+            unit.upsert_processed(
+                CATALOG_COLLECTION, "latest", catalog.model_dump(mode="json")
+            )
+            return {"status": "created"}
 
 def _load_demo_catalog() -> dict[str, Any]:
     payload = json.loads(DEMO_CATALOG_PATH.read_text(encoding="utf-8"))
@@ -133,6 +195,10 @@ def load_map_layer_catalog() -> MapLayerCatalog:
     else:
         result = read_processed_payload_result(CATALOG_COLLECTION)
         payload = result.require_ready(collection=CATALOG_COLLECTION)
+    return _validate_catalog(payload)
+
+
+def _validate_catalog(payload: Any) -> MapLayerCatalog:
     if not isinstance(payload, dict):
         raise DataUnavailableError(
             collection=CATALOG_COLLECTION, availability=Availability.UNAVAILABLE

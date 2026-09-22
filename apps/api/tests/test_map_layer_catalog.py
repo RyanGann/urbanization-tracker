@@ -296,3 +296,33 @@ def test_malformed_live_catalog_is_unavailable(monkeypatch, tmp_path) -> None:
 
     assert response.status_code == 503
     assert response.json()["detail"]["code"] == "data_unavailable"
+
+
+def test_release_upgrade_preserves_catalog_and_missing_source_state(monkeypatch, tmp_path) -> None:
+    from app.map_layer_catalog import upgrade_map_layer_catalog
+    from app.processed_store import write_processed_list
+
+    monkeypatch.setenv("DATA_MODE", "live")
+    monkeypatch.setenv("PROCESSED_STORE_BACKEND", "artifact")
+    monkeypatch.setenv("INGESTION_DATA_DIR", str(tmp_path))
+    get_settings.cache_clear()
+    assert upgrade_map_layer_catalog() == {"status": "uninitialized"}
+    assert client.get("/api/map/layers").status_code == 503
+
+    write_processed_list("environmental_overlays", [])
+    assert upgrade_map_layer_catalog() == {"status": "created"}
+    catalog_path = tmp_path / "processed" / "map_layer_catalog.json"
+    before = catalog_path.read_bytes()
+    monkeypatch.setattr(
+        "app.map_layer_catalog.read_processed_list_result",
+        lambda _collection: (_ for _ in ()).throw(AssertionError("unnecessary legacy read")),
+    )
+    assert upgrade_map_layer_catalog() == {"status": "preserved"}
+    assert catalog_path.read_bytes() == before
+
+    catalog_path.write_text("{}", encoding="utf-8")
+    from app.data_availability import DataUnavailableError
+
+    with pytest.raises(DataUnavailableError):
+        upgrade_map_layer_catalog()
+    assert catalog_path.read_text(encoding="utf-8") == "{}"

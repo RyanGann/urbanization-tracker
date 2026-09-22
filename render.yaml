@@ -8,6 +8,7 @@ services:
     plan: starter
     autoDeployTrigger: checksPass
     healthCheckPath: /health
+    preDeployCommand: sh -c "alembic upgrade head && python -m app.ingestion.cli upgrade-map-layer-catalog"
     envVars:
       - key: DATABASE_URL
         fromDatabase:
