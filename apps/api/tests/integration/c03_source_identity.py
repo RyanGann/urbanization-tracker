@@ -28,6 +28,7 @@ from app.ingestion.source_backfill import (
 )
 from app.ingestion.source_merge import Coverage, SourceBatch, SourceRecord, merge_postgres_batch
 from app.ingestion.sources.huntsville import NEW_SUBDIVISIONS
+from app.map_layer_catalog import catalog_revision
 from app.models import (
     ProcessedCollectionItem,
     SourceIdentityRegistry,
@@ -237,6 +238,41 @@ def main() -> None:
     parser.add_argument("--result", type=Path, required=True)
     args = parser.parse_args()
     seed_legacy()
+    ready_layer = {
+        "id": "wetlands",
+        "kind": "vector",
+        "title": "Wetlands",
+        "category": "context",
+        "data_version": "ready-data",
+        "display_version": "ready-display",
+        "delivery_status": "ready",
+        "tile_url": "https://tiles.example/ready",
+        "source_layer": "wetlands",
+        "minzoom": 1,
+        "maxzoom": 14,
+        "bounds": [-87.0, 34.0, -86.0, 35.0],
+        "coverage": {
+            "status": "unknown",
+            "scope_id": None,
+            "reported_count": 1,
+            "fetched_count": 1,
+        },
+        "source_name": "Agency",
+        "source_url": "https://example.test/failed-environment",
+        "attribution": "Agency",
+        "caveat": "",
+        "data_as_of": None,
+        "fetched_at": "2026-09-20T00:00:00+00:00",
+        "default_visible": True,
+    }
+    ready_catalog = {"data_mode": "live", "catalog_revision": "", "layers": [ready_layer]}
+    ready_catalog["catalog_revision"] = catalog_revision(
+        {"data_mode": "live", "layers": [ready_layer]}
+    )
+    with SessionLocal.begin() as session:
+        unit = CollectionUnitOfWork(session)
+        with unit.canonical_mutation():
+            unit.upsert_processed("map_layer_catalog", "latest", ready_catalog)
 
     with SessionLocal.begin() as session:
         unit = CollectionUnitOfWork(session)
@@ -415,6 +451,30 @@ def main() -> None:
                 "version": "bad",
             }
         ],
+        catalog={
+            "data_mode": "live",
+            "catalog_revision": catalog_revision(
+                {
+                    "data_mode": "live",
+                    "layers": [
+                        {
+                            **ready_layer,
+                            "data_version": "failed",
+                            "delivery_status": "failed",
+                            "tile_url": None,
+                        }
+                    ],
+                }
+            ),
+            "layers": [
+                {
+                    **ready_layer,
+                    "data_version": "failed",
+                    "delivery_status": "failed",
+                    "tile_url": None,
+                }
+            ],
+        },
     )
     madison_data_dir = Path("/tmp/c03-madison-artifacts")
     with ArcGISRestConnector(transport=httpx.MockTransport(madison_arcgis_handler)) as connector:
@@ -471,6 +531,7 @@ def main() -> None:
             if item.get("source_key") == "madison_county_subdivisions"
         ]
         merged_health = unit.get_processed("source_health", "latest")
+        preserved_catalog = unit.get_processed("map_layer_catalog", "latest")
     if registry is None or registry.source_record_id != "001":
         raise AssertionError("registry did not preserve the legacy public ID")
     if not any(item.get("title") == "C03 concurrent submission" for item in submissions):
@@ -509,6 +570,8 @@ def main() -> None:
         raise AssertionError("failed environmental source replaced the prior overlay")
     if manual is None or adapter_health["records"]["published"] < 2:
         raise AssertionError("adapter did not preserve manual/other canonical records")
+    if not isinstance(preserved_catalog, dict) or preserved_catalog["layers"] != [ready_layer]:
+        raise AssertionError("source refresh replaced a ready catalog layer")
     if {item["key"] for item in adapter_health["sources"]} != {
         NEW_SUBDIVISIONS.key,
         "huntsville_usfws_wetlands",
