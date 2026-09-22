@@ -9,12 +9,12 @@ from app.config import get_settings
 from app.deployment_preflight import run_deployment_preflight
 from app.ingestion.agenda_pipeline import ingest_huntsville_agendas
 from app.ingestion.pipeline import ingest_huntsville, ingest_madison_county
-from app.map_layer_catalog import backfill_map_layer_catalog, upgrade_map_layer_catalog
 from app.ingestion.source_backfill import (
     apply_source_identity_backfill,
     dry_run_source_identity_backfill,
     export_source_identity_mapping,
 )
+from app.map_layer_catalog import backfill_map_layer_catalog, upgrade_map_layer_catalog
 from app.phase3_store import migrate_artifact_collections_to_postgres, phase3_store_status
 from app.processed_store import (
     migrate_processed_artifacts_to_postgres,
@@ -201,6 +201,9 @@ def main() -> None:
         result = phase3_store_status()
         print(json.dumps(result, indent=2, sort_keys=True))
     elif args.command == "backfill-source-identities":
+        settings = get_settings()
+        if settings.data_mode != "live" or settings.processed_store_backend != "postgres":
+            raise RuntimeError("Source identity backfill requires live mode with PostgreSQL")
         from app.db import SessionLocal
 
         with SessionLocal.begin() as session:
