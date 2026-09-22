@@ -29,7 +29,7 @@ from app.ingestion.sources.huntsville import (
 from app.ingestion.sources.madison_county import (
     DEVELOPMENT_SOURCES as MADISON_COUNTY_DEVELOPMENT_SOURCES,
 )
-from app.map_layer_catalog import build_catalog
+from app.map_layer_catalog import CATALOG_COLLECTION, build_catalog, merge_ingestion_catalog
 from app.models import ProcessedCollectionItem
 from app.processed_store import (
     read_processed_list,
@@ -407,6 +407,7 @@ def _write_processed_state(
             staged_records=staged_records,
             published_records=published_records,
             overlays=overlays,
+            catalog=catalog,
         )
     raw_source_keys = {
         str(record["data_source_key"]) for record in raw_records if record.get("data_source_key")
@@ -486,7 +487,8 @@ def _write_processed_state(
 
 
 def _require_postgres_identity_store() -> None:
-    if get_settings().processed_store_backend != "postgres":
+    settings = get_settings()
+    if settings.data_mode != "live" or settings.processed_store_backend != "postgres":
         raise ArtifactIdentityIngestionUnsupported(
             "Artifact ingestion cannot preserve C03 source identities; use PostgreSQL or a future "
             "single-writer compatibility import. Existing artifact preview reads remain supported."
@@ -502,6 +504,7 @@ def _write_postgres_source_state(
     staged_records: list[dict[str, Any]],
     published_records: list[dict[str, Any]],
     overlays: list[dict[str, Any]] | None,
+    catalog: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     from app.db import SessionLocal
     from app.transactional_store import CollectionUnitOfWork
@@ -562,6 +565,15 @@ def _write_postgres_source_state(
                 raw_key = f"{source_key}:{run_id}:{payload_digest}"
                 unit.upsert_processed(
                     "raw_records", raw_key, {**raw_record, "ingestion_run_id": run_id}
+                )
+            if catalog is not None:
+                catalog_rows = unit.list_processed(CATALOG_COLLECTION)
+                if len(catalog_rows) > 1:
+                    raise ValueError("The map layer catalog must contain one singleton")
+                unit.upsert_processed(
+                    CATALOG_COLLECTION,
+                    "latest",
+                    merge_ingestion_catalog(catalog_rows[0] if catalog_rows else None, catalog),
                 )
 
             existing_health = unit.get_processed("source_health", "latest") or {}

@@ -7,10 +7,57 @@ from fastapi.testclient import TestClient
 
 from app.config import get_settings
 from app.main import app
-from app.map_layer_catalog import build_catalog, catalog_revision
+from app.map_layer_catalog import build_catalog, catalog_revision, merge_ingestion_catalog
 from app.processed_store import write_processed_payload
 
 client = TestClient(app)
+
+
+def test_ingestion_catalog_merge_preserves_ready_delivery_and_extension_metadata() -> None:
+    layer = {
+        "id": "wetlands",
+        "kind": "vector",
+        "title": "Wetlands",
+        "category": "context",
+        "data_version": "old",
+        "display_version": "tiles-v1",
+        "delivery_status": "ready",
+        "tile_url": "https://tiles.example/v1",
+        "source_layer": "wetlands",
+        "minzoom": 1,
+        "maxzoom": 14,
+        "bounds": [-87.0, 34.0, -86.0, 35.0],
+        "coverage": {
+            "status": "unknown",
+            "scope_id": None,
+            "reported_count": 1,
+            "fetched_count": 1,
+        },
+        "source_name": "Agency",
+        "source_url": "https://source.example",
+        "attribution": "Agency",
+        "caveat": "",
+        "data_as_of": None,
+        "fetched_at": "2026-09-20T00:00:00+00:00",
+        "default_visible": True,
+    }
+    existing = {
+        "data_mode": "live",
+        "catalog_revision": "",
+        "layers": [layer],
+        "imports": {"future": "preserved"},
+    }
+    existing["catalog_revision"] = catalog_revision({"data_mode": "live", "layers": [layer]})
+    incoming_layer = {**layer, "data_version": "new", "delivery_status": "failed", "tile_url": None}
+    incoming = {"data_mode": "live", "catalog_revision": "", "layers": [incoming_layer]}
+    incoming["catalog_revision"] = catalog_revision(
+        {"data_mode": "live", "layers": [incoming_layer]}
+    )
+
+    merged = merge_ingestion_catalog(existing, incoming)
+
+    assert merged["layers"] == [layer]
+    assert merged["imports"] == {"future": "preserved"}
 
 
 @pytest.fixture(autouse=True)
@@ -122,7 +169,6 @@ def test_catalog_etag_changes_with_validated_metadata(monkeypatch, tmp_path) -> 
     assert initial_response.headers["etag"] != changed_response.headers["etag"]
 
 
-
 def test_populated_live_catalog_is_compact_and_never_reads_legacy_bulk(
     monkeypatch, tmp_path
 ) -> None:
@@ -157,6 +203,7 @@ def test_populated_live_catalog_is_compact_and_never_reads_legacy_bulk(
     assert response.json()["layers"][0]["id"] == "live-layer"
     assert "features" not in response.text and "coordinates" not in response.text
 
+
 def test_missing_live_catalog_is_unavailable_and_not_cacheable(monkeypatch, tmp_path) -> None:
     monkeypatch.setenv("DATA_MODE", "live")
     monkeypatch.setenv("PROCESSED_STORE_BACKEND", "artifact")
@@ -182,8 +229,18 @@ def test_catalog_builder_uses_source_metadata_without_geometry() -> None:
         default_visible = True
 
     catalog = build_catalog(
-        [(Source(), {"status": "healthy", "checked_at": "2026-09-20T00:00:00Z", "records_seen": 2,
-                     "raw_artifact_sha256": "abc", "metadata": {"reported_count": 3}})]
+        [
+            (
+                Source(),
+                {
+                    "status": "healthy",
+                    "checked_at": "2026-09-20T00:00:00Z",
+                    "records_seen": 2,
+                    "raw_artifact_sha256": "abc",
+                    "metadata": {"reported_count": 3},
+                },
+            )
+        ]
     )
 
     encoded = json.dumps(catalog).encode()
@@ -265,15 +322,21 @@ def test_offline_backfill_is_the_only_path_that_projects_bulk_overlay_metadata(
     get_settings.cache_clear()
     write_processed_list(
         "environmental_overlays",
-        [{
-            "id": "offline-layer", "name": "Offline layer", "category": "wetlands",
-            "source_url": "https://example.test/layer", "attribution": "Example",
-            "caveat": "Context only", "geom_type": "polygon",
-            "features": {
-                "type": "FeatureCollection",
-                "features": [{"geometry": {"type": "Point", "coordinates": [1, 2]}}],
-            },
-        }],
+        [
+            {
+                "id": "offline-layer",
+                "name": "Offline layer",
+                "category": "wetlands",
+                "source_url": "https://example.test/layer",
+                "attribution": "Example",
+                "caveat": "Context only",
+                "geom_type": "polygon",
+                "features": {
+                    "type": "FeatureCollection",
+                    "features": [{"geometry": {"type": "Point", "coordinates": [1, 2]}}],
+                },
+            }
+        ],
     )
 
     catalog = backfill_map_layer_catalog()
@@ -283,6 +346,7 @@ def test_offline_backfill_is_the_only_path_that_projects_bulk_overlay_metadata(
     persisted = read_processed_payload("map_layer_catalog")
     assert persisted is not None
     assert "coordinates" not in json.dumps(persisted)
+
 
 def test_malformed_live_catalog_is_unavailable(monkeypatch, tmp_path) -> None:
     monkeypatch.setenv("DATA_MODE", "live")

@@ -27,9 +27,7 @@ def catalog_revision(payload: dict[str, Any]) -> str:
     return hashlib.sha256(canonical).hexdigest()
 
 
-def _coverage_status(
-    source_status: str, reported_count: Any, fetched_count: Any
-) -> str:
+def _coverage_status(source_status: str, reported_count: Any, fetched_count: Any) -> str:
     if source_status != "healthy":
         return "failed"
     if (
@@ -53,9 +51,7 @@ def build_catalog(
     layers: list[dict[str, Any]] = []
     for config, health in environmental_sources:
         raw_metadata = health.get("metadata")
-        metadata: dict[str, Any] = (
-            raw_metadata if isinstance(raw_metadata, dict) else {}
-        )
+        metadata: dict[str, Any] = raw_metadata if isinstance(raw_metadata, dict) else {}
         source_status = str(health.get("status", "unknown"))
         reported_count = metadata.get("reported_count")
         fetched_count = health.get("records_seen")
@@ -74,9 +70,7 @@ def build_catalog(
                 "maxzoom": None,
                 "bounds": None,
                 "coverage": {
-                    "status": _coverage_status(
-                        source_status, reported_count, fetched_count
-                    ),
+                    "status": _coverage_status(source_status, reported_count, fetched_count),
                     "scope_id": None,
                     "reported_count": reported_count,
                     "fetched_count": fetched_count,
@@ -95,13 +89,65 @@ def build_catalog(
     return payload
 
 
+def merge_ingestion_catalog(
+    existing: dict[str, Any] | None,
+    incoming: dict[str, Any],
+) -> dict[str, Any]:
+    """Reconcile source observations without replacing a ready delivery version.
+
+    This is pure so the ingestion adapter can invoke it inside its existing C02
+    unit of work. P03 owns any after-transaction import bridge.
+    """
+    incoming_model = MapLayerCatalog.model_validate(copy.deepcopy(incoming))
+    incoming_payload = incoming_model.model_dump(mode="json")
+    if existing is None:
+        result = incoming_payload
+        if "imports" in incoming:
+            result["imports"] = copy.deepcopy(incoming["imports"])
+    else:
+        existing_model = MapLayerCatalog.model_validate(copy.deepcopy(existing))
+        if existing_model.data_mode != incoming_model.data_mode:
+            raise ValueError("Cannot merge map layer catalogs from different data modes")
+        expected_revision = catalog_revision(
+            {
+                "data_mode": existing_model.data_mode,
+                "layers": [layer.model_dump(mode="json") for layer in existing_model.layers],
+            }
+        )
+        if existing_model.catalog_revision != expected_revision:
+            raise ValueError("Existing map layer catalog revision is invalid")
+        existing_by_id = {
+            str(layer["id"]): layer for layer in existing_model.model_dump(mode="json")["layers"]
+        }
+        incoming_by_id = {str(layer["id"]): layer for layer in incoming_payload["layers"]}
+        layers: list[dict[str, Any]] = []
+        for layer_id, old_layer in existing_by_id.items():
+            replacement = incoming_by_id.pop(layer_id, old_layer)
+            layers.append(old_layer if old_layer["delivery_status"] == "ready" else replacement)
+        layers.extend(incoming_by_id.values())
+        result = {
+            "data_mode": incoming_payload["data_mode"],
+            "catalog_revision": "",
+            "layers": layers,
+        }
+        if "imports" in existing:
+            result["imports"] = copy.deepcopy(existing["imports"])
+        elif "imports" in incoming:
+            result["imports"] = copy.deepcopy(incoming["imports"])
+    result["catalog_revision"] = catalog_revision(
+        {"data_mode": result["data_mode"], "layers": result["layers"]}
+    )
+    MapLayerCatalog.model_validate(copy.deepcopy(result))
+    return result
+
+
 def backfill_map_layer_catalog() -> MapLayerCatalog:
     """Offline compatibility backfill; this is intentionally allowed to read bulk overlays."""
     result = read_processed_list_result("environmental_overlays")
     overlays = result.require_ready(collection="environmental_overlays")
-    catalog = _project_legacy_catalog([
-        (overlay, len(overlay["features"]["features"])) for overlay in overlays
-    ])
+    catalog = _project_legacy_catalog(
+        [(overlay, len(overlay["features"]["features"])) for overlay in overlays]
+    )
     write_processed_payload(CATALOG_COLLECTION, catalog.model_dump(mode="json"))
     return catalog
 
@@ -109,17 +155,35 @@ def backfill_map_layer_catalog() -> MapLayerCatalog:
 def _project_legacy_catalog(overlays: list[tuple[dict[str, Any], int]]) -> MapLayerCatalog:
     layers: list[dict[str, Any]] = []
     for overlay, feature_count in overlays:
-        layers.append({
-            "id": overlay["id"], "kind": "vector", "title": overlay["name"],
-            "category": overlay["category"], "data_version": None, "display_version": None,
-            "delivery_status": "processing", "tile_url": None, "source_layer": None,
-            "minzoom": None, "maxzoom": None, "bounds": None,
-            "coverage": {"status": "unknown", "scope_id": None, "reported_count": None,
-                         "fetched_count": feature_count},
-            "source_name": overlay["attribution"], "source_url": overlay["source_url"],
-            "attribution": overlay["attribution"], "caveat": overlay["caveat"],
-            "data_as_of": None, "fetched_at": None, "default_visible": True,
-        })
+        layers.append(
+            {
+                "id": overlay["id"],
+                "kind": "vector",
+                "title": overlay["name"],
+                "category": overlay["category"],
+                "data_version": None,
+                "display_version": None,
+                "delivery_status": "processing",
+                "tile_url": None,
+                "source_layer": None,
+                "minzoom": None,
+                "maxzoom": None,
+                "bounds": None,
+                "coverage": {
+                    "status": "unknown",
+                    "scope_id": None,
+                    "reported_count": None,
+                    "fetched_count": feature_count,
+                },
+                "source_name": overlay["attribution"],
+                "source_url": overlay["source_url"],
+                "attribution": overlay["attribution"],
+                "caveat": overlay["caveat"],
+                "data_as_of": None,
+                "fetched_at": None,
+                "default_visible": True,
+            }
+        )
     payload = {"data_mode": "live", "catalog_revision": "", "layers": layers}
     payload["catalog_revision"] = catalog_revision({"data_mode": "live", "layers": layers})
     return MapLayerCatalog.model_validate(payload)
@@ -157,7 +221,8 @@ def upgrade_map_layer_catalog() -> dict[str, str]:
                 return {"status": "preserved"}
             # Project on the database side: the release process never transfers or
             # materializes geometry. PostgreSQL may still inspect the stored JSONB.
-            rows = session.execute(text("""
+            rows = session.execute(
+                text("""
                 SELECT payload_json::jsonb - 'features' AS metadata,
                        jsonb_array_length(
                            payload_json::jsonb #> '{features,features}'
@@ -165,20 +230,18 @@ def upgrade_map_layer_catalog() -> dict[str, str]:
                 FROM processed_collection_items
                 WHERE collection_name = 'environmental_overlays'
                 ORDER BY sort_order, id
-            """)).all()
+            """)
+            ).all()
             if not rows:
                 # Empty legacy rows carry no initialization marker. Source-health
                 # alone (including failed/development-only runs) cannot prove one.
                 return {"status": "uninitialized"}
             if any(row.feature_count is None for row in rows):
                 raise ValueError("Legacy overlay is missing its feature array")
-            catalog = _project_legacy_catalog([
-                (row.metadata, row.feature_count) for row in rows
-            ])
-            unit.upsert_processed(
-                CATALOG_COLLECTION, "latest", catalog.model_dump(mode="json")
-            )
+            catalog = _project_legacy_catalog([(row.metadata, row.feature_count) for row in rows])
+            unit.upsert_processed(CATALOG_COLLECTION, "latest", catalog.model_dump(mode="json"))
             return {"status": "created"}
+
 
 def _load_demo_catalog() -> dict[str, Any]:
     payload = json.loads(DEMO_CATALOG_PATH.read_text(encoding="utf-8"))
