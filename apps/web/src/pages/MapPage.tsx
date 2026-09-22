@@ -254,6 +254,17 @@ export function MapPage() {
               })}
             </div>
           ) : null}
+          {!catalogQuery.isError ? catalogQuery.data?.imports?.map((progress) => (
+            <p className="muted" key={progress.layer_id} role="status" aria-live="polite">
+              {catalogLayers.find((layer) => layer.id === progress.layer_id)?.title ?? progress.layer_id}
+              {": "}{progress.seen} source records checked, {progress.rejected} need review.
+              {progress.status === "failed"
+                ? " The update needs attention; existing map data has been retained."
+                : progress.status === "validated"
+                  ? " Source data checked; map preparation is pending."
+                  : " Source data preparation is in progress."}
+            </p>
+          )) : null}
         </section>
 
         <section className="panel record-list-panel">

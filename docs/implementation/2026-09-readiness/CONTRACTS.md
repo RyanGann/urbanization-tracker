@@ -78,6 +78,17 @@ The example bounds and source URL are illustrative, not verified source facts. C
 
 Reuse/extend EnvironmentalLayer and EnvironmentalFeature for immutable canonical versions and original accepted EPSG:4326 geometry. One layer-version row owns its features, unique by stable source feature ID within that version. Maintain a small active-layer pointer by stable layer key. A separate derived display-parts table stores version/feature/zoom-band/part IDs and indexed EPSG:3857 geometry. Verify existing GeoAlchemy spatial indexes before adding another.
 
+P03 adds optional top-level `imports` catalog metadata, with at most the latest import
+per layer (maximum 50 entries, still within the 50 KiB catalog budget). Each entry
+contains layer_id, data_version, status, expected, seen, accepted, rejected and
+checkpoint. Status is loading, validated or failed. Any rejected/quarantined row,
+ambiguous identity or declared-count mismatch makes the import failed. Unknown
+source completeness remains unknown even when the copied artifact fully validates.
+Import progress never changes an existing ready layer's version or tile pointers.
+Old catalogs omit `imports` entirely and retain their existing revision/body; new
+catalog revisions include this property only when it is present. Full import history
+and bounded diagnostic samples remain in PostgreSQL, outside the startup response.
+
 Canonical data_version includes source checksum + declared scope + canonical import format. display_version also includes derivative algorithm/config. Changes never overwrite bytes served under an existing version URL. Parsing/preprocessing runs offline; activate only complete validated data/derivatives in a short transaction. Retain active, previous and versions within at least seven days of replacement; extend retention if cache policy requires it. An old cached catalog must still work.
 
 Tile path: `GET /api/map/layers/{layer_id}/tiles/{display_version}/{z}/{x}/{y}.pbf`. Fixed MVT source-layer `environment`, extent 4096, buffer 64. Validate 0 <= x,y < 2^z and catalog zoom range. Query projected indexed parts against the buffered envelope; do not transform the indexed column in the filter. Include only feature ID/category and required style properties. Success uses `application/vnd.mapbox-vector-tile`, immutable version caching and representation-correct ETags; errors use no-store. Empty tiles are valid 200 only for known ready versions.

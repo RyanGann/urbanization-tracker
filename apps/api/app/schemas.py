@@ -6,10 +6,12 @@ from pydantic import (
     ConfigDict,
     Field,
     HttpUrl,
+    SerializerFunctionWrapHandler,
     TypeAdapter,
     ValidationError,
     field_serializer,
     field_validator,
+    model_serializer,
 )
 
 from app.data_availability import Availability, DataUnavailableError
@@ -440,10 +442,36 @@ class MapLayer(BaseModel):
     default_visible: bool = False
 
 
+class LayerImportProgress(BaseModel):
+    layer_id: str = Field(max_length=100)
+    data_version: str = Field(min_length=64, max_length=64)
+    status: Literal["loading", "validated", "failed"]
+    expected: int | None = Field(default=None, ge=0)
+    seen: int = Field(ge=0)
+    accepted: int = Field(ge=0)
+    rejected: int = Field(ge=0)
+    checkpoint: int = Field(ge=0)
+
+
 class MapLayerCatalog(BaseModel):
     data_mode: Literal["live", "demo"]
     catalog_revision: str
     layers: list[MapLayer] = Field(default_factory=list)
+    imports: list[LayerImportProgress] = Field(default_factory=list, max_length=50)
+
+    @field_validator("imports")
+    @classmethod
+    def unique_import_layers(cls, value: list[LayerImportProgress]) -> list[LayerImportProgress]:
+        if len({item.layer_id for item in value}) != len(value):
+            raise ValueError("Only one latest import per layer is allowed")
+        return value
+
+    @model_serializer(mode="wrap")
+    def omit_absent_imports(self, handler: SerializerFunctionWrapHandler) -> dict[str, Any]:
+        result: dict[str, Any] = handler(self)
+        if "imports" not in self.model_fields_set:
+            result.pop("imports", None)
+        return result
 
 class EnvironmentalOverlay(BaseModel):
     id: str

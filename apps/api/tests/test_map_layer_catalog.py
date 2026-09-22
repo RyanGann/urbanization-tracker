@@ -390,3 +390,29 @@ def test_release_upgrade_preserves_catalog_and_missing_source_state(monkeypatch,
     with pytest.raises(DataUnavailableError):
         upgrade_map_layer_catalog()
     assert catalog_path.read_text(encoding="utf-8") == "{}"
+
+
+def test_optional_import_progress_preserves_legacy_body_and_changes_etag(monkeypatch, tmp_path):
+    monkeypatch.setenv("DATA_MODE", "live")
+    monkeypatch.setenv("PROCESSED_STORE_BACKEND", "artifact")
+    monkeypatch.setenv("INGESTION_DATA_DIR", str(tmp_path))
+    get_settings.cache_clear()
+    legacy = {"data_mode": "live", "layers": []}
+    legacy["catalog_revision"] = catalog_revision(legacy)
+    write_processed_payload("map_layer_catalog", legacy)
+    before = client.get("/api/map/layers")
+    assert before.status_code == 200
+    assert before.json() == legacy
+    assert "imports" not in before.json()
+
+    current = {"data_mode": "live", "layers": [], "imports": [{
+        "layer_id": "layer-a", "data_version": "a" * 64, "status": "loading",
+        "expected": None, "seen": 32, "accepted": 31, "rejected": 1, "checkpoint": 32,
+    }]}
+    current["catalog_revision"] = catalog_revision(current)
+    write_processed_payload("map_layer_catalog", current)
+    after = client.get("/api/map/layers", headers={"If-None-Match": before.headers["etag"]})
+    assert after.status_code == 200
+    assert after.json() == current
+    assert after.headers["etag"] != before.headers["etag"]
+    assert len(after.content) <= 50 * 1024

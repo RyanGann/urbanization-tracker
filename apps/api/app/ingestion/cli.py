@@ -8,6 +8,7 @@ from app.alert_delivery import send_queued_email_alerts
 from app.config import get_settings
 from app.deployment_preflight import run_deployment_preflight
 from app.ingestion.agenda_pipeline import ingest_huntsville_agendas
+from app.ingestion.environmental_import import ImportOptions, import_environmental_file
 from app.ingestion.pipeline import ingest_huntsville, ingest_madison_county
 from app.ingestion.source_backfill import (
     apply_source_identity_backfill,
@@ -31,6 +32,26 @@ HOSTED_INGESTION_COMMANDS = {
 def main() -> None:
     parser = argparse.ArgumentParser(description="Urbanization Tracker ingestion commands")
     subparsers = parser.add_subparsers(dest="command", required=True)
+
+    environmental = subparsers.add_parser(
+        "import-environmental",
+        help="Validate or shadow-import a copied environmental overlay file.",
+    )
+    environmental.add_argument("--input", type=Path, required=True)
+    environmental.add_argument("--layer-id", required=True)
+    environmental.add_argument("--id-field", default="@id")
+    environmental.add_argument("--scope-id")
+    environmental.add_argument("--scope-version")
+    environmental.add_argument("--scope-file", type=Path)
+    environmental.add_argument("--expected-count", type=int)
+    environmental.add_argument(
+        "--coverage", choices=("unknown", "partial", "failed"), default="unknown",
+    )
+    environmental.add_argument("--batch-size", type=int, default=32)
+    environmental.add_argument(
+        "--apply", action="store_true", help="Write shadow versions; never activate.",
+    )
+    environmental.add_argument("--report", type=Path)
 
     huntsville = subparsers.add_parser(
         "ingest-huntsville",
@@ -164,7 +185,36 @@ def main() -> None:
         )
         return
 
-    if args.command == "ingest-huntsville":
+    if args.command == "import-environmental":
+        try:
+            scope_definition = None
+            if args.scope_file:
+                if args.scope_file.stat().st_size > 64 * 1024:
+                    raise ValueError("scope_too_large")
+                scope_definition = json.loads(args.scope_file.read_text(encoding="utf-8"))
+                if not isinstance(scope_definition, dict):
+                    raise ValueError("invalid_scope")
+            result = import_environmental_file(args.input, ImportOptions(
+                layer_id=args.layer_id, scope_id=args.scope_id, scope_version=args.scope_version,
+                scope_definition=scope_definition, id_field=args.id_field,
+                expected_count=args.expected_count, coverage=args.coverage,
+                batch_size=args.batch_size,
+            ), dry_run=not args.apply)
+        except Exception as exc:
+            # Parser/driver exceptions can contain source values, SQL and credentials.
+            # Keep public CLI output fixed and bounded; detailed feature diagnostics
+            # are stored by the importer using explicit codes and source IDs only.
+            from app.ingestion.environmental_import import ImportBusyError
+            result = {"status": "failed", "code": (
+                "import_busy" if isinstance(exc, ImportBusyError) else "environmental_import_failed"
+            )}
+        output = json.dumps(result, indent=2, sort_keys=True)
+        if args.report:
+            args.report.write_text(output + "\n", encoding="utf-8")
+        print(output)
+        if result["status"] == "failed":
+            raise SystemExit(1)
+    elif args.command == "ingest-huntsville":
         result = ingest_huntsville(
             data_dir=args.data_dir,
             permit_limit=args.permit_limit,
