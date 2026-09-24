@@ -84,6 +84,16 @@ services:
     networks:
       - private
 
+  artifact-store:
+    image: dxflrs/garage@sha256:866bd13ed2038ba7e7190e840482bc27234c4afaf77be8cfa439ae088c1e4690
+    profiles: ["o01"]
+    volumes:
+      - ./apps/api/garage.integration.toml:/etc/garage.toml:ro
+      - integration-garage-meta:/var/lib/garage/meta
+      - integration-garage-data:/var/lib/garage/data
+    networks:
+      - private
+
   browser:
     build:
       context: .
@@ -110,6 +120,8 @@ services:
 
 volumes:
   integration-db:
+  integration-garage-meta:
+  integration-garage-data:
 
 networks:
   private:

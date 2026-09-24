@@ -167,8 +167,6 @@ export interface SourceDocument {
   fetched_at: string | null;
   sha256: string | null;
   content_type: string | null;
-  storage_uri: string | null;
-  extracted_text_uri: string | null;
   extraction_status: string;
   parsed_item_count: number;
   text_excerpt: string | null;

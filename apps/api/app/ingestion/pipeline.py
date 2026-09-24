@@ -5,16 +5,20 @@ import json
 from datetime import datetime
 from pathlib import Path
 from typing import Any, Literal
+from uuid import UUID
 
 from sqlalchemy import func, select
 
 from app.config import get_settings
+from app.ingestion.artifact_service import ArtifactService
+from app.ingestion.artifact_sink import ArtifactError
 from app.ingestion.artifacts import (
     ensure_data_dirs,
     iso_now,
     read_json,
     record_artifact,
     write_json,
+    write_staged_json,
 )
 from app.ingestion.connectors.arcgis import ArcGISLayerConfig, ArcGISRestConnector
 from app.ingestion.identity import SourceIdentityError, source_record_id
@@ -96,7 +100,20 @@ def ingest_huntsville(
         _set_accepted_development_counts(
             source_health, published_records, {source.key for source in DEVELOPMENT_SOURCES}
         )
-        compute_proximity_flags(published_records, environmental_collections)
+        context_unverified = get_settings().artifact_durability_required and any(
+            health.get("status") != "healthy" or health.get("_artifact_pending")
+            for _, health in environmental_catalog_sources
+        )
+        if context_unverified:
+            development_keys = {source.key for source in DEVELOPMENT_SOURCES}
+            for health_row in source_health:
+                if health_row.get("key") in development_keys:
+                    health_row["_dependent_context_pending"] = True
+                    health_row["status"] = "degraded"
+                    health_row["error_count"] += 1
+                    health_row["validation_errors"].append("environmental_context_unverified")
+        else:
+            compute_proximity_flags(published_records, environmental_collections)
         overlays = _environmental_overlays(environmental_collections)
         catalog = build_catalog(environmental_catalog_sources)
 
@@ -201,6 +218,7 @@ def _fetch_source(
         "metadata": {},
         "raw_artifact": None,
     }
+    artifact_upload_started = False
 
     try:
         metadata = connector.get_layer_metadata(config)
@@ -231,6 +249,25 @@ def _fetch_source(
         health["raw_artifact"] = raw_artifact["storage_uri"]
         health["raw_artifact_sha256"] = raw_artifact["sha256"]
         health["raw_artifact_bytes"] = raw_artifact["byte_size"]
+        if get_settings().artifact_durability_required:
+            artifact_upload_started = True
+            from app.db import SessionLocal
+
+            settings = get_settings().model_copy(update={"ingestion_data_dir": data_dir})
+            artifact_service = ArtifactService(settings, SessionLocal)
+            reference_id = artifact_service.upload_file(
+                path=raw_path,
+                source_key=config.key,
+                run_id=run_id,
+                artifact_type="raw_geojson",
+                logical_key=config.key,
+                required=True,
+                content_type="application/geo+json",
+                source_url=config.layer_url,
+            )
+            health["_artifact_reference_id"] = str(reference_id)
+            artifact_service.cleanup_verified(reference_id, raw_path)
+            artifact_upload_started = False
         return {
             "health": health,
             "collection": collection,
@@ -239,7 +276,14 @@ def _fetch_source(
     except Exception as exc:
         health["status"] = "failing"
         health["error_count"] = 1
-        health["validation_errors"].append(str(exc))
+        if isinstance(exc, ArtifactError):
+            health["_artifact_pending"] = True
+            health["validation_errors"].append(exc.code)
+        elif artifact_upload_started:
+            health["_artifact_pending"] = True
+            health["validation_errors"].append("artifact_unavailable")
+        else:
+            health["validation_errors"].append(str(exc))
         return {
             "health": health,
             "collection": {"type": "FeatureCollection", "features": []},
@@ -253,8 +297,9 @@ def _write_raw_collection(
     raw_dir = data_dir / "raw" / source_key
     run_path = raw_dir / f"{run_id}.geojson"
     latest_path = raw_dir / "latest.geojson"
-    write_json(run_path, collection)
-    write_json(latest_path, collection)
+    write_staged_json(data_dir, run_path, collection)
+    if not get_settings().artifact_durability_required:
+        write_json(latest_path, collection)
     return run_path
 
 
@@ -462,6 +507,7 @@ def _write_processed_state(
     processed_dir = data_dir / "processed"
     if get_settings().processed_store_backend == "postgres":
         return _write_postgres_source_state(
+            data_dir=data_dir,
             run_id=run_id,
             checked_at=checked_at,
             source_health=source_health,
@@ -550,6 +596,8 @@ def _write_processed_state(
 
 def _require_postgres_identity_store() -> None:
     settings = get_settings()
+    if settings.hosted_ingestion_enabled and not settings.artifact_durability_required:
+        raise ArtifactError("artifact_configuration")
     if settings.data_mode != "live" or settings.processed_store_backend != "postgres":
         raise ArtifactIdentityIngestionUnsupported(
             "Artifact ingestion cannot preserve C03 source identities; use PostgreSQL or a future "
@@ -559,6 +607,7 @@ def _require_postgres_identity_store() -> None:
 
 def _write_postgres_source_state(
     *,
+    data_dir: Path,
     run_id: str,
     checked_at: str,
     source_health: list[dict[str, Any]],
@@ -571,6 +620,13 @@ def _write_postgres_source_state(
     from app.db import SessionLocal
     from app.transactional_store import CollectionUnitOfWork
 
+    sink_id = (
+        ArtifactService(
+            get_settings().model_copy(update={"ingestion_data_dir": data_dir}), SessionLocal
+        ).sink_id
+        if get_settings().artifact_durability_required
+        else None
+    )
     checked = datetime.fromisoformat(checked_at)
     staged_by_id = {str(record["id"]).removeprefix("stage-"): record for record in staged_records}
     if len(staged_by_id) != len(staged_records) or len(
@@ -605,7 +661,13 @@ def _write_postgres_source_state(
             merge_results: dict[str, dict[str, int | bool]] = {}
             for source in source_health:
                 source_key = str(source["key"])
+                if source.get("_artifact_pending") or source.get("_dependent_context_pending"):
+                    continue
                 coverage, outcome = _legacy_batch_outcome(source)
+                reference_text = source.get("_artifact_reference_id")
+                required_references = (
+                    (UUID(reference_text),) if isinstance(reference_text, str) else ()
+                )
                 quarantined_count = source.get("quarantined_count")
                 if quarantined_count is None:
                     # Compatibility for an older direct adapter caller that only
@@ -627,6 +689,8 @@ def _write_postgres_source_state(
                         checked_at=checked,
                         records=tuple(published_by_source.get(source_key, [])),
                         quarantined_count=int(quarantined_count),
+                        required_reference_ids=required_references,
+                        artifact_sink_id=sink_id,
                     ),
                     unit_of_work=unit,
                 )

@@ -1,4 +1,5 @@
 from typing import Any, Literal
+from urllib.parse import urlsplit, urlunsplit
 
 from email_validator import EmailNotValidError, validate_email
 from pydantic import (
@@ -128,6 +129,76 @@ class SourceDocument(BaseModel):
     extraction_status: str
     parsed_item_count: int = 0
     text_excerpt: str | None = None
+
+
+    @field_validator("url", mode="before")
+    @classmethod
+    def public_url(cls, value: object) -> str:
+        return _public_http_url(value) or ""
+
+
+def _public_http_url(value: object) -> str | None:
+    if not isinstance(value, str) or len(value) > 4096:
+        return None
+    try:
+        parsed = urlsplit(value)
+        if parsed.scheme not in {"http", "https"} or not parsed.hostname:
+            return None
+        if parsed.username or parsed.password:
+            return None
+        return urlunsplit((parsed.scheme, parsed.netloc, parsed.path, "", ""))
+    except ValueError:
+        return None
+
+
+class PublicSourceCounts(BaseModel):
+    raw: int = 0
+    staged: int = 0
+    published: int = 0
+    proximity_flags: int = 0
+
+
+class PublicSourceHealthRow(BaseModel):
+    key: str
+    name: str = ""
+    source_url: str = ""
+    status: str = "unknown"
+    checked_at: str | None = None
+    records_seen: int = 0
+    records_created: int = 0
+    error_count: int = 0
+    validation_errors: list[str] = Field(default_factory=list)
+    raw_artifact_sha256: str | None = None
+    raw_artifact_bytes: int | None = None
+
+    @field_validator("source_url", mode="before")
+    @classmethod
+    def public_url(cls, value: object) -> str:
+        return _public_http_url(value) or ""
+
+    @field_validator("validation_errors", mode="before")
+    @classmethod
+    def public_errors(cls, value: object) -> list[str]:
+        if not isinstance(value, list):
+            return []
+        allowed = {
+            "artifact_missing", "artifact_unavailable", "artifact_credentials",
+            "artifact_integrity", "artifact_too_large", "artifact_path",
+            "artifact_configuration", "artifact_checkpoint",
+            "environmental_context_unverified",
+        }
+        return [
+            error if isinstance(error, str) and error in allowed else "source_error"
+            for error in value[:32]
+        ]
+
+
+class PublicSourceHealth(BaseModel):
+    run_id: str | None = None
+    checked_at: str | None = None
+    status: str = "unknown"
+    records: PublicSourceCounts = Field(default_factory=PublicSourceCounts)
+    sources: list[PublicSourceHealthRow] = Field(default_factory=list)
 
 
 class UserSubmissionCreate(BaseModel):
