@@ -5,7 +5,7 @@ Execution status: [plan.json](plan.json), entry `P04`. Guide baseline: `dbdaf099
 | Field | Assignment |
 | --- | --- |
 | Track / gate | Performance / G1 |
-| Depends on | [P03](P03-canonical-environmental-storage.md) |
+| Depends on | [P03](P03-canonical-environmental-storage.md), [D01](D01-source-scope-pagination-canaries.md), [O01](O01-durable-artifact-uploads.md) |
 | Review | Lead review |
 | PR boundary | One spatial display-preprocessing/activation PR. |
 
@@ -34,7 +34,7 @@ These are inspection starting points, not a requirement to put all new code in e
 
 4. Validate counts, extents, maximum vertices, invalid/collapsed geometries and a set of dense sample tiles before marking a derivative version ready. Distinguish data_version from display_version; changing tolerances changes the latter.
 
-5. Atomically switch a small active-layer pointer only after canonical data and required zoom bands are complete. Keep active and previous versions plus a minimum seven-day grace period for issued catalog URLs.
+5. Atomically switch a small active-layer pointer only after canonical data and required zoom bands are complete. The exact candidate must also have a P03 validated import with zero rejected features, D01 complete coverage for the same source scope/version/checksum, and O01-verified required raw artifacts. Unknown, partial or failed coverage stays a shadow attempt; never promote it by inferring completeness from accepted counts. Keep active and previous versions plus a minimum seven-day grace period for issued catalog URLs.
 
 6. Add resumable build/cleanup commands; cleanup cannot remove active, retained or in-use versions. Failed/partial runs keep the previous layer and advertise attempted-refresh failure in metadata.
 
@@ -43,6 +43,7 @@ These are inspection starting points, not a requirement to put all new code in e
 - [ ] Known small wetland, narrow channel, hole and multipolygon remain visually interpretable at the documented zoom; collapsed display geometry is counted and disclosed.
 - [ ] Exact screening results against canonical geometry are identical before and after derivative generation.
 - [ ] Kill preprocessing partway: no incomplete version appears; repeat build -> same version/checksum.
+- [ ] A synthetic fully sourced candidate activates only when its import, scope coverage, derivative bands and raw artifacts all match the same data version. Mismatched or missing prerequisites leave the prior ready pointer intact and expose the attempted failure. The copied FEMA/wetlands snapshot is not a positive activation fixture because its import/coverage evidence is incomplete.
 - [ ] Spatial query plans use the projected index at representative selective viewports; a rollback pointer restores the prior version.
 - [ ] Run the affected existing lint/types/tests plus the real-stack scenarios above; retain exact commands, SHA, fixture checksum and results. Do not claim an unrun check passed.
 - [ ] Update API/client schemas and user-facing error states together when their contract changes; report any departure from the shared contract before merging.

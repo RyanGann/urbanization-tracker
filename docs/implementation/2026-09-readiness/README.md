@@ -99,7 +99,7 @@ A PR can merge before its broader gate is complete if its intermediate state is 
 | Guide | Depends on | Review |
 | --- | --- | --- |
 | [P03: Import versioned environmental geometry into indexed PostGIS storage](P03-canonical-environmental-storage.md) | T01, C02, P02 | Lead review |
-| [P04: Prepare display geometry and activate complete layer versions atomically](P04-environmental-display-derivatives.md) | P03 | Lead review |
+| [P04: Prepare display geometry and activate complete layer versions atomically](P04-environmental-display-derivatives.md) | P03, D01, O01 | Lead review |
 | [P05: Serve bounded, cached environmental vector tiles](P05-versioned-vector-tile-api.md) | P04 | Lead review |
 | [P06: Render catalog-driven vector overlays without bulk GeoJSON](P06-vector-overlay-client.md) | P02, P05, S01 | Routine coding agent |
 | [P07: Add an indexed viewport query for development summaries](P07-bounded-development-map-api.md) | C06, U00 | Lead review |

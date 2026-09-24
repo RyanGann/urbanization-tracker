@@ -281,7 +281,9 @@
       "track": "Performance",
       "gate": "G1",
       "depends_on": [
-        "P03"
+        "P03",
+        "D01",
+        "O01"
       ],
       "review": "Lead review",
       "pr_boundary": "One spatial display-preprocessing/activation PR.",
