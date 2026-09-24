@@ -172,6 +172,15 @@ def test_upstream_change_and_rejected_geometry(tmp_path: Path) -> None:
     assert invalid["rejected"] == 1
 
 
+def test_missing_required_source_property_cannot_complete(tmp_path: Path) -> None:
+    feature = _feature(1)
+    feature["properties"] = {"OBJECTID": 1}
+    transport, _ = _fixture([1], batch_override=[feature])
+    report = _run(tmp_path, transport)
+    assert report["coverage"] == "partial"
+    assert (report["fetched"], report["accepted"], report["rejected"]) == (1, 0, 1)
+
+
 @pytest.mark.parametrize("coordinates", [
     [[[0, 0], [1, 0], [0, 0]]],  # Too few ring positions.
     [[[0, 0], [1, 0], [0, 1], [1, 1]]],  # Open ring.

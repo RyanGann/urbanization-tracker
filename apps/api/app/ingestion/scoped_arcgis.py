@@ -342,6 +342,14 @@ def _feature_id(feature: Any, oid_field: str) -> int:
     return value
 
 
+def _properties_ok(feature: dict[str, Any], config: ArcGISLayerConfig) -> bool:
+    properties = feature.get("properties")
+    return isinstance(properties, dict) and (
+        "*" in config.out_fields
+        or set(config.out_fields).issubset(properties)
+    )
+
+
 def _out_fields(config: ArcGISLayerConfig, oid_field: str) -> str:
     if "*" in config.out_fields:
         return "*"
@@ -409,7 +417,10 @@ def _stage_page(
     page_path = destination / f"page-{page_number:05}.geojson"
     page_bytes = _canonical(payload)
     page_path.write_bytes(page_bytes)
-    accepted = sum(_geometry_ok(feature, config) for feature in features)
+    accepted = sum(
+        _properties_ok(feature, config) and _geometry_ok(feature, config)
+        for feature in features
+    )
     report["pages"].append({
         "path": page_path.name,
         "sha256": hashlib.sha256(page_bytes).hexdigest(),
