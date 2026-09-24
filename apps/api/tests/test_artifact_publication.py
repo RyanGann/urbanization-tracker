@@ -7,9 +7,24 @@ from uuid import UUID, uuid4
 import httpx
 import pytest
 
-from app.config import get_settings
+from app.config import Settings, get_settings
+from app.ingestion.artifact_config import require_hosted_artifact_storage
+from app.ingestion.artifact_sink import ArtifactError
 from app.ingestion import agenda_pipeline
 from app.schemas import PublicSourceHealth, SourceDocument
+
+
+def test_hosted_ingestion_fails_closed_on_local_artifact_sink() -> None:
+    settings = Settings(
+        hosted_ingestion_enabled=True,
+        artifact_durability_required=True,
+        artifact_sink="local",
+    )
+    with pytest.raises(ArtifactError, match="artifact_configuration"):
+        require_hosted_artifact_storage(settings)
+    require_hosted_artifact_storage(
+        settings.model_copy(update={"artifact_sink": "s3"})
+    )
 
 
 def test_public_provenance_omits_internal_locators_and_signed_queries() -> None:

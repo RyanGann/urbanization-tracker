@@ -221,10 +221,12 @@ def main() -> None:
         )
         return
 
-    if args.command in HOSTED_INGESTION_COMMANDS and not get_settings().artifact_durability_required:
+    if args.command in HOSTED_INGESTION_COMMANDS and (
+        not get_settings().artifact_durability_required or get_settings().artifact_sink != "s3"
+    ):
         print(json.dumps({
             "command": args.command,
-            "reason": "artifact_durability_required",
+            "reason": "artifact_s3_required",
             "status": "disabled",
         }, sort_keys=True))
         return

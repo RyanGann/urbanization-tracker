@@ -15,6 +15,14 @@ def effective_sink_id(settings: Settings, sink: ArtifactSink) -> str:
     return hashlib.sha256(json.dumps(identity, separators=(",", ":")).encode()).hexdigest()
 
 
+def require_hosted_artifact_storage(settings: Settings) -> None:
+    """A hosted worker may publish only after using the configured private object sink."""
+    if settings.hosted_ingestion_enabled and (
+        not settings.artifact_durability_required or settings.artifact_sink != "s3"
+    ):
+        raise ArtifactError("artifact_configuration")
+
+
 def configured_sink(settings: Settings) -> ArtifactSink:
     if settings.artifact_sink == "local":
         return LocalArtifactSink(
