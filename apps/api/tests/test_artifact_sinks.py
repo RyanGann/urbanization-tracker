@@ -29,7 +29,7 @@ def test_local_roundtrip_and_resume(tmp_path: Path, data: bytes) -> None:
     first = sink.upload_part(blob, upload, 1, data[:PART_BYTES])
     # Reconstructing the adapter models a worker restart; parts remain on disk.
     resumed = LocalArtifactSink(tmp_path)
-    parts = (first,)
+    parts: tuple[UploadedPart, ...] = (first,)
     if len(data) > PART_BYTES:
         parts += (resumed.upload_part(blob, upload, 2, data[PART_BYTES:]),)
     resumed.complete(blob, upload, parts)

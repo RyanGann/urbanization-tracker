@@ -1,5 +1,9 @@
 # O01 durable artifact evidence
 
+## P03-based normalization checkpoint
+
+On the isolated `codex/o01-normalized` branch based on P03 `ad062be`, the full API suite passed **191 tests** in a disposable, no-network container with a read-only worktree mount. Ruff passed for `app tests`; strict mypy passed for 53 application source files and four changed test files. All 57 `requirements.lock` package pins matched the installed test image. A first suite run caught internal storage locators still present in the public `SourceDocument` schema; those fields were removed before the passing rerun. Two upstream dependency deprecation warnings remain. The normalized branch has not yet run the Garage/PostGIS scenario and must be rebased onto final merged P03 before that acceptance run.
+
 O01 adds a private S3-compatible sink, immutable database references, bounded upload leases, and publication checks. The isolated test command is:
 
 ```sh

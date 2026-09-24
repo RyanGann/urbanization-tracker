@@ -124,12 +124,9 @@ class SourceDocument(BaseModel):
     fetched_at: str | None = None
     sha256: str | None = None
     content_type: str | None = None
-    storage_uri: str | None = None
-    extracted_text_uri: str | None = None
     extraction_status: str
     parsed_item_count: int = 0
     text_excerpt: str | None = None
-
 
     @field_validator("url", mode="before")
     @classmethod

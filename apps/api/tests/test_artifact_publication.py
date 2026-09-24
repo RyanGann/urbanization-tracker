@@ -8,9 +8,9 @@ import httpx
 import pytest
 
 from app.config import Settings, get_settings
+from app.ingestion import agenda_pipeline
 from app.ingestion.artifact_config import require_hosted_artifact_storage
 from app.ingestion.artifact_sink import ArtifactError
-from app.ingestion import agenda_pipeline
 from app.schemas import PublicSourceHealth, SourceDocument
 
 

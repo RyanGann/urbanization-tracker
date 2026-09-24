@@ -13,7 +13,6 @@ import certifi
 import httpx
 
 from app.config import get_settings
-from app.ingestion.artifact_config import require_hosted_artifact_storage
 from app.ingestion.agenda import (
     PLANNING_AGENCY,
     PLANNING_ARCHIVE_URL,
@@ -21,6 +20,7 @@ from app.ingestion.agenda import (
     extract_pdf_text,
     parse_agenda_items,
 )
+from app.ingestion.artifact_config import require_hosted_artifact_storage
 from app.ingestion.artifact_manifest import public_source_url
 from app.ingestion.artifact_service import ArtifactService
 from app.ingestion.artifact_sink import ArtifactError

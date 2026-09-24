@@ -246,7 +246,9 @@ def main() -> None:
                 "reference_id": str(args.reference_id), "status": "failed", "reason": exc.code,
             }, sort_keys=True))
             raise SystemExit(1) from None
-        print(json.dumps({"reference_id": str(args.reference_id), "status": "verified"}, sort_keys=True))
+        print(json.dumps(
+            {"reference_id": str(args.reference_id), "status": "verified"}, sort_keys=True
+        ))
         return
 
     if args.command == "import-environmental":
