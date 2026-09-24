@@ -246,3 +246,17 @@ preserved the September 1 last-success time and nine published records, and
 left development rows unchanged through restart (SHA-256
 `249a59e482aef30452e2bbeb0e8d69af227698f1ff39af7706840fab378a6030`).
 Its Compose project also reports `cleanup_result: removed`.
+
+Further Codex review identified two more fail-closed cases and an aggregate
+health gap. Reviewed WGS84 scope coordinates now require valid longitude and
+latitude bounds; non-finite or overflowing JSON numbers fail as scoped reports,
+and huge-integer geometry is rejected without aborting the collector. An
+unactivated `staged` source also keeps overall health degraded when a later
+legacy run updates other rows. On code head `56979c8`, locked full API Ruff and
+mypy passed, as did **172 backend tests**. The isolated D01 real API/PostGIS run
+`2026-09-24T05-32-56-133Z-ab5235f8` passed with five complete and three
+expected failed fixture requests. The failed attempt remained unactivated,
+preserved nine published records and the September 1 last-success time, and
+left development rows unchanged across restart (SHA-256
+`d020a6d6621d1af39189d20125c16c37f20efa1fa2d8a8498b009f079ba03b5e`).
+Its disposable Compose project reports `cleanup_result: removed`.
