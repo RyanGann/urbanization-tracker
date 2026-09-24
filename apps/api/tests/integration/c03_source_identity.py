@@ -13,6 +13,7 @@ from urllib.request import Request, urlopen
 
 import httpx
 from sqlalchemy import delete, select, text
+from sqlalchemy.exc import IntegrityError
 
 from app.db import SessionLocal
 from app.ingestion.connectors.arcgis import ArcGISRestConnector
@@ -320,6 +321,41 @@ def main() -> None:
         if export_source_identity_mapping(session):
             raise AssertionError("refused backfill changed registry mappings")
         unit.delete_processed("development_records", "duplicate-legacy-id")
+        session.add(
+            SourceIdentityRegistry(
+                source_key="unrelated_source",
+                source_record_id="other-anchor",
+                public_id="bookmarked-legacy-id",
+                first_discovered_at=datetime(2026, 9, 20, tzinfo=UTC),
+            )
+        )
+        session.flush()
+        reverse_conflict = dry_run_source_identity_backfill(session)
+        if not any(
+            item["code"] == "public_id_registry_conflict"
+            for item in reverse_conflict["diagnostics"]
+        ):
+            raise AssertionError("backfill ignored a public ID owned by another registry anchor")
+        try:
+            apply_source_identity_backfill(session, expected_digest=str(reverse_conflict["digest"]))
+        except ValueError:
+            pass
+        else:
+            raise AssertionError("backfill applied a reverse public-ID collision")
+        if export_source_identity_mapping(session) != [
+            {
+                "source_key": "unrelated_source",
+                "source_record_id": "other-anchor",
+                "public_id": "bookmarked-legacy-id",
+            }
+        ]:
+            raise AssertionError("refused reverse-collision backfill partially changed mappings")
+        session.execute(
+            delete(SourceIdentityRegistry).where(
+                SourceIdentityRegistry.source_key == "unrelated_source",
+                SourceIdentityRegistry.source_record_id == "other-anchor",
+            )
+        )
         report = dry_run_source_identity_backfill(session)
         if report["candidate_count"] != 1 or report["diagnostic_count"] != 0:
             raise AssertionError(f"unexpected backfill report: {report!r}")
@@ -328,6 +364,22 @@ def main() -> None:
         applied = apply_source_identity_backfill(session, expected_digest=str(report["digest"]))
         if applied["applied"] != 1:
             raise AssertionError(f"backfill did not apply: {applied!r}")
+
+    try:
+        with SessionLocal.begin() as session:
+            session.add(
+                SourceIdentityRegistry(
+                    source_key="unrelated_source",
+                    source_record_id="unique-constraint-check",
+                    public_id="bookmarked-legacy-id",
+                    first_discovered_at=datetime(2026, 9, 20, tzinfo=UTC),
+                )
+            )
+            session.flush()
+    except IntegrityError:
+        pass
+    else:
+        raise AssertionError("database allowed two registry owners for one public ID")
 
     manual_collision = SourceRecord(
         "new-manual-collision",
@@ -442,8 +494,42 @@ def main() -> None:
         [duplicate_one, duplicate_two],
         duplicate_health,
     )
-    if safe_staged or safe_published or not duplicate_health[0]["validation_errors"]:
+    if (
+        safe_staged
+        or safe_published
+        or not duplicate_health[0]["validation_errors"]
+        or duplicate_health[0]["quarantined_count"] != 2
+    ):
         raise AssertionError("duplicate source input was not fully quarantined")
+    provisional_health = [
+        {
+            "key": NEW_SUBDIVISIONS.key,
+            "source_url": NEW_SUBDIVISIONS.layer_url,
+            "error_count": 0,
+            "validation_errors": [],
+        }
+    ]
+    provisional_staged, provisional_published = _quarantine_duplicate_source_records(
+        [
+            {**staged(), "id": "stage-collision", "raw_record_id": "anchor-A"},
+            {**staged(), "id": "stage-collision", "raw_record_id": "anchor-B"},
+        ],
+        [
+            {**record(title="Anchor A"), "public_id": "collision"},
+            {**record(title="Anchor B"), "public_id": "collision"},
+        ],
+        provisional_health,
+    )
+    if (
+        provisional_staged
+        or provisional_published
+        or provisional_health[0]["quarantined_count"] != 2
+        or not any(
+            "duplicate provisional public ID" in error
+            for error in provisional_health[0]["validation_errors"]
+        )
+    ):
+        raise AssertionError("distinct anchors with one provisional ID were coalesced")
     duplicate_batch = merge_batch(
         run_id="c03-duplicate-input", coverage="complete", records=(), quarantined_count=1
     )
@@ -624,6 +710,19 @@ def main() -> None:
         or quarantine_only_health["batches"]["madison_county_subdivisions"]["source_missing"]
     ):
         raise AssertionError("quarantine-only Madison run reported accepted or missing records")
+    with SessionLocal() as session:
+        quarantined_batch = session.scalar(
+            select(SourceIngestionBatch).where(
+                SourceIngestionBatch.run_id == quarantine_only_health["run_id"],
+                SourceIngestionBatch.source_key == "madison_county_subdivisions",
+            )
+        )
+        if (
+            quarantined_batch is None
+            or quarantined_batch.counts_json["quarantined"] != 3
+            or quarantined_batch.coverage != "partial"
+        ):
+            raise AssertionError("quarantine-only batch lost rejected input multiplicity")
 
     with SessionLocal() as session:
         unit = CollectionUnitOfWork(session)

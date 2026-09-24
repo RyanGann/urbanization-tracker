@@ -43,10 +43,15 @@ def dry_run_source_identity_backfill(session: Session) -> dict[str, Any]:
         if isinstance(public_id, str) and public_id:
             public_id_counts[public_id] = public_id_counts.get(public_id, 0) + 1
     duplicate_public_ids = {public_id for public_id, count in public_id_counts.items() if count > 1}
+    registered_rows = session.scalars(select(SourceIdentityRegistry)).all()
     registered = {
-        (row.source_key, row.source_record_id): row.public_id
-        for row in session.scalars(select(SourceIdentityRegistry)).all()
+        (row.source_key, row.source_record_id): row.public_id for row in registered_rows
     }
+    public_id_owners: dict[str, set[tuple[str, str]]] = {}
+    for row in registered_rows:
+        public_id_owners.setdefault(row.public_id, set()).add(
+            (row.source_key, row.source_record_id)
+        )
 
     for record in records:
         public_id = record.get("public_id")
@@ -92,6 +97,20 @@ def dry_run_source_identity_backfill(session: Session) -> dict[str, Any]:
                     "source_key": source_key,
                     "source_record_id": anchor,
                     "public_ids": f"{existing},{public_id}",
+                }
+            )
+            continue
+        other_owners = public_id_owners.get(public_id, set()) - {(source_key, anchor)}
+        if other_owners:
+            diagnostics.append(
+                {
+                    "code": "public_id_registry_conflict",
+                    "source_key": source_key,
+                    "source_record_id": anchor,
+                    "public_id": public_id,
+                    "existing_anchors": ",".join(
+                        f"{owner_key}:{owner_id}" for owner_key, owner_id in sorted(other_owners)
+                    ),
                 }
             )
             continue

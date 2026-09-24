@@ -40,12 +40,10 @@ def upgrade() -> None:
         ),
         sa.PrimaryKeyConstraint("id"),
         sa.UniqueConstraint("source_key", "source_record_id", name="uq_source_identity_anchor"),
+        sa.UniqueConstraint("public_id", name="uq_source_identity_public_id"),
     )
     op.create_index(
         "ix_source_identity_registry_source_key", "source_identity_registry", ["source_key"]
-    )
-    op.create_index(
-        "ix_source_identity_registry_public_id", "source_identity_registry", ["public_id"]
     )
     op.create_table(
         "source_ingestion_batches",
@@ -102,6 +100,5 @@ def downgrade() -> None:
     op.drop_table("source_observations")
     op.drop_index("ix_source_ingestion_batches_source_key", table_name="source_ingestion_batches")
     op.drop_table("source_ingestion_batches")
-    op.drop_index("ix_source_identity_registry_public_id", table_name="source_identity_registry")
     op.drop_index("ix_source_identity_registry_source_key", table_name="source_identity_registry")
     op.drop_table("source_identity_registry")

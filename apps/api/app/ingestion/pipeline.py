@@ -195,6 +195,7 @@ def _fetch_source(
         "checked_at": checked_at,
         "records_seen": 0,
         "records_created": 0,
+        "quarantined_count": 0,
         "error_count": 0,
         "validation_errors": [],
         "metadata": {},
@@ -284,6 +285,7 @@ def _raw_records(
 
 def _quarantine_identity(health: dict[str, Any], error: SourceIdentityError) -> None:
     health["error_count"] += 1
+    health["quarantined_count"] = int(health.get("quarantined_count", 0)) + 1
     health["validation_errors"].append(f"identity_quarantined: {error}")
 
 
@@ -325,8 +327,17 @@ def _quarantine_duplicate_source_records(
     staged_by_provisional_id = {
         str(staged.get("id", "")).removeprefix("stage-"): staged for staged in staged_records
     }
+    provisional_counts: dict[str, int] = {}
+    for published in published_records:
+        public_id = str(published.get("public_id"))
+        provisional_counts[public_id] = provisional_counts.get(public_id, 0) + 1
+    duplicate_provisional_ids = {
+        public_id for public_id, count in provisional_counts.items() if count > 1
+    }
     anchor_counts: dict[tuple[str, str], int] = {}
     for published in published_records:
+        if str(published.get("public_id")) in duplicate_provisional_ids:
+            continue
         staged = staged_by_provisional_id.get(str(published.get("public_id")))
         if staged is None or not staged.get("raw_record_id"):
             continue
@@ -338,10 +349,10 @@ def _quarantine_duplicate_source_records(
             anchor = (source_key, str(staged["raw_record_id"]))
             anchor_counts[anchor] = anchor_counts.get(anchor, 0) + 1
     duplicates = {anchor for anchor, count in anchor_counts.items() if count > 1}
-    if not duplicates:
+    if not duplicates and not duplicate_provisional_ids:
         return staged_records, published_records
 
-    rejected_public_ids: set[str] = set()
+    rejected_public_ids = set(duplicate_provisional_ids)
     for published in published_records:
         staged = staged_by_provisional_id.get(str(published.get("public_id")))
         if staged is None:
@@ -362,6 +373,27 @@ def _quarantine_duplicate_source_records(
                 "identity_quarantined: duplicate authoritative source ID "
                 f"{duplicate_record_id!r}; all matching rows were retained only as raw evidence"
             )
+    for public_id in sorted(duplicate_provisional_ids):
+        source_keys = {
+            str(published.get("source_key") or "")
+            for published in published_records
+            if str(published.get("public_id")) == public_id
+        }
+        for source_key in sorted(source_keys):
+            health = next((item for item in source_health if item.get("key") == source_key), None)
+            if health is not None:
+                health["error_count"] = int(health.get("error_count", 0)) + 1
+                health.setdefault("validation_errors", []).append(
+                    "identity_quarantined: duplicate provisional public ID "
+                    f"{public_id!r}; all matching rows were retained only as raw evidence"
+                )
+    for published in published_records:
+        if str(published.get("public_id")) not in rejected_public_ids:
+            continue
+        source_key = str(published.get("source_key") or "")
+        health = next((item for item in source_health if item.get("key") == source_key), None)
+        if health is not None:
+            health["quarantined_count"] = int(health.get("quarantined_count", 0)) + 1
     return (
         [
             staged
@@ -536,6 +568,10 @@ def _write_postgres_source_state(
 
     checked = datetime.fromisoformat(checked_at)
     staged_by_id = {str(record["id"]).removeprefix("stage-"): record for record in staged_records}
+    if len(staged_by_id) != len(staged_records) or len(
+        {str(record["public_id"]) for record in published_records}
+    ) != len(published_records):
+        raise ValueError("Duplicate provisional public IDs must be quarantined before source merge")
     published_by_source: dict[str, list[SourceRecord]] = {}
     source_by_url = {
         str(source.get("source_url")): source
@@ -565,6 +601,15 @@ def _write_postgres_source_state(
             for source in source_health:
                 source_key = str(source["key"])
                 coverage, outcome = _legacy_batch_outcome(source)
+                quarantined_count = source.get("quarantined_count")
+                if quarantined_count is None:
+                    # Compatibility for an older direct adapter caller that only
+                    # supplied diagnostic strings, rather than input-row counts.
+                    quarantined_count = sum(
+                        1
+                        for error in source.get("validation_errors", [])
+                        if "identity_quarantined" in error
+                    )
                 merge_results[source_key] = merge_postgres_batch(
                     session,
                     SourceBatch(
@@ -576,11 +621,7 @@ def _write_postgres_source_state(
                         outcome=outcome,
                         checked_at=checked,
                         records=tuple(published_by_source.get(source_key, [])),
-                        quarantined_count=sum(
-                            1
-                            for error in source.get("validation_errors", [])
-                            if "identity_quarantined" in error
-                        ),
+                        quarantined_count=int(quarantined_count),
                     ),
                     unit_of_work=unit,
                 )

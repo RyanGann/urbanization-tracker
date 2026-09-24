@@ -349,12 +349,13 @@ class SourceIdentityRegistry(Base):
     __tablename__ = "source_identity_registry"
     __table_args__ = (
         UniqueConstraint("source_key", "source_record_id", name="uq_source_identity_anchor"),
+        UniqueConstraint("public_id", name="uq_source_identity_public_id"),
     )
 
     id: Mapped[int] = mapped_column(primary_key=True)
     source_key: Mapped[str] = mapped_column(String(120), nullable=False, index=True)
     source_record_id: Mapped[str] = mapped_column(String(255), nullable=False)
-    public_id: Mapped[str] = mapped_column(String(255), nullable=False, index=True)
+    public_id: Mapped[str] = mapped_column(String(255), nullable=False)
     first_discovered_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
     last_observed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
