@@ -270,7 +270,11 @@ def main() -> None:
         if args.record_attempt:
             record_scoped_attempts(reports)
         print(json.dumps(reports, indent=2, sort_keys=True))
-        if any(report.get("error_code") for report in reports):
+        if any(
+            report.get("error_code")
+            or (not args.canary and report.get("coverage") != "complete")
+            for report in reports
+        ):
             raise SystemExit(1)
     elif args.command == "migrate-phase3-artifacts-to-postgres":
         result = migrate_artifact_collections_to_postgres()
