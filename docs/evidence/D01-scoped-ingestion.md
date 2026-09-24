@@ -225,7 +225,7 @@ through an API restart. Scenario result SHA-256:
 the isolated Compose project reports `cleanup_result: removed`. After rebasing
 onto main `4923c4b` and fixing received-byte budget accounting, locked Ruff and
 mypy passed, and the full backend suite passed **138 tests**. The isolated
-final-code T01 run `2026-09-24T05-02-32-774Z-9d9b7075` passed: five complete
+pre-review-fix T01 run `2026-09-24T05-02-32-774Z-9d9b7075` passed: five complete
 synthetic HTTP requests, three expected failed requests, source health degraded
 without activation, and last-good development rows unchanged across API restart
 (SHA-256 `e25584e9dc1d026560f8785f53b0742bc1677b710c86c5d8994d510ce8754d02`).
@@ -234,3 +234,15 @@ was a separate direct-HTTPS diagnostic; the Python staging CLI has **not** been
 run against those official services, nor has any complete source replacement
 been activated. No canonical source, saved snapshot, external bucket, or public
 layer was changed.
+
+Codex review identified that bounding-box validation alone accepted malformed
+polygon rings. Commit `365dc17` adds ring structure and Shapely topology
+checks, plus short/open/misnested/self-intersecting/outside-hole regression
+cases. On that commit, locked Ruff/mypy passed and the full backend suite passed
+**164 tests**. The isolated real API/PostGIS scenario
+`2026-09-24T05-17-38-183Z-09b43516` passed with five complete and three
+expected failed fixture requests. The failed attempt remained unactivated,
+preserved the September 1 last-success time and nine published records, and
+left development rows unchanged through restart (SHA-256
+`249a59e482aef30452e2bbeb0e8d69af227698f1ff39af7706840fab378a6030`).
+Its Compose project also reports `cleanup_result: removed`.
