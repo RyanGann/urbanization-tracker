@@ -227,6 +227,41 @@ def test_reviewed_scope_rejects_out_of_range_wgs84_coordinates(
         ReviewedScope.load(path)
 
 
+@pytest.mark.parametrize("rings", [
+    [[[0, 0], [0, 0], [0, 0], [0, 0]]],
+    [[[0, 0], [2, 2], [0, 2], [2, 0], [0, 0]]],
+    [
+        [[0, 0], [2, 0], [2, 2], [0, 2], [0, 0]],
+        [[1, 1], [3, 1], [3, 3], [1, 3], [1, 1]],
+    ],
+])
+def test_reviewed_scope_rejects_degenerate_or_invalid_topology(
+    tmp_path: Path, rings: list[list[list[int]]]
+) -> None:
+    _scope(tmp_path)
+    path = tmp_path / "reviewed-scope.json"
+    payload = json.loads(path.read_text(encoding="utf-8"))
+    payload["boundary_geometry"]["rings"] = rings
+    payload["boundary_sha256"] = _digest(payload["boundary_geometry"])
+    path.write_text(json.dumps(payload), encoding="utf-8")
+    with pytest.raises(ScopeError, match="invalid_scope_polygon"):
+        ReviewedScope.load(path)
+
+
+def test_reviewed_scope_accepts_nested_hole_and_island(tmp_path: Path) -> None:
+    _scope(tmp_path)
+    path = tmp_path / "reviewed-scope.json"
+    payload = json.loads(path.read_text(encoding="utf-8"))
+    payload["boundary_geometry"]["rings"] = [
+        [[0, 0], [4, 0], [4, 4], [0, 4], [0, 0]],
+        [[1, 1], [1, 3], [3, 3], [3, 1], [1, 1]],
+        [[1.4, 1.4], [2, 1.4], [1.4, 2], [1.4, 1.4]],
+    ]
+    payload["boundary_sha256"] = _digest(payload["boundary_geometry"])
+    path.write_text(json.dumps(payload), encoding="utf-8")
+    assert ReviewedScope.load(path).boundary_sha256 == payload["boundary_sha256"]
+
+
 @pytest.mark.parametrize("bad_number", [b"NaN", b"Infinity", b"1e1000"])
 def test_nonfinite_json_page_fails_closed_and_records_report(
     tmp_path: Path, bad_number: bytes

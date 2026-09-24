@@ -19,7 +19,7 @@ from urllib.parse import urlencode
 
 import httpx
 from shapely.errors import ShapelyError
-from shapely.geometry import shape
+from shapely.geometry import MultiPolygon, Polygon, shape
 
 from app.ingestion.connectors.arcgis import ArcGISLayerConfig
 from app.ingestion.source_merge import SourceBatch, SourceRecord
@@ -62,7 +62,8 @@ def _valid_polygon(value: Any) -> bool:
     if not isinstance(value, dict) or not isinstance(value.get("rings"), list):
         return False
     rings = value["rings"]
-    if not rings or sum(len(ring) for ring in rings if isinstance(ring, list)) > 100_000:
+    if (not rings or len(rings) > 1000
+        or sum(len(ring) for ring in rings if isinstance(ring, list)) > 100_000):
         return False
     for ring in rings:
         if not isinstance(ring, list) or len(ring) < 4 or ring[0] != ring[-1]:
@@ -80,7 +81,46 @@ def _valid_polygon(value: Any) -> bool:
                 or not -90 <= point[1] <= 90
             ):
                 return False
-    return value.get("spatialReference") == {"wkid": 4326}
+        if len({tuple(point) for point in ring[:-1]}) < 3:
+            return False
+    if value.get("spatialReference") != {"wkid": 4326}:
+        return False
+    try:
+        # ArcGIS represents multipart polygons as a flat ring set. Build the
+        # containment tree before checking topology so nested holes and islands
+        # retain their intended parity without relying on ring orientation.
+        outlines = [Polygon(ring) for ring in rings]
+        if any(polygon.is_empty or not polygon.is_valid or polygon.area <= 0
+               for polygon in outlines):
+            return False
+        parents: list[int | None] = []
+        for index, polygon in enumerate(outlines):
+            containers = [
+                outer for outer, candidate in enumerate(outlines)
+                if outer != index and candidate.area > polygon.area
+                and candidate.contains(polygon)
+            ]
+            parents.append(min(containers, key=lambda outer: outlines[outer].area)
+                           if containers else None)
+        depths: list[int] = []
+        for index in range(len(outlines)):
+            depth = 0
+            parent = parents[index]
+            while parent is not None:
+                depth += 1
+                parent = parents[parent]
+            depths.append(depth)
+        components = [
+            Polygon(rings[index], [
+                rings[child] for child, parent in enumerate(parents)
+                if parent == index and depths[child] % 2 == 1
+            ])
+            for index, depth in enumerate(depths) if depth % 2 == 0
+        ]
+        assembled = MultiPolygon(components)
+        return not assembled.is_empty and assembled.is_valid
+    except (TypeError, ValueError, OverflowError, ShapelyError):
+        return False
 
 
 @dataclass(frozen=True)
