@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import sys
 from dataclasses import replace
 from pathlib import Path
 from urllib.parse import parse_qs
@@ -9,6 +10,7 @@ from urllib.parse import parse_qs
 import httpx
 import pytest
 
+from app.ingestion import cli
 from app.ingestion.pipeline import _aggregate_status
 from app.ingestion.scoped_arcgis import (
     CollectionBudget,
@@ -341,6 +343,30 @@ def test_huge_integer_feature_coordinate_is_rejected_without_aborting(tmp_path: 
     assert report["rejected"] == 1
 
 
+@pytest.mark.parametrize("coordinates", [
+    ["-86.5", "34.5"], [True, 34.5], [-86.5, False],
+])
+def test_nonnumeric_geojson_point_is_rejected(
+    tmp_path: Path, coordinates: list[object]
+) -> None:
+    feature = _feature(1)
+    feature["geometry"] = {"type": "Point", "coordinates": coordinates}
+    transport, _ = _fixture([1], batch_override=[feature])
+    report = _run(tmp_path, transport)
+    assert report["coverage"] == "partial"
+    assert (report["accepted"], report["rejected"]) == (0, 1)
+
+
+@pytest.mark.parametrize("geometry", [
+    {"type": "Polygon", "coordinates": [[[-87, 34], ["-86", 34],
+                                         [-86, 35], [-87, 34]]]},
+    {"type": "MultiPolygon", "coordinates": [[[[-87, 34], [-86, True],
+                                               [-86, 35], [-87, 34]]]]},
+])
+def test_nonnumeric_geojson_polygon_is_rejected(geometry: dict[str, object]) -> None:
+    assert not _geometry_ok({"geometry": geometry}, NEW_SUBDIVISIONS)
+
+
 def test_empty_scope_and_canary_are_distinct(tmp_path: Path) -> None:
     transport, _ = _fixture([])
     empty = _run(tmp_path, transport)
@@ -350,6 +376,62 @@ def test_empty_scope_and_canary_are_distinct(tmp_path: Path) -> None:
     assert canary["coverage"] == "unknown"
     assert canary["fetched"] == 25 and canary["requests"] == 4
     assert len(requests) == 4
+
+
+def test_rejected_canary_sample_fails_closed(tmp_path: Path) -> None:
+    feature = _feature(1)
+    feature["properties"] = {"OBJECTID": 1}
+    transport, _ = _fixture([1], batch_override=[feature])
+    report = _run(tmp_path, transport, canary=True)
+    assert report["coverage"] == "unknown"
+    assert report["rejected"] == 1
+    assert report["error_code"] == "sample_feature_rejected"
+
+
+def test_canary_cli_rejects_sample_and_deduplicates_sources(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    scope = _scope(tmp_path)
+    calls: list[str] = []
+
+    def stage(config: object, *_args: object, **_kwargs: object) -> dict[str, object]:
+        calls.append(CONFIG.key)
+        return {"coverage": "unknown", "rejected": 1}
+
+    monkeypatch.setattr(cli, "stage_scoped_source", stage)
+    monkeypatch.setattr(sys, "argv", [
+        "ingestion", "stage-scoped-arcgis", "--scope-file",
+        str(tmp_path / "reviewed-scope.json"), "--output-dir", str(tmp_path / "stage"),
+        "--canary", *[arg for _ in range(6) for arg in ("--source", CONFIG.key)],
+    ])
+    with pytest.raises(SystemExit, match="1"):
+        cli.main()
+    assert scope.reviewed_at and calls == [CONFIG.key]
+    monkeypatch.setattr(cli, "stage_scoped_source", lambda *_args, **_kwargs: {
+        "coverage": "unknown", "rejected": 0,
+    })
+    cli.main()  # Unknown coverage is normal for a clean, bounded canary.
+
+
+def test_canary_cli_global_request_cap_precedes_any_request(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _scope(tmp_path)
+    monkeypatch.setattr(cli, "SOURCE_CONFIGS", {
+        f"source-{index}": CONFIG for index in range(6)
+    })
+    calls: list[str] = []
+    monkeypatch.setattr(cli, "stage_scoped_source", lambda *_args, **_kwargs: calls.append("x"))
+    monkeypatch.setattr(sys, "argv", [
+        "ingestion", "stage-scoped-arcgis", "--scope-file",
+        str(tmp_path / "reviewed-scope.json"), "--output-dir", str(tmp_path / "stage"),
+        "--canary", *[
+            arg for index in range(6) for arg in ("--source", f"source-{index}")
+        ],
+    ])
+    with pytest.raises(SystemExit, match="2"):
+        cli.main()
+    assert calls == []
 
 
 def test_large_polygon_query_uses_form_post_under_same_request_budget(tmp_path: Path) -> None:

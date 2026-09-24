@@ -322,3 +322,20 @@ remained unactivated, retained the September 1 last-success time and nine
 published records, and left development rows unchanged across restart
 (SHA-256 `841fd4487cd53103bd5c1786fb1048c0bcf51916cfdb620c5048675493abe7fb`).
 Its disposable Compose project reports `cleanup_result: removed`.
+
+The next exact-head Codex review found three canary fail-closed gaps. Scoped
+GeoJSON coordinates now require raw numeric JSON values, excluding strings and
+booleans before the shared geometry iterator can coerce them. A rejected
+sample gives the canary report `sample_feature_rejected` and makes the CLI exit
+nonzero, while clean canaries retain unknown coverage and successful exit.
+Repeated `--source` values are deduplicated, and more than five unique canary
+sources are rejected before HTTP, preserving the four-request-per-source and
+20-request overall ceilings. Synthetic point, polygon, CLI-exit and request-cap
+regressions cover these cases. Pinned full API Ruff/mypy and **226 backend tests**
+passed. Isolated D01 T01 run `2026-09-24T06-48-59-210Z-67b09ce3` passed with
+five complete and three expected failed synthetic requests. The failed attempt
+remained degraded and unactivated, retained the September 1 last-success time
+and nine published records, and left development rows unchanged across restart
+(SHA-256 `8f110d150e43a82c5af270ad51253383097d207e1c597218698b10ed6ad0a050`).
+Its disposable Compose project `urbanization_t01_ec2d1f736fab` reports
+`cleanup_result: removed`.

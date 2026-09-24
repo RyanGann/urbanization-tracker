@@ -259,7 +259,9 @@ def main() -> None:
         if args.canary and args.record_attempt:
             parser.error("--canary cannot change canonical source health")
         scope = ReviewedScope.load(args.scope_file)
-        selected = args.source or sorted(SOURCE_CONFIGS)
+        selected = list(dict.fromkeys(args.source or sorted(SOURCE_CONFIGS)))
+        if args.canary and len(selected) > 5:
+            parser.error("--canary permits at most five unique sources (20 requests total)")
         reports = []
         for index, key in enumerate(selected):
             if args.canary and index:
@@ -272,6 +274,7 @@ def main() -> None:
         print(json.dumps(reports, indent=2, sort_keys=True))
         if any(
             report.get("error_code")
+            or (args.canary and report.get("rejected", 0) > 0)
             or (not args.canary and report.get("coverage") != "complete")
             for report in reports
         ):

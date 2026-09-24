@@ -420,10 +420,33 @@ def _polygon_structure_ok(geometry: dict[str, Any]) -> bool:
     return True
 
 
+def _numeric_positions_ok(geometry: dict[str, Any]) -> bool:
+    """Check raw GeoJSON numbers before the shared iterator coerces them to floats."""
+    coordinates = geometry.get("coordinates")
+    geometry_type = geometry.get("type")
+    if geometry_type == "Point":
+        positions = [coordinates]
+    elif geometry_type == "Polygon" and isinstance(coordinates, list):
+        positions = [point for ring in coordinates if isinstance(ring, list)
+                     for point in ring]
+    elif geometry_type == "MultiPolygon" and isinstance(coordinates, list):
+        positions = [point for polygon in coordinates if isinstance(polygon, list)
+                     for ring in polygon if isinstance(ring, list) for point in ring]
+    else:
+        return False
+    return bool(positions) and all(
+        isinstance(point, list) and len(point) == 2
+        and all(isinstance(axis, (int, float)) and not isinstance(axis, bool)
+                for axis in point)
+        for point in positions
+    )
+
+
 def _geometry_ok(feature: dict[str, Any], config: ArcGISLayerConfig) -> bool:
     geometry = feature.get("geometry")
     expected = {"Point"} if config.geometry_type == "point" else {"Polygon", "MultiPolygon"}
-    if not isinstance(geometry, dict) or geometry.get("type") not in expected:
+    if (not isinstance(geometry, dict) or geometry.get("type") not in expected
+        or not _numeric_positions_ok(geometry)):
         return False
     from app.ingestion.geometry import iter_positions, validate_geometry
 
@@ -647,6 +670,8 @@ def stage_scoped_source(
                 }
         if canary:
             report["coverage"] = "unknown"
+            if report["rejected"]:
+                report["error_code"] = "sample_feature_rejected"
         elif report["rejected"]:
             report["coverage"] = "partial"
         elif report["fetched"] == count:
