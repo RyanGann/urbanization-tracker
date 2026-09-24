@@ -131,16 +131,14 @@ def test_ingestion_writes_canonical_processed_collections_to_postgres_backend(
     monkeypatch.setenv("INGESTION_DATA_DIR", str(tmp_path))
     monkeypatch.setenv("PROCESSED_STORE_BACKEND", "postgres")
     get_settings.cache_clear()
-    stored: dict[str, list[dict[str, Any]]] = {}
+    expected_health = {"run_id": "test-run", "records": {"published": 1}}
+    received: dict[str, Any] = {}
 
-    def read_items(name: str) -> list[dict[str, Any]]:
-        return stored.get(name, [])
+    def write_source_state(**kwargs: Any) -> dict[str, Any]:
+        received.update(kwargs)
+        return expected_health
 
-    def write_items(name: str, items: list[dict[str, Any]]) -> None:
-        stored[name] = items
-
-    monkeypatch.setattr("app.processed_store._read_postgres_items", read_items)
-    monkeypatch.setattr("app.processed_store._write_postgres_items", write_items)
+    monkeypatch.setattr("app.ingestion.pipeline._write_postgres_source_state", write_source_state)
 
     health = pipeline._write_processed_state(
         data_dir=Path(tmp_path),
@@ -183,12 +181,12 @@ def test_ingestion_writes_canonical_processed_collections_to_postgres_backend(
         overlays=[],
     )
 
-    assert health["records"]["published"] == 1
-    assert stored["development_records"][0]["public_id"] == "hsv-test"
-    assert stored["staged_development_records"][0]["id"] == "stage-hsv-test"
-    assert stored["source_health"][0]["run_id"] == "test-run"
+    assert health == expected_health
+    assert received["published_records"][0]["public_id"] == "hsv-test"
+    assert received["staged_records"][0]["id"] == "stage-hsv-test"
+    assert received["source_health"][0]["key"] == "huntsville_new_subdivisions"
     assert not (tmp_path / "processed" / "development_records.json").exists()
-    assert (tmp_path / "processed" / "raw_records.json").exists()
+    assert not (tmp_path / "processed" / "raw_records.json").exists()
 
 
 def test_processed_store_status_uses_memory_in_demo_without_durable_probes(

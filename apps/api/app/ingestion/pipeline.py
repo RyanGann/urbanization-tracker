@@ -2,9 +2,13 @@ from __future__ import annotations
 
 import hashlib
 import json
+from datetime import datetime
 from pathlib import Path
-from typing import Any
+from typing import Any, Literal
 
+from sqlalchemy import func, select
+
+from app.config import get_settings
 from app.ingestion.artifacts import (
     ensure_data_dirs,
     iso_now,
@@ -13,8 +17,10 @@ from app.ingestion.artifacts import (
     write_json,
 )
 from app.ingestion.connectors.arcgis import ArcGISLayerConfig, ArcGISRestConnector
+from app.ingestion.identity import SourceIdentityError, source_record_id
 from app.ingestion.normalize import normalize_development_feature
 from app.ingestion.proximity import compute_proximity_flags
+from app.ingestion.source_merge import Coverage, SourceBatch, SourceRecord, merge_postgres_batch
 from app.ingestion.sources.huntsville import (
     BUILDING_PERMITS,
     DEVELOPMENT_SOURCES,
@@ -23,13 +29,18 @@ from app.ingestion.sources.huntsville import (
 from app.ingestion.sources.madison_county import (
     DEVELOPMENT_SOURCES as MADISON_COUNTY_DEVELOPMENT_SOURCES,
 )
-from app.map_layer_catalog import build_catalog
+from app.map_layer_catalog import CATALOG_COLLECTION, build_catalog, merge_ingestion_catalog
+from app.models import ProcessedCollectionItem
 from app.processed_store import (
     read_processed_list,
     read_processed_payload,
     write_processed_list,
     write_processed_payload,
 )
+
+
+class ArtifactIdentityIngestionUnsupported(RuntimeError):
+    """Artifact mode retains preview reads but cannot safely merge source identities yet."""
 
 
 def ingest_huntsville(
@@ -39,6 +50,7 @@ def ingest_huntsville(
     context_limit: int = 2000,
     connector: ArcGISRestConnector | None = None,
 ) -> dict[str, Any]:
+    _require_postgres_identity_store()
     ensure_data_dirs(data_dir)
     checked_at = iso_now()
     run_id = checked_at.replace(":", "").replace("+", "Z")
@@ -58,9 +70,13 @@ def ingest_huntsville(
             source_health.append(source_result["health"])
             raw_records.extend(source_result["raw_records"])
             for feature in source_result["collection"]["features"]:
-                staged, published, validation_errors = normalize_development_feature(
-                    feature, source.key, checked_at
-                )
+                try:
+                    staged, published, validation_errors = normalize_development_feature(
+                        feature, source.key, checked_at
+                    )
+                except SourceIdentityError as exc:
+                    _quarantine_identity(source_result["health"], exc)
+                    continue
                 if validation_errors:
                     source_result["health"]["error_count"] += len(validation_errors)
                     source_result["health"]["validation_errors"].extend(validation_errors)
@@ -74,8 +90,12 @@ def ingest_huntsville(
             environmental_collections.append((source, source_result["collection"]))
             environmental_catalog_sources.append((source, source_result["health"]))
 
-        staged_records = _dedupe_records(staged_records, key="id")
-        published_records = _dedupe_records(published_records, key="public_id")
+        staged_records, published_records = _quarantine_duplicate_source_records(
+            staged_records, published_records, source_health
+        )
+        _set_accepted_development_counts(
+            source_health, published_records, {source.key for source in DEVELOPMENT_SOURCES}
+        )
         compute_proximity_flags(published_records, environmental_collections)
         overlays = _environmental_overlays(environmental_collections)
         catalog = build_catalog(environmental_catalog_sources)
@@ -104,6 +124,7 @@ def ingest_madison_county(
     record_limit: int = 500,
     connector: ArcGISRestConnector | None = None,
 ) -> dict[str, Any]:
+    _require_postgres_identity_store()
     ensure_data_dirs(data_dir)
     checked_at = iso_now()
     run_id = checked_at.replace(":", "").replace("+", "Z")
@@ -121,17 +142,27 @@ def ingest_madison_county(
             source_health.append(source_result["health"])
             raw_records.extend(source_result["raw_records"])
             for feature in source_result["collection"]["features"]:
-                staged, published, validation_errors = normalize_development_feature(
-                    feature, source.key, checked_at
-                )
+                try:
+                    staged, published, validation_errors = normalize_development_feature(
+                        feature, source.key, checked_at
+                    )
+                except SourceIdentityError as exc:
+                    _quarantine_identity(source_result["health"], exc)
+                    continue
                 if validation_errors:
                     source_result["health"]["error_count"] += len(validation_errors)
                     source_result["health"]["validation_errors"].extend(validation_errors)
                 staged_records.append(staged)
                 published_records.append(published)
 
-        staged_records = _dedupe_records(staged_records, key="id")
-        published_records = _dedupe_records(published_records, key="public_id")
+        staged_records, published_records = _quarantine_duplicate_source_records(
+            staged_records, published_records, source_health
+        )
+        _set_accepted_development_counts(
+            source_health,
+            published_records,
+            {source.key for source in MADISON_COUNTY_DEVELOPMENT_SOURCES},
+        )
 
         health = _write_processed_state(
             data_dir=data_dir,
@@ -164,6 +195,7 @@ def _fetch_source(
         "checked_at": checked_at,
         "records_seen": 0,
         "records_created": 0,
+        "quarantined_count": 0,
         "error_count": 0,
         "validation_errors": [],
         "metadata": {},
@@ -230,20 +262,19 @@ def _raw_records(
     config: ArcGISLayerConfig, collection: dict[str, Any], checked_at: str
 ) -> list[dict[str, Any]]:
     records: list[dict[str, Any]] = []
-    for index, feature in enumerate(collection.get("features", [])):
+    for feature in collection.get("features", []):
         properties = feature.get("properties") or {}
-        source_record_id = (
-            properties.get("SubdID")
-            or properties.get("PermitID")
-            or properties.get("OBJECTID")
-            or properties.get("ObjectId")
-            or index
-        )
+        try:
+            record_id: str | None = source_record_id(config.key, properties)
+        except SourceIdentityError:
+            # The raw GeoJSON artifact retains the full rejected feature. It cannot
+            # participate in a registry or mutable merge without an anchor.
+            record_id = None
         payload = {"type": "Feature", **feature}
         records.append(
             {
                 "data_source_key": config.key,
-                "source_record_id": str(source_record_id),
+                "source_record_id": record_id,
                 "payload_json": payload,
                 "fetched_at": checked_at,
                 "payload_sha256": _sha256(payload),
@@ -252,11 +283,134 @@ def _raw_records(
     return records
 
 
+def _quarantine_identity(health: dict[str, Any], error: SourceIdentityError) -> None:
+    health["error_count"] += 1
+    health["quarantined_count"] = int(health.get("quarantined_count", 0)) + 1
+    health["validation_errors"].append(f"identity_quarantined: {error}")
+
+
+def _set_accepted_development_counts(
+    source_health: list[dict[str, Any]],
+    published_records: list[dict[str, Any]],
+    development_keys: set[str],
+) -> None:
+    """Count accepted output after quarantine, including refreshes rather than net-new inserts."""
+    counts: dict[str, int] = {}
+    for record in published_records:
+        key = record.get("source_key")
+        if isinstance(key, str) and key in development_keys:
+            counts[key] = counts.get(key, 0) + 1
+    for health in source_health:
+        key = health.get("key")
+        if key in development_keys:
+            health["records_created"] = counts.get(key, 0)
+
+
 def _dedupe_records(records: list[dict[str, Any]], *, key: str) -> list[dict[str, Any]]:
     deduped: dict[str, dict[str, Any]] = {}
     for record in records:
         deduped.setdefault(str(record[key]), record)
     return list(deduped.values())
+
+
+def _quarantine_duplicate_source_records(
+    staged_records: list[dict[str, Any]],
+    published_records: list[dict[str, Any]],
+    source_health: list[dict[str, Any]],
+) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
+    """Reject all duplicate anchors before a legacy first-wins dedupe can hide them."""
+    source_by_url = {
+        str(source.get("source_url")): source
+        for source in source_health
+        if source.get("source_url") and source.get("key")
+    }
+    staged_by_provisional_id = {
+        str(staged.get("id", "")).removeprefix("stage-"): staged for staged in staged_records
+    }
+
+    def source_key_for(published: dict[str, Any]) -> str:
+        staged = staged_by_provisional_id.get(str(published.get("public_id"))) or {}
+        key = str(published.get("source_key") or "")
+        if not key:
+            source = source_by_url.get(str(published.get("source_url")))
+            key = str(source.get("key")) if source else ""
+        if not key:
+            key = str(staged.get("source_key") or "")
+        return key
+
+    provisional_counts: dict[str, int] = {}
+    for published in published_records:
+        public_id = str(published.get("public_id"))
+        provisional_counts[public_id] = provisional_counts.get(public_id, 0) + 1
+    duplicate_provisional_ids = {
+        public_id for public_id, count in provisional_counts.items() if count > 1
+    }
+    anchor_counts: dict[tuple[str, str], int] = {}
+    for published in published_records:
+        if str(published.get("public_id")) in duplicate_provisional_ids:
+            continue
+        staged = staged_by_provisional_id.get(str(published.get("public_id")))
+        if staged is None or not staged.get("raw_record_id"):
+            continue
+        source_key = source_key_for(published)
+        if source_key:
+            anchor = (source_key, str(staged["raw_record_id"]))
+            anchor_counts[anchor] = anchor_counts.get(anchor, 0) + 1
+    duplicates = {anchor for anchor, count in anchor_counts.items() if count > 1}
+    if not duplicates and not duplicate_provisional_ids:
+        return staged_records, published_records
+
+    rejected_public_ids = set(duplicate_provisional_ids)
+    for published in published_records:
+        staged = staged_by_provisional_id.get(str(published.get("public_id")))
+        if staged is None:
+            continue
+        source_key = source_key_for(published)
+        anchor = (source_key, str(staged.get("raw_record_id")))
+        if anchor in duplicates:
+            rejected_public_ids.add(str(published.get("public_id")))
+
+    for source_key, duplicate_record_id in sorted(duplicates):
+        health = next((item for item in source_health if item.get("key") == source_key), None)
+        if health is not None:
+            health["error_count"] = int(health.get("error_count", 0)) + 1
+            health.setdefault("validation_errors", []).append(
+                "identity_quarantined: duplicate authoritative source ID "
+                f"{duplicate_record_id!r}; all matching rows were retained only as raw evidence"
+            )
+    for public_id in sorted(duplicate_provisional_ids):
+        source_keys = {
+            source_key_for(published)
+            for published in published_records
+            if str(published.get("public_id")) == public_id
+        }
+        for source_key in sorted(source_keys):
+            health = next((item for item in source_health if item.get("key") == source_key), None)
+            if health is not None:
+                health["error_count"] = int(health.get("error_count", 0)) + 1
+                health.setdefault("validation_errors", []).append(
+                    "identity_quarantined: duplicate provisional public ID "
+                    f"{public_id!r}; all matching rows were retained only as raw evidence"
+                )
+    for published in published_records:
+        if str(published.get("public_id")) not in rejected_public_ids:
+            continue
+        source_key = source_key_for(published)
+        health = next((item for item in source_health if item.get("key") == source_key), None)
+        if health is not None:
+            health["quarantined_count"] = int(health.get("quarantined_count", 0)) + 1
+    return (
+        [
+            staged
+            for staged in staged_records
+            if str(staged.get("id", "")).removeprefix("stage-") not in rejected_public_ids
+        ],
+        [
+            published
+            for published in published_records
+            if str(published.get("public_id")) not in rejected_public_ids
+        ],
+    )
 
 
 def _environmental_overlays(
@@ -306,6 +460,17 @@ def _write_processed_state(
     catalog: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     processed_dir = data_dir / "processed"
+    if get_settings().processed_store_backend == "postgres":
+        return _write_postgres_source_state(
+            run_id=run_id,
+            checked_at=checked_at,
+            source_health=source_health,
+            raw_records=raw_records,
+            staged_records=staged_records,
+            published_records=published_records,
+            overlays=overlays,
+            catalog=catalog,
+        )
     raw_source_keys = {
         str(record["data_source_key"]) for record in raw_records if record.get("data_source_key")
     }
@@ -381,6 +546,165 @@ def _write_processed_state(
     }
     write_processed_payload("source_health", health, data_dir=data_dir)
     return health
+
+
+def _require_postgres_identity_store() -> None:
+    settings = get_settings()
+    if settings.data_mode != "live" or settings.processed_store_backend != "postgres":
+        raise ArtifactIdentityIngestionUnsupported(
+            "Artifact ingestion cannot preserve C03 source identities; use PostgreSQL or a future "
+            "single-writer compatibility import. Existing artifact preview reads remain supported."
+        )
+
+
+def _write_postgres_source_state(
+    *,
+    run_id: str,
+    checked_at: str,
+    source_health: list[dict[str, Any]],
+    raw_records: list[dict[str, Any]],
+    staged_records: list[dict[str, Any]],
+    published_records: list[dict[str, Any]],
+    overlays: list[dict[str, Any]] | None,
+    catalog: dict[str, Any] | None = None,
+) -> dict[str, Any]:
+    from app.db import SessionLocal
+    from app.transactional_store import CollectionUnitOfWork
+
+    checked = datetime.fromisoformat(checked_at)
+    staged_by_id = {str(record["id"]).removeprefix("stage-"): record for record in staged_records}
+    if len(staged_by_id) != len(staged_records) or len(
+        {str(record["public_id"]) for record in published_records}
+    ) != len(published_records):
+        raise ValueError("Duplicate provisional public IDs must be quarantined before source merge")
+    published_by_source: dict[str, list[SourceRecord]] = {}
+    source_by_url = {
+        str(source.get("source_url")): source
+        for source in source_health
+        if source.get("source_url") and source.get("key")
+    }
+    for published in published_records:
+        public_id = str(published["public_id"])
+        staged = staged_by_id.get(public_id)
+        if staged is None:
+            continue
+        source_key = str(published.get("source_key") or staged.get("source_key") or "")
+        if not source_key:
+            source = source_by_url.get(str(published.get("source_url")))
+            source_key = str(source.get("key")) if source else ""
+        if not source_key:
+            # A record without source provenance is not safe to attach to an
+            # arbitrary batch.  It remains a caller-visible ingestion error.
+            raise ValueError(f"Published record {public_id} has no configured source key")
+        published_by_source.setdefault(str(source_key), []).append(
+            SourceRecord(str(staged["raw_record_id"]), public_id, published, staged)
+        )
+    with SessionLocal.begin() as session:
+        unit = CollectionUnitOfWork(session)
+        with unit.canonical_mutation():
+            merge_results: dict[str, dict[str, int | bool]] = {}
+            for source in source_health:
+                source_key = str(source["key"])
+                coverage, outcome = _legacy_batch_outcome(source)
+                quarantined_count = source.get("quarantined_count")
+                if quarantined_count is None:
+                    # Compatibility for an older direct adapter caller that only
+                    # supplied diagnostic strings, rather than input-row counts.
+                    quarantined_count = sum(
+                        1
+                        for error in source.get("validation_errors", [])
+                        if "identity_quarantined" in error
+                    )
+                merge_results[source_key] = merge_postgres_batch(
+                    session,
+                    SourceBatch(
+                        run_id=run_id,
+                        source_key=source_key,
+                        scope_id=str(source.get("source_url", source_key)),
+                        scope_version="legacy-capped-v1",
+                        coverage=coverage,
+                        outcome=outcome,
+                        checked_at=checked,
+                        records=tuple(published_by_source.get(source_key, [])),
+                        quarantined_count=int(quarantined_count),
+                    ),
+                    unit_of_work=unit,
+                )
+            for occurrence, raw_record in enumerate(raw_records):
+                source_key = str(raw_record.get("data_source_key") or "unknown")
+                payload_digest = str(raw_record.get("payload_sha256") or _sha256(raw_record))
+                # Keep even byte-identical rows in the same run as separate evidence.
+                # Input order is stable for a replay of the same fetched collection.
+                raw_key = f"{source_key}:{run_id}:{payload_digest}:{occurrence:08d}"
+                unit.upsert_processed(
+                    "raw_records", raw_key, {**raw_record, "ingestion_run_id": run_id}
+                )
+            if catalog is not None:
+                catalog_rows = unit.list_processed(CATALOG_COLLECTION)
+                if len(catalog_rows) > 1:
+                    raise ValueError("The map layer catalog must contain one singleton")
+                unit.upsert_processed(
+                    CATALOG_COLLECTION,
+                    "latest",
+                    merge_ingestion_catalog(catalog_rows[0] if catalog_rows else None, catalog),
+                )
+
+            existing_health = unit.get_processed("source_health", "latest") or {}
+            merged_sources = {
+                str(source["key"]): source
+                for source in existing_health.get("sources", [])
+                if isinstance(source, dict) and source.get("key")
+            }
+            merged_sources.update(
+                {str(source["key"]): source for source in source_health if source.get("key")}
+            )
+            current_published = unit.list_processed("development_records")
+            raw_observation_count = int(
+                session.scalar(
+                    select(func.count())
+                    .select_from(ProcessedCollectionItem)
+                    .where(ProcessedCollectionItem.collection_name == "raw_records")
+                )
+                or 0
+            )
+            health = {
+                "run_id": run_id,
+                "checked_at": checked_at,
+                "status": _aggregate_status(list(merged_sources.values())),
+                "sources": list(merged_sources.values()),
+                "records": {
+                    # This is the retained historical observation count, not
+                    # only this run's incoming payloads.
+                    "raw": raw_observation_count,
+                    "staged": len(unit.list_processed("staged_development_records")),
+                    "published": len(current_published),
+                    "proximity_flags": sum(
+                        len(record.get("proximity_flags", [])) for record in current_published
+                    ),
+                },
+                "batches": merge_results,
+            }
+            unit.upsert_processed("source_health", "latest", health)
+            for overlay in overlays or []:
+                overlay_source = source_by_url.get(str(overlay.get("source_url")))
+                if overlay_source is not None and overlay_source.get("status") == "failing":
+                    continue
+                unit.upsert_processed("environmental_overlays", str(overlay["id"]), overlay)
+    return health
+
+
+def _legacy_batch_outcome(
+    source: dict[str, Any],
+) -> tuple[Coverage | None, Literal["success", "failed"]]:
+    if source.get("status") == "failing":
+        return "failed", "failed"
+    metadata = source.get("metadata")
+    if isinstance(metadata, dict):
+        reported = metadata.get("reported_count")
+        fetched = metadata.get("fetched_count")
+        if isinstance(reported, int) and isinstance(fetched, int) and reported > fetched:
+            return "partial", "success"
+    return None, "success"
 
 
 def _read_processed_list(path: Path) -> list[dict[str, Any]]:

@@ -341,3 +341,73 @@ class ProcessedCollectionItem(Base):
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
     )
+
+
+class SourceIdentityRegistry(Base):
+    """Stable source anchors retained independently from mutable public content."""
+
+    __tablename__ = "source_identity_registry"
+    __table_args__ = (
+        UniqueConstraint("source_key", "source_record_id", name="uq_source_identity_anchor"),
+        UniqueConstraint("public_id", name="uq_source_identity_public_id"),
+    )
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    source_key: Mapped[str] = mapped_column(String(120), nullable=False, index=True)
+    source_record_id: Mapped[str] = mapped_column(String(255), nullable=False)
+    public_id: Mapped[str] = mapped_column(String(255), nullable=False)
+    first_discovered_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    last_observed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
+    )
+
+
+class SourceIngestionBatch(Base):
+    """One source observation with explicit scope and coverage semantics."""
+
+    __tablename__ = "source_ingestion_batches"
+    __table_args__ = (
+        UniqueConstraint(
+            "run_id",
+            "source_key",
+            "scope_id",
+            "scope_version",
+            name="uq_source_ingestion_batch_replay",
+        ),
+    )
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    run_id: Mapped[str] = mapped_column(String(255), nullable=False)
+    source_key: Mapped[str] = mapped_column(String(120), nullable=False, index=True)
+    scope_id: Mapped[str] = mapped_column(String(255), nullable=False)
+    scope_version: Mapped[str] = mapped_column(String(255), nullable=False)
+    coverage: Mapped[str] = mapped_column(String(20), nullable=False)
+    outcome: Mapped[str] = mapped_column(String(20), nullable=False)
+    counts_json: Mapped[dict[str, Any]] = mapped_column(JSON, nullable=False, default=dict)
+    started_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False
+    )
+    finished_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
+
+class SourceObservation(Base):
+    """Scope-specific observed/missing provenance; it never deletes canonical rows."""
+
+    __tablename__ = "source_observations"
+    __table_args__ = (
+        UniqueConstraint("batch_id", "registry_id", name="uq_source_observation_batch_registry"),
+    )
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    batch_id: Mapped[int] = mapped_column(
+        ForeignKey("source_ingestion_batches.id"), nullable=False, index=True
+    )
+    registry_id: Mapped[int] = mapped_column(
+        ForeignKey("source_identity_registry.id"), nullable=False, index=True
+    )
+    state: Mapped[str] = mapped_column(String(20), nullable=False)
+    content_fingerprint: Mapped[str | None] = mapped_column(String(128))
+    fingerprint_version: Mapped[str | None] = mapped_column(String(40))
+    observed_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)

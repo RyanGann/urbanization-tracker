@@ -29,7 +29,7 @@ for (const signal of ["SIGINT", "SIGTERM"]) {
 
 function usage(message) {
   if (message) console.error(`Error: ${message}`);
-  console.error("Usage: node scripts/run-integration.mjs --suite api|live|concurrency|performance [--scenario functional|representative|snapshot|catalog-development|c01-data-modes|u00-filters] [--snapshot-dir DISPOSABLE_COPY] [--profile desktop|mobile] [--smoke] [--keep-on-failure]");
+  console.error("Usage: node scripts/run-integration.mjs --suite api|live|concurrency|performance [--scenario functional|representative|snapshot|catalog-development|c01-data-modes|u00-filters|c03-source-identity] [--snapshot-dir DISPOSABLE_COPY] [--profile desktop|mobile] [--smoke] [--keep-on-failure]");
   process.exitCode = 2;
 }
 
@@ -61,12 +61,15 @@ function parseArgs(argv) {
     if (!["desktop", "mobile"].includes(options.profile)) throw new Error("Performance profile must be desktop or mobile");
   } else {
     if (options.profile || options.smoke || options.snapshotDir) throw new Error("Performance options require --suite performance");
-    if (options.scenario && !["c01-data-modes", "u00-filters"].includes(options.scenario)) throw new Error(`Scenario '${options.scenario}' is not implemented`);
+    if (options.scenario && !["c01-data-modes", "u00-filters", "c03-source-identity"].includes(options.scenario)) throw new Error(`Scenario '${options.scenario}' is not implemented`);
     if (options.scenario === "c01-data-modes" && (options.suite !== "api" || options.assertFailure || options.isolationCheck || options.child)) {
       throw new Error("--scenario c01-data-modes requires the top-level api suite without assertion or isolation flags");
     }
     if (options.scenario === "u00-filters" && (options.suite !== "live" || options.assertFailure || options.isolationCheck || options.child)) {
       throw new Error("--scenario u00-filters requires the top-level live suite without assertion or isolation flags");
+    }
+    if (options.scenario === "c03-source-identity" && (options.suite !== "api" || options.assertFailure || options.isolationCheck || options.child)) {
+      throw new Error("--scenario c03-source-identity requires the top-level api suite without assertion or isolation flags");
     }
   }
   if (options.assertFailure && options.suite !== "api") {
@@ -500,6 +503,76 @@ async function runSuite(options) {
     ], { log, timeoutMs: 90_000 });
   };
 
+  const runC03SourceIdentity = async () => {
+    await run("docker", [
+      ...compose,
+      "run", "--rm", "--no-deps",
+      "--volume", `${join(root, "apps", "api", "tests", "integration").replaceAll("\\", "/")}:/integration:ro`,
+      "api", "python", "/integration/c03_source_identity.py",
+      "--api-url", "http://api-gateway:8000",
+      "--result", "/c03-data/results.json"
+    ], { log, timeoutMs: 120_000 });
+    const resultPath = join(artifactDir, "c03-data", "results.json");
+    const expected = JSON.parse(await readFile(resultPath, "utf8"));
+    const restoredApi = `${project}-c03-restored-api`;
+    const restoreSnapshotSql = "SELECT json_build_object('mapping', COALESCE((SELECT json_agg(item) FROM (SELECT json_build_object('source_key', source_key, 'source_record_id', source_record_id, 'public_id', public_id) AS item FROM source_identity_registry ORDER BY source_key, source_record_id, id) mappings), '[]'::json), 'bookmarked_record', (SELECT json_build_object('public_id', payload_json->>'public_id', 'date_discovered', payload_json->>'date_discovered', 'title', payload_json->>'title') FROM processed_collection_items WHERE collection_name = 'development_records' AND item_id = 'bookmarked-legacy-id'))::text";
+    let restored = false;
+    let restoredApiStarted = false;
+    try {
+      await run("docker", [
+        ...compose,
+        "exec", "-T", "db", "sh", "-ec",
+        "createdb -U integration c03_restore && pg_dump -U integration -Fc -f /tmp/c03.dump integration && pg_restore --exit-on-error -U integration -d c03_restore /tmp/c03.dump >/dev/null"
+      ], { log, timeoutMs: 120_000 });
+      restored = true;
+      const snapshot = await run("docker", [
+        ...compose, "exec", "-T", "db", "psql", "-U", "integration", "-d", "c03_restore", "-Atqc", restoreSnapshotSql
+      ], { log, timeoutMs: 30_000 });
+      const restoredSnapshot = JSON.parse(snapshot.output.trim());
+      const expectedSnapshot = {
+        mapping: expected.mapping.map((item) => ({ source_key: item.source_key, source_record_id: item.source_record_id, public_id: item.public_id })),
+        bookmarked_record: {
+          public_id: expected.bookmarked_record.public_id,
+          date_discovered: expected.bookmarked_record.date_discovered,
+          title: expected.bookmarked_record.title
+        }
+      };
+      if (JSON.stringify(restoredSnapshot) !== JSON.stringify(expectedSnapshot)) {
+        throw new Error(`C03 restored mapping/bookmark mismatch: ${snapshot.output}`);
+      }
+      await run("docker", [
+        ...compose, "run", "--detach", "--no-deps", "--name", restoredApi,
+        "--env", "DATABASE_URL=postgresql+psycopg://integration:integration@db:5432/c03_restore",
+        "--env", "PROCESSED_STORE_BACKEND=postgres", "--env", "PHASE3_STORE_BACKEND=postgres",
+        "--entrypoint", "uvicorn", "api", "app.main:app", "--host", "0.0.0.0", "--port", "8001"
+      ], { log, timeoutMs: 30_000 });
+      restoredApiStarted = true;
+      const probe = `import json,time\nfrom urllib.request import urlopen\nurl='http://${restoredApi}:8001/api/development-records/bookmarked-legacy-id'\nlast=None\nfor _ in range(30):\n  try:\n    with urlopen(url, timeout=2) as response: payload=json.loads(response.read())\n    if response.status == 200 and payload.get('public_id') == 'bookmarked-legacy-id' and payload.get('date_discovered') == '2025-01-02': break\n    last=payload\n  except Exception as exc: last=repr(exc)\n  time.sleep(0.25)\nelse: raise RuntimeError(f'restored API record failed: {last}')\nprint(json.dumps({'public_id':payload['public_id'],'date_discovered':payload['date_discovered']}))`;
+      const apiCheck = await run("docker", [
+        ...compose, "run", "--rm", "--no-deps", "--entrypoint", "python", "api", "-c", probe
+      ], { log, timeoutMs: 30_000 });
+      const restoredApiOutput = apiCheck.output.trim().split(/\r?\n/).findLast((line) => line.startsWith("{"));
+      if (!restoredApiOutput) throw new Error(`C03 restored API did not return JSON: ${apiCheck.output}`);
+      scenarioArtifacts.c03_restored_api = JSON.parse(restoredApiOutput);
+      scenarioArtifacts.c03_restore_mapping_count = restoredSnapshot.mapping.length;
+    } finally {
+      if (restoredApiStarted) {
+        const owner = await run(
+          "docker",
+          ["inspect", "--format", "{{ index .Config.Labels \"com.docker.compose.project\" }}", restoredApi],
+          { log, allowFailure: true, ignoreInterrupt: true }
+        );
+        if (owner.output.trim() === project) {
+          await run("docker", ["rm", "-f", restoredApi], { log, allowFailure: true, ignoreInterrupt: true });
+        }
+      }
+      if (restored) await run("docker", [...compose, "exec", "-T", "db", "sh", "-ec", "dropdb -U integration c03_restore && rm -f /tmp/c03.dump"], { log, allowFailure: true, ignoreInterrupt: true });
+    }
+    scenarioArtifacts.c03_results_sha256 = createHash("sha256")
+      .update(await readFile(resultPath))
+      .digest("hex");
+  };
+
   try {
     const requiresBrowser = options.suite === "live" || performance || options.scenario === "c01-data-modes";
     await run("docker", [...compose, "build", "api", ...(requiresBrowser ? ["web", "browser"] : [])], { log, timeoutMs: 300_000 });
@@ -539,6 +612,7 @@ async function runSuite(options) {
       apiUrl = await publishedPort(compose, "api-gateway", 8000, log);
       await waitForHealth(apiUrl);
       await assertApi(apiUrl, reviewerToken, fixture, false);
+      if (options.scenario === "c03-source-identity") await runC03SourceIdentity();
       if (performance) {
         await captureDatabase({ compose, run, log, artifactDir });
         stopSampling = await startResourceSampling({ compose, run, log, artifactDir });
