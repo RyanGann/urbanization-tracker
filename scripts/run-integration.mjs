@@ -33,7 +33,7 @@ for (const signal of ["SIGINT", "SIGTERM"]) {
 
 function usage(message) {
   if (message) console.error(`Error: ${message}`);
-  console.error("Usage: node scripts/run-integration.mjs --suite api|live|concurrency|performance [--scenario functional|representative|snapshot|catalog-development|c01-data-modes|u00-filters|c03-source-identity|input-limits|layer-import|d01-scoped|display-builder|o01-artifacts] [--snapshot-dir DISPOSABLE_COPY] [--profile desktop|mobile] [--smoke] [--keep-on-failure]");
+  console.error("Usage: node scripts/run-integration.mjs --suite api|live|concurrency|performance [--scenario functional|representative|snapshot|catalog-development|c01-data-modes|u00-filters|c03-source-identity|c04-agenda-revisions|input-limits|layer-import|d01-scoped|display-builder|o01-artifacts] [--snapshot-dir DISPOSABLE_COPY] [--profile desktop|mobile] [--smoke] [--keep-on-failure]");
   process.exitCode = 2;
 }
 
@@ -65,7 +65,7 @@ function parseArgs(argv) {
     if (!["desktop", "mobile"].includes(options.profile)) throw new Error("Performance profile must be desktop or mobile");
   } else {
     if (options.profile || options.smoke || (options.snapshotDir && options.scenario !== "layer-import")) throw new Error("Performance options require --suite performance");
-    if (options.scenario && !["c01-data-modes", "u00-filters", "c03-source-identity", "input-limits", "layer-import", "d01-scoped", "display-builder", "o01-artifacts"].includes(options.scenario)) throw new Error(`Scenario '${options.scenario}' is not implemented`);
+    if (options.scenario && !["c01-data-modes", "u00-filters", "c03-source-identity", "c04-agenda-revisions", "input-limits", "layer-import", "d01-scoped", "display-builder", "o01-artifacts"].includes(options.scenario)) throw new Error(`Scenario '${options.scenario}' is not implemented`);
     if (options.scenario === "display-builder" && (options.suite !== "api" || options.assertFailure || options.isolationCheck || options.child)) {
       throw new Error("--scenario display-builder requires the top-level api suite");
     }
@@ -89,6 +89,9 @@ function parseArgs(argv) {
     }
     if (options.scenario === "d01-scoped" && (options.suite !== "api" || options.assertFailure || options.isolationCheck || options.child)) {
       throw new Error("--scenario d01-scoped requires the top-level api suite without assertion or isolation flags");
+    }
+    if (options.scenario === "c04-agenda-revisions" && (options.suite !== "api" || options.assertFailure || options.isolationCheck || options.child)) {
+      throw new Error("--scenario c04-agenda-revisions requires the top-level api suite without assertion or isolation flags");
     }
   }
   if (options.assertFailure && options.suite !== "api") {
@@ -753,6 +756,21 @@ async function runSuite(options) {
     }
   };
 
+  const runC04AgendaRevisions = async () => {
+    const resultPath = "/results/c04-agenda-revisions.json";
+    await run("docker", [
+      ...compose, "run", "--rm", "--no-deps",
+      "--volume", `${join(root, "apps", "api", "tests", "integration").replaceAll("\\", "/")}:/integration:ro`,
+      "--volume", `${artifactDir.replaceAll("\\", "/")}:/results`,
+      "api", "python", "/integration/c04_agenda_revisions.py",
+      "--api-url", "http://api-gateway:8000",
+      `--reviewer-token=${reviewerToken}`,
+      "--result", resultPath
+    ], { log, timeoutMs: 180_000 });
+    scenarioArtifacts.c04_results_sha256 = createHash("sha256")
+      .update(await readFile(join(artifactDir, "c04-agenda-revisions.json"))).digest("hex");
+  };
+
   try {
     const requiresBrowser = options.suite === "live" || performance || options.scenario === "c01-data-modes";
     await run("docker", [...compose, "build", "api", ...(requiresBrowser ? ["web", "browser"] : [])], { log, timeoutMs: 300_000 });
@@ -800,6 +818,7 @@ async function runSuite(options) {
       await assertApi(apiUrl, reviewerToken, fixture, false);
       if (options.scenario === "c03-source-identity") await runC03SourceIdentity();
       if (options.scenario === "display-builder") await runP04aDisplay();
+      if (options.scenario === "c04-agenda-revisions") await runC04AgendaRevisions();
       if (options.scenario === "o01-artifacts") await runO01Artifacts();
       if (options.scenario === "input-limits") {
         await runS02InputLimits("verify");

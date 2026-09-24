@@ -70,7 +70,7 @@ def test_reviewer_decision_export_import_roundtrip() -> None:
     )
 
     assert import_response.status_code == 200
-    assert import_response.json() == {"applied": 1, "missing": []}
+    assert import_response.json() == {"applied": 1, "missing": [], "conflicts": []}
 
 
 def test_large_geojson_serialization_performance_smoke() -> None:

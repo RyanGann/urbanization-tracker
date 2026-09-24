@@ -155,7 +155,7 @@ def test_agenda_parser_failure_preserves_existing_revision_in_durable_mode(
     )
     monkeypatch.setattr(agenda_pipeline, "_fetch_and_parse_document", parse_document)
     monkeypatch.setattr(
-        agenda_pipeline, "replace_agenda_artifacts", lambda **kwargs: replaced.append(kwargs)
+        agenda_pipeline, "merge_agenda_artifacts", lambda **kwargs: replaced.append(kwargs)
     )
     try:
         with httpx.Client() as client:

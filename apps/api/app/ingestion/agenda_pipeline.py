@@ -20,6 +20,7 @@ from app.ingestion.agenda import (
     extract_pdf_text,
     parse_agenda_items,
 )
+from app.ingestion.agenda_store import merge_agenda_artifacts
 from app.ingestion.artifact_config import require_hosted_artifact_storage
 from app.ingestion.artifact_manifest import public_source_url
 from app.ingestion.artifact_service import ArtifactService
@@ -27,13 +28,11 @@ from app.ingestion.artifact_sink import ArtifactError
 from app.ingestion.artifacts import (
     ensure_data_dirs,
     iso_now,
-    read_json,
     record_artifact,
     write_staged_bytes,
     write_staged_json,
 )
 from app.ingestion.connectors.agenda import discover_agenda_links
-from app.phase3_store import build_duplicate_candidates, replace_agenda_artifacts
 
 FALLBACK_AGENDA_LINKS = [
     (
@@ -168,9 +167,8 @@ def ingest_huntsville_agendas(
                 else:
                     errors.append(f"{link.url}: {exc}")
 
-        staged_records = _dedupe(staged_records, key="id")
-        published_records = _published_records(data_dir)
-        duplicate_candidates = build_duplicate_candidates(staged_records, published_records)
+        if discovery_method == "curated_fallback":
+            errors.append("agenda_archive_fallback")
         health = {
             "key": "huntsville_planning_agendas",
             "name": "Huntsville Planning Commission Agendas",
@@ -186,20 +184,24 @@ def ingest_huntsville_agendas(
                 "document_limit": document_limit,
                 "agency": PLANNING_AGENCY,
                 "discovery_method": discovery_method,
+                "archive_coverage": "recent_documents_only",
             },
         }
+        if not source_documents:
+            health["status"] = "degraded"
+            health["validation_errors"].append("agenda_no_documents")
+            health["error_count"] = len(health["validation_errors"])
+            return health
         if artifact_pending:
             return health
-        replace_agenda_artifacts(
+        return merge_agenda_artifacts(
             source_documents=source_documents,
             staged_records=staged_records,
-            duplicate_candidates=duplicate_candidates,
             health=health,
             run_id=run_id if artifact_service is not None else None,
             artifact_sink_id=artifact_service.sink_id if artifact_service is not None else None,
             required_reference_ids=tuple(required_references),
         )
-        return health
     finally:
         if owned_client:
             client.close()
@@ -283,6 +285,7 @@ def _fetch_and_parse_document(
         "document_date": document_date_from_title(title, url),
         "fetched_at": checked_at,
         "sha256": digest,
+        "text_sha256": hashlib.sha256(extracted_text.encode("utf-8")).hexdigest(),
         "content_type": content_type,
         "storage_uri": raw_artifact["storage_uri"],
         "extracted_text_uri": text_artifact["storage_uri"],
@@ -300,13 +303,6 @@ def _fetch_and_parse_document(
     source_document["parsed_item_count"] = len(staged_records)
     references = tuple(ref for ref in (pdf_reference, text_reference) if ref is not None)
     return source_document, staged_records, references
-
-
-def _published_records(data_dir: Path) -> list[dict[str, Any]]:
-    records = read_json(data_dir / "processed" / "development_records.json", [])
-    if not isinstance(records, list):
-        return []
-    return [record for record in records if isinstance(record, dict)]
 
 
 def _fetch_archive_html(client: httpx.Client) -> tuple[str, str]:
@@ -366,13 +362,6 @@ def _run_curl(url: str) -> bytes | None:
     except (FileNotFoundError, subprocess.CalledProcessError, subprocess.TimeoutExpired):
         return None
     return result.stdout
-
-
-def _dedupe(records: list[dict[str, Any]], *, key: str) -> list[dict[str, Any]]:
-    deduped: dict[str, dict[str, Any]] = {}
-    for record in records:
-        deduped[str(record[key])] = record
-    return list(deduped.values())
 
 
 def _excerpt(text: str) -> str | None:

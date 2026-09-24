@@ -73,6 +73,10 @@ export interface StagedDevelopmentRecord {
   source_agency: string;
   date_discovered: string;
   review_status: ReviewStatus;
+  content_revision?: number | null;
+  state_revision?: number | null;
+  review_notes?: string | null;
+  location_required?: boolean;
   record_confidence: ConfidenceLevel;
   geometry_source: string;
   geometry_confidence: ConfidenceLevel;
@@ -296,6 +300,8 @@ export interface ReviewerDecisionSnapshot {
   source_url: string;
   review_status: ReviewStatus;
   review_notes: string | null;
+  content_revision?: number | null;
+  state_revision?: number | null;
   exported_at: string;
 }
 
@@ -303,11 +309,13 @@ export interface ReviewerDecisionImportItem {
   staged_id: string;
   review_status: ReviewStatus;
   notes: string | null;
+  expected_revision?: number | null;
 }
 
 export interface ReviewerDecisionImportResult {
   applied: number;
   missing: string[];
+  conflicts?: string[];
 }
 
 export interface RecordVersion {

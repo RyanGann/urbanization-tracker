@@ -1,0 +1,393 @@
+"""C04 real PostGIS/API checks with synthetic PDF/text bytes and O01 local manifest."""
+
+from __future__ import annotations
+
+import argparse
+import hashlib
+import json
+import tempfile
+from pathlib import Path
+from unittest.mock import patch
+from uuid import uuid4
+
+import httpx
+from sqlalchemy import func, select
+
+from app.config import get_settings
+from app.db import SessionLocal
+from app.ingestion.agenda import parse_agenda_items
+from app.ingestion.agenda_store import merge_agenda_artifacts
+from app.ingestion.artifact_service import ArtifactService
+from app.ingestion.artifact_sink import ArtifactError, BlobIdentity
+from app.models import Phase3CollectionItem
+from app.transactional_store import CollectionUnitOfWork
+
+SOURCE = "huntsville_planning_agendas"
+URL = "https://example.test/c04/agenda.pdf"
+
+
+def count(collection: str) -> int:
+    with SessionLocal() as session:
+        return int(session.scalar(
+            select(func.count()).select_from(Phase3CollectionItem).where(
+                Phase3CollectionItem.collection_name == collection
+            )
+        ) or 0)
+
+
+def setup_document(
+    service: ArtifactService, root: Path, *, run_id: str, pdf: bytes,
+    text: str, pending_text: bool = False, url: str = URL,
+    date: str = "2026-04-28",
+) -> tuple[dict, list[dict], tuple]:
+    digest = hashlib.sha256(pdf).hexdigest()
+    text_bytes = text.encode()
+    text_digest = hashlib.sha256(text_bytes).hexdigest()
+    pdf_path = root / f"{run_id}.pdf"
+    pdf_path.write_bytes(pdf)
+    pdf_ref = service.upload_file(
+        path=pdf_path, source_key=SOURCE, run_id=run_id,
+        artifact_type="source_pdf", logical_key="agenda-pdf", required=True,
+        content_type="application/pdf", source_url=url,
+    )
+    text_path = root / f"{run_id}.txt"
+    text_path.write_bytes(text_bytes)
+    if pending_text:
+        text_ref = service.manifest.reserve(
+            blob=BlobIdentity(text_digest, len(text_bytes)), sink_id=service.sink_id,
+            source_key=SOURCE, run_id=run_id, artifact_type="extracted_text",
+            logical_key="agenda-text", required=True, parent_reference_id=pdf_ref,
+            content_type="text/plain; charset=utf-8", source_url=url,
+        )
+    else:
+        text_ref = service.upload_file(
+            path=text_path, source_key=SOURCE, run_id=run_id,
+            artifact_type="extracted_text", logical_key="agenda-text",
+            required=True, content_type="text/plain; charset=utf-8",
+            source_url=url, parent_reference_id=pdf_ref,
+        )
+    document = {
+        "id": f"agenda-{digest[:12]}", "title": "Planning Commission Agenda - April 28, 2026",
+        "url": url, "document_date": date, "fetched_at": "2026-09-24T12:00:00Z",
+        "sha256": digest, "text_sha256": text_digest,
+        "content_type": "application/pdf", "storage_uri": None,
+        "extracted_text_uri": None, "extraction_status": "extracted",
+        "pdf_reference_id": str(pdf_ref), "text_reference_id": str(text_ref),
+        "parsed_item_count": 0, "text_excerpt": text[:100],
+    }
+    records = parse_agenda_items(
+        text, source_document=document, checked_at="2026-09-24T12:00:00Z"
+    )
+    document["parsed_item_count"] = len(records)
+    return document, records, (pdf_ref, text_ref)
+
+
+def merge(document: dict, records: list[dict], refs: tuple, run_id: str, sink_id: str) -> None:
+    merge_agenda_artifacts(
+        source_documents=[document], staged_records=records,
+        health={"key": SOURCE, "status": "healthy", "checked_at": "2026-09-24T12:00:00Z"},
+        run_id=run_id, artifact_sink_id=sink_id, required_reference_ids=refs,
+    )
+
+
+def run(api_url: str, reviewer_token: str, result: Path) -> None:
+    with tempfile.TemporaryDirectory(prefix="c04-integration-") as directory:
+        root = Path(directory)
+        settings = get_settings().model_copy(update={
+            "data_mode": "live", "phase3_store_backend": "postgres",
+            "processed_store_backend": "postgres", "ingestion_data_dir": root,
+            "artifact_sink": "local", "artifact_local_root": root / "objects",
+            "artifact_durability_required": True,
+        })
+        service = ArtifactService(settings, SessionLocal)
+        headers = {"Authorization": f"Bearer {reviewer_token}"}
+        with patch("app.ingestion.agenda_store.get_settings", return_value=settings):
+            with httpx.Client(base_url=api_url, headers=headers, timeout=15) as api:
+                first_run = "c04-first-" + uuid4().hex
+                first_text = (
+                    "1. SAMPLE RIDGE\nLayout (24 lots) Developer: Builder"
+                    "\nLocated: West of Road"
+                )
+                first, first_records, first_refs = setup_document(
+                    service, root, run_id=first_run, pdf=b"synthetic PDF revision one",
+                    text=first_text, pending_text=True,
+                )
+                before = count("source_documents")
+                try:
+                    merge(first, first_records, first_refs, first_run, service.sink_id)
+                except ArtifactError as exc:
+                    assert exc.code == "artifact_unavailable"
+                else:
+                    raise AssertionError("pending text activated an agenda")
+                assert count("source_documents") == before
+                service.resume(first_refs[1], root / f"{first_run}.txt")
+                merge(first, first_records, first_refs, first_run, service.sink_id)
+                queue = api.get("/api/reviewer/staged-records")
+                assert queue.status_code == 200, queue.text
+                candidate = next(row for row in queue.json() if row["source_url"] == URL)
+                candidate_id = candidate["id"]
+                assert candidate["geometry"] is None and candidate["state_revision"] == 1
+                reject = api.post(
+                    f"/api/reviewer/staged-records/{candidate_id}/reject",
+                    json={"notes": "Source location unverified", "expected_revision": 1},
+                )
+                assert reject.status_code == 200, reject.text
+                stale = api.post(
+                    f"/api/reviewer/staged-records/{candidate_id}/needs-info",
+                    json={"notes": "stale", "expected_revision": 1},
+                )
+                assert stale.status_code == 409
+                assert stale.json()["detail"]["code"] == "review_revision_conflict"
+                merge(first, first_records, first_refs, first_run, service.sink_id)
+                queue = api.get("/api/reviewer/staged-records").json()
+                replay = next(row for row in queue if row["id"] == candidate_id)
+                assert replay["review_status"] == "rejected"
+                assert replay["review_notes"] == "Source location unverified"
+                assert replay["state_revision"] == 2
+
+                next_run = "c04-next-" + uuid4().hex
+                changed_text = (
+                    "1. SAMPLE RIDGE\nFinal (24 lots) Developer: Builder"
+                    "\nLocated: West of Road"
+                )
+                changed, changed_records, changed_refs = setup_document(
+                    service, root, run_id=next_run, pdf=b"synthetic PDF revision two",
+                    text=changed_text, pending_text=True,
+                )
+                try:
+                    merge(changed, changed_records, changed_refs, next_run, service.sink_id)
+                except ArtifactError as exc:
+                    assert exc.code == "artifact_unavailable"
+                else:
+                    raise AssertionError("pending changed PDF text activated")
+                assert count("agenda_document_revisions") == 1
+                service.resume(changed_refs[1], root / f"{next_run}.txt")
+                merge(changed, changed_records, changed_refs, next_run, service.sink_id)
+                unresolved = api.get("/api/reviewer/agenda-observations/unresolved")
+                assert unresolved.status_code == 200, unresolved.text
+                observation = next(
+                    row for row in unresolved.json() if row["source_excerpt"] == "Sample Ridge"
+                )
+                old_candidate = next(
+                    row for row in api.get("/api/reviewer/staged-records").json()
+                    if row["id"] == candidate_id
+                )
+                assert old_candidate["review_status"] == "rejected"
+                stale_link = api.post(
+                    f"/api/reviewer/agenda-observations/{observation['id']}/resolve",
+                    json={
+                        "candidate_id": candidate_id, "expected_observation_revision": 1,
+                        "expected_candidate_revision": 1,
+                        "reason": "Reviewed source case continuity",
+                    },
+                )
+                assert stale_link.status_code == 409
+                linked = api.post(
+                    f"/api/reviewer/agenda-observations/{observation['id']}/resolve",
+                    json={
+                        "candidate_id": candidate_id, "expected_observation_revision": 1,
+                        "expected_candidate_revision": 2,
+                        "reason": "Reviewed source case continuity",
+                    },
+                )
+                assert linked.status_code == 200, linked.text
+                assert linked.json()["review_status"] == "pending"
+                assert linked.json()["content_revision"] == 2
+                assert count("agenda_decision_events") == 1
+                with SessionLocal.begin() as session:
+                    with CollectionUnitOfWork(session).canonical_mutation() as uow:
+                        current = uow.get_phase3("agenda_staged_records", candidate_id)
+                        assert current
+                        current["geometry"] = {"type": "Point", "coordinates": [-86.58, 34.73]}
+                        current["geometry_source"] = "reviewer-verified synthetic fixture"
+                        current["geometry_confidence"] = "high"
+                        current["location_required"] = False
+                        current["state_revision"] += 1
+                        uow.upsert_phase3("agenda_staged_records", candidate_id, current)
+                approved_revision = linked.json()["state_revision"] + 1
+                approved = api.post(
+                    f"/api/reviewer/staged-records/{candidate_id}/approve",
+                    json={
+                        "notes": "Fixture location verified",
+                        "expected_revision": approved_revision,
+                    },
+                )
+                assert approved.status_code == 200, approved.text
+                public_id = approved.json()["public_id"]
+                merge(changed, changed_records, changed_refs, next_run, service.sink_id)
+                assert count("agenda_candidate_revisions") == 2
+                with SessionLocal() as session:
+                    public_rows = session.scalars(
+                        select(Phase3CollectionItem).where(
+                            Phase3CollectionItem.collection_name == "development_records",
+                            Phase3CollectionItem.item_id == public_id,
+                        )
+                    ).all()
+                    assert len(public_rows) == 1
+                    persisted_public = public_rows[0].payload_json
+                current = next(
+                    row for row in api.get("/api/reviewer/staged-records").json()
+                    if row["id"] == candidate_id
+                )
+                same_approval = api.post(
+                    f"/api/reviewer/staged-records/{candidate_id}/approve",
+                    json={
+                        "notes": "Fixture location verified",
+                        "expected_revision": current["state_revision"],
+                    },
+                )
+                assert same_approval.status_code == 200, same_approval.text
+                assert same_approval.json() == persisted_public
+
+                third_run = "c04-third-" + uuid4().hex
+                third, third_records, third_refs = setup_document(
+                    service, root, run_id=third_run, pdf=b"synthetic PDF revision three",
+                    text=(
+                        "1. SAMPLE RIDGE\nPreliminary (25 lots) Developer: Builder"
+                        "\nLocated: West of Road"
+                    ),
+                )
+                merge(third, third_records, third_refs, third_run, service.sink_id)
+                third_observation = next(
+                    row for row in api.get("/api/reviewer/agenda-observations/unresolved").json()
+                    if row["document_revision_id"] not in {
+                        observation["document_revision_id"]
+                    }
+                )
+                current = next(
+                    row for row in api.get("/api/reviewer/staged-records").json()
+                    if row["id"] == candidate_id
+                )
+                third_link = api.post(
+                    f"/api/reviewer/agenda-observations/{third_observation['id']}/resolve",
+                    json={
+                        "candidate_id": candidate_id,
+                        "expected_observation_revision": 1,
+                        "expected_candidate_revision": current["state_revision"],
+                        "reason": "Reviewed third source case continuity",
+                    },
+                )
+                assert third_link.status_code == 200, third_link.text
+                with SessionLocal.begin() as session:
+                    with CollectionUnitOfWork(session).canonical_mutation() as uow:
+                        pending = uow.get_phase3("agenda_staged_records", candidate_id)
+                        assert pending
+                        pending["geometry"] = {"type": "Point", "coordinates": [-86.58, 34.73]}
+                        pending["geometry_source"] = "reviewer-verified synthetic fixture"
+                        pending["geometry_confidence"] = "high"
+                        pending["location_required"] = False
+                        pending["state_revision"] += 1
+                        uow.upsert_phase3("agenda_staged_records", candidate_id, pending)
+                changed_approval = api.post(
+                    f"/api/reviewer/staged-records/{candidate_id}/approve",
+                    json={
+                        "notes": "Changed source status",
+                        "expected_revision": pending["state_revision"],
+                    },
+                )
+                assert changed_approval.status_code == 409, changed_approval.text
+                assert (
+                    changed_approval.json()["detail"]["code"]
+                    == "agenda_publication_update_pending"
+                )
+                after_conflict = next(
+                    row for row in api.get("/api/reviewer/staged-records").json()
+                    if row["id"] == candidate_id
+                )
+                assert after_conflict["review_status"] == "pending"
+                with SessionLocal() as session:
+                    actual = session.scalar(select(Phase3CollectionItem).where(
+                        Phase3CollectionItem.collection_name == "development_records",
+                        Phase3CollectionItem.item_id == public_id,
+                    ))
+                    assert actual and actual.payload_json == persisted_public
+                original_document = next(
+                    row for row in api.get("/api/source-documents").json()
+                    if row["url"] == URL
+                )
+                moved_run = "c04-moved-" + uuid4().hex
+                moved_url = "https://example.test/c04/moved-agenda.pdf"
+                moved, moved_records, moved_refs = setup_document(
+                    service, root, run_id=moved_run,
+                    pdf=b"synthetic PDF changed download URL", text=changed_text,
+                    url=moved_url,
+                )
+                before_documents = count("source_documents")
+                merge(moved, moved_records, moved_refs, moved_run, service.sink_id)
+                assert count("source_documents") == before_documents
+                unresolved_doc = next(
+                    row for row in api.get("/api/reviewer/agenda-documents/unresolved").json()
+                    if row["url"] == moved_url
+                )
+                stale_doc_link = api.post(
+                    f"/api/reviewer/agenda-documents/{unresolved_doc['id']}/resolve",
+                    json={
+                        "document_id": original_document["id"],
+                        "expected_observation_revision": 2,
+                        "reason": "Verified changed meeting packet URL",
+                    },
+                )
+                assert stale_doc_link.status_code == 409
+                linked_doc = api.post(
+                    f"/api/reviewer/agenda-documents/{unresolved_doc['id']}/resolve",
+                    json={
+                        "document_id": original_document["id"],
+                        "expected_observation_revision": 1,
+                        "reason": "Verified changed meeting packet URL",
+                    },
+                )
+                assert linked_doc.status_code == 200, linked_doc.text
+                assert linked_doc.json() == {
+                    "document_id": original_document["id"], "status": "retry_required"
+                }
+                merge(moved, moved_records, moved_refs, moved_run, service.sink_id)
+                assert count("source_documents") == before_documents
+                newest_run = "c04-newest-" + uuid4().hex
+                newest, newest_records, newest_refs = setup_document(
+                    service, root, run_id=newest_run,
+                    pdf=b"synthetic unrelated May agenda",
+                    text="1. OTHER RIDGE\nLayout (8 lots) Developer: Other Builder",
+                    url="https://example.test/c04/may-agenda.pdf", date="2026-05-26",
+                )
+                before_revisions = count("agenda_document_revisions")
+                with patch(
+                    "app.ingestion.agenda_store._merge_candidate",
+                    side_effect=RuntimeError("injected candidate merge failure"),
+                ):
+                    try:
+                        merge(newest, newest_records, newest_refs, newest_run, service.sink_id)
+                    except RuntimeError as exc:
+                        assert str(exc) == "injected candidate merge failure"
+                    else:
+                        raise AssertionError("mid-merge failure did not roll back")
+                assert count("source_documents") == before_documents
+                assert count("agenda_document_revisions") == before_revisions
+                merge(newest, newest_records, newest_refs, newest_run, service.sink_id)
+                assert count("source_documents") == before_documents + 1
+                assert any(
+                    row["id"] == original_document["id"]
+                    for row in api.get("/api/source-documents").json()
+                )
+                result.write_text(json.dumps({
+                    "pending_text_rollback": True,
+                    "same_revision_decision_retained": True,
+                    "changed_unanchored_quarantined": True,
+                    "stale_decision_and_resolution_409": True,
+                    "resolved_revision_pending_then_one_publication": True,
+                    "same_approval_returns_persisted_snapshot": True,
+                    "changed_second_approval_defers_to_c06": True,
+                    "changed_url_requires_audited_alias": True,
+                    "mid_merge_failure_rolled_back_and_older_document_remained": True,
+                    "first_document_id": first["id"],
+                    "first_pdf_sha256": first["sha256"],
+                    "second_pdf_sha256": changed["sha256"],
+                }, indent=2))
+
+
+if __name__ == "__main__":
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--api-url", required=True)
+    parser.add_argument("--reviewer-token", required=True)
+    parser.add_argument("--result", type=Path, required=True)
+    args = parser.parse_args()
+    run(args.api_url, args.reviewer_token, args.result)
