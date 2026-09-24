@@ -319,6 +319,11 @@ class ArtifactManifest:
             if row.state != "verified" or error.code in {"artifact_missing", "artifact_integrity"}:
                 row.state = "failed"
             row.failure_code = error.code
+            if error.code == "artifact_checkpoint":
+                # NoSuchUpload (or another invalid checkpoint) cannot be resumed.
+                # Keep the reference and retry budget, but start a new upload ID.
+                row.multipart_upload_id = None
+                row.multipart_parts = []
             row.next_attempt_at = _now(session) + timedelta(
                 seconds=min(3600, 5 * 2 ** min(row.attempts, 10))
             )

@@ -607,7 +607,6 @@ def _require_postgres_identity_store() -> None:
 
 def _write_postgres_source_state(
     *,
-    data_dir: Path,
     run_id: str,
     checked_at: str,
     source_health: list[dict[str, Any]],
@@ -616,15 +615,21 @@ def _write_postgres_source_state(
     published_records: list[dict[str, Any]],
     overlays: list[dict[str, Any]] | None,
     catalog: dict[str, Any] | None = None,
+    data_dir: Path | None = None,
 ) -> dict[str, Any]:
     from app.db import SessionLocal
     from app.transactional_store import CollectionUnitOfWork
 
+    settings = get_settings()
+    artifact_settings = settings.model_copy(
+        update={"ingestion_data_dir": data_dir or settings.ingestion_data_dir}
+    )
     sink_id = (
         ArtifactService(
-            get_settings().model_copy(update={"ingestion_data_dir": data_dir}), SessionLocal
+            artifact_settings,
+            SessionLocal,
         ).sink_id
-        if get_settings().artifact_durability_required
+        if settings.artifact_durability_required
         else None
     )
     checked = datetime.fromisoformat(checked_at)

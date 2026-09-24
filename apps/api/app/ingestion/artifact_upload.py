@@ -87,7 +87,16 @@ def upload(
         return
     if upload_id is None:
         upload_id = sink.begin(blob)
-        checkpoint(upload_id, ())
+        try:
+            checkpoint(upload_id, ())
+        except Exception:
+            # The ID was never durably recorded. Best-effort cleanup avoids an
+            # orphaned multipart upload that no future worker can discover.
+            try:
+                sink.abort(blob, upload_id)
+            except (ArtifactError, OSError):
+                pass
+            raise
     source.seek(0)
     digest = hashlib.sha256()
     completed = list(parts)

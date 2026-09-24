@@ -39,6 +39,43 @@ def test_local_roundtrip_and_resume(tmp_path: Path, data: bytes) -> None:
     assert not (tmp_path / ".pending" / blob.sha256 / upload).exists()
 
 
+def test_first_checkpoint_failure_aborts_unrecorded_upload(tmp_path: Path) -> None:
+    data = b"synthetic multipart start"
+    blob = hash_stream(io.BytesIO(data))
+    created: list[str] = []
+    aborted: list[str] = []
+
+    class RecordingSink(LocalArtifactSink):
+        def begin(self, identity: BlobIdentity) -> str:
+            upload_id = super().begin(identity)
+            created.append(upload_id)
+            return upload_id
+
+        def abort(self, identity: BlobIdentity, upload_id: str) -> None:
+            aborted.append(upload_id)
+            super().abort(identity, upload_id)
+
+    sink = RecordingSink(tmp_path)
+
+    def unavailable_checkpoint(_upload_id: str, _parts: tuple[UploadedPart, ...]) -> None:
+        raise ArtifactError("artifact_unavailable")
+
+    with pytest.raises(ArtifactError, match="artifact_unavailable"):
+        upload(
+            sink=sink,
+            source=io.BytesIO(data),
+            blob=blob,
+            upload_id=None,
+            parts=(),
+            checkpoint=unavailable_checkpoint,
+            assert_lease=lambda: None,
+        )
+
+    assert len(created) == 1
+    assert aborted == created
+    assert not (tmp_path / ".pending" / blob.sha256 / created[0]).exists()
+
+
 def test_local_existing_corruption_is_never_overwritten(tmp_path: Path) -> None:
     data = b"original"
     blob = hash_stream(io.BytesIO(data))
