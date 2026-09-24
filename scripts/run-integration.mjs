@@ -29,7 +29,7 @@ for (const signal of ["SIGINT", "SIGTERM"]) {
 
 function usage(message) {
   if (message) console.error(`Error: ${message}`);
-  console.error("Usage: node scripts/run-integration.mjs --suite api|live|concurrency|performance [--scenario functional|representative|snapshot|catalog-development|c01-data-modes|u00-filters|c03-source-identity|layer-import] [--snapshot-dir DISPOSABLE_COPY] [--profile desktop|mobile] [--smoke] [--keep-on-failure]");
+  console.error("Usage: node scripts/run-integration.mjs --suite api|live|concurrency|performance [--scenario functional|representative|snapshot|catalog-development|c01-data-modes|u00-filters|c03-source-identity|input-limits|layer-import|d01-scoped] [--snapshot-dir DISPOSABLE_COPY] [--profile desktop|mobile] [--smoke] [--keep-on-failure]");
   process.exitCode = 2;
 }
 
@@ -61,7 +61,7 @@ function parseArgs(argv) {
     if (!["desktop", "mobile"].includes(options.profile)) throw new Error("Performance profile must be desktop or mobile");
   } else {
     if (options.profile || options.smoke || (options.snapshotDir && options.scenario !== "layer-import")) throw new Error("Performance options require --suite performance");
-    if (options.scenario && !["c01-data-modes", "u00-filters", "c03-source-identity", "input-limits", "layer-import"].includes(options.scenario)) throw new Error(`Scenario '${options.scenario}' is not implemented`);
+    if (options.scenario && !["c01-data-modes", "u00-filters", "c03-source-identity", "input-limits", "layer-import", "d01-scoped"].includes(options.scenario)) throw new Error(`Scenario '${options.scenario}' is not implemented`);
     if (options.scenario === "input-limits" && (options.suite !== "api" || options.assertFailure || options.isolationCheck || options.child)) {
       throw new Error("--scenario input-limits requires the top-level api suite without assertion or isolation flags");
     }
@@ -76,6 +76,9 @@ function parseArgs(argv) {
     }
     if (options.scenario === "c03-source-identity" && (options.suite !== "api" || options.assertFailure || options.isolationCheck || options.child)) {
       throw new Error("--scenario c03-source-identity requires the top-level api suite without assertion or isolation flags");
+    }
+    if (options.scenario === "d01-scoped" && (options.suite !== "api" || options.assertFailure || options.isolationCheck || options.child)) {
+      throw new Error("--scenario d01-scoped requires the top-level api suite without assertion or isolation flags");
     }
   }
   if (options.assertFailure && options.suite !== "api") {
@@ -329,6 +332,9 @@ async function runSuite(options) {
   if (options.suite === "concurrency") {
     await mkdir(join(artifactDir, "c02-data"), { recursive: true });
   }
+  if (options.scenario === "d01-scoped") {
+    await mkdir(join(artifactDir, "d01-data"), { recursive: true });
+  }
   await writeFile(envFile, [
     `INTEGRATION_ARTIFACT_DIR=${artifactDir.replaceAll("\\", "/")}`,
     `INTEGRATION_REVIEWER_TOKEN=${reviewerToken}`,
@@ -511,6 +517,29 @@ async function runSuite(options) {
     ], { log, timeoutMs: 90_000 });
   };
 
+  const runD01Scoped = async () => {
+    const resultPath = join(artifactDir, "d01-data", "results.json");
+    for (const phase of ["stage", "verify"]) {
+      if (phase === "verify") {
+        await run("docker", [...compose, "restart", "api"], { log });
+        apiUrl = await publishedPort(compose, "api-gateway", 8000, log);
+        await waitForHealth(apiUrl);
+      }
+      await run("docker", [
+        ...compose, "run", "--rm", "--no-deps",
+        "--volume", `${join(root, "apps", "api", "tests", "integration").replaceAll("\\", "/")}:/integration:ro`,
+        "--volume", `${join(artifactDir, "d01-data").replaceAll("\\", "/")}:/d01-data`,
+        "api", "python", "/integration/d01_scoped.py",
+        "--api-url", "http://api-gateway:8000",
+        "--phase", phase,
+        "--result", "/d01-data/results.json"
+      ], { log, timeoutMs: 120_000 });
+    }
+    scenarioArtifacts.d01_results_sha256 = createHash("sha256")
+      .update(await readFile(resultPath))
+      .digest("hex");
+  };
+
   const runC03SourceIdentity = async () => {
     await run("docker", [
       ...compose,
@@ -663,12 +692,12 @@ async function runSuite(options) {
       await waitForHealth(apiUrl);
       await assertApi(apiUrl, reviewerToken, fixture, false);
       if (options.scenario === "c03-source-identity") await runC03SourceIdentity();
-
       if (options.scenario === "input-limits") {
         await runS02InputLimits("verify");
         scenarioArtifacts.s02_results_sha256 = createHash("sha256")
           .update(await readFile(join(artifactDir, "s02-input-limits.json"))).digest("hex");
       }
+      if (options.scenario === "d01-scoped") await runD01Scoped();
       if (performance) {
         await captureDatabase({ compose, run, log, artifactDir });
         stopSampling = await startResourceSampling({ compose, run, log, artifactDir });

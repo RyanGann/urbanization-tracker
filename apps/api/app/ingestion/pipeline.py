@@ -755,7 +755,9 @@ def _merge_source_health(
 
 
 def _aggregate_status(source_health: list[dict[str, Any]]) -> str:
-    if any(source["status"] == "failing" for source in source_health):
+    # A complete transport staging attempt is not a published source. Preserve
+    # that distinction when a later legacy run merges untouched source rows.
+    if any(source.get("status") != "healthy" for source in source_health):
         return "degraded"
     if any(source["error_count"] for source in source_health):
         return "degraded"

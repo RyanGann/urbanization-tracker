@@ -42,6 +42,11 @@ class SourceBatch:
     coverage: Coverage | None = None
     outcome: Literal["success", "failed"] = "success"
     quarantined_count: int = 0
+    expected_count: int | None = None
+    fetched_count: int | None = None
+    accepted_count: int | None = None
+    rejected_count: int | None = None
+    scope_metadata: dict[str, Any] | None = None
 
 
 class CanonicalPublicationWriter:
@@ -239,13 +244,23 @@ def _merge_locked(
                 )
             )
             missing += 1
-    persisted_batch.counts_json = {
+    counts: dict[str, Any] = {
         "received": len(batch.records),
         "quarantined": batch.quarantined_count,
         "coverage": effective_coverage,
         "observed": len(observed_registry_ids),
         "source_missing": missing,
     }
+    for name, value in (
+        ("expected", batch.expected_count),
+        ("fetched", batch.fetched_count),
+        ("accepted", batch.accepted_count),
+        ("rejected", batch.rejected_count),
+        ("scope", batch.scope_metadata),
+    ):
+        if value is not None:
+            counts[name] = value
+    persisted_batch.counts_json = counts
     return {
         "replayed": False,
         "observed": len(observed_registry_ids),

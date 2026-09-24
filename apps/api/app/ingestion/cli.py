@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import time
 from pathlib import Path
 
 from app.alert_delivery import send_queued_email_alerts
@@ -10,6 +11,12 @@ from app.deployment_preflight import run_deployment_preflight
 from app.ingestion.agenda_pipeline import ingest_huntsville_agendas
 from app.ingestion.environmental_import import ImportOptions, import_environmental_file
 from app.ingestion.pipeline import ingest_huntsville, ingest_madison_county
+from app.ingestion.scoped_arcgis import (
+    SOURCE_CONFIGS,
+    ReviewedScope,
+    record_scoped_attempts,
+    stage_scoped_source,
+)
 from app.ingestion.source_backfill import (
     apply_source_identity_backfill,
     dry_run_source_identity_backfill,
@@ -106,6 +113,21 @@ def main() -> None:
         type=int,
         default=500,
         help="Maximum subdivision polygons to fetch.",
+    )
+    scoped = subparsers.add_parser(
+        "stage-scoped-arcgis",
+        help="Stage bounded, reconciled ArcGIS observations without publishing source data.",
+    )
+    scoped.add_argument("--scope-file", type=Path, required=True)
+    scoped.add_argument("--output-dir", type=Path, required=True)
+    scoped.add_argument("--source", choices=sorted(SOURCE_CONFIGS), action="append")
+    scoped.add_argument(
+        "--canary", action="store_true",
+        help="Read-only four-request probe per source; never claims complete coverage.",
+    )
+    scoped.add_argument(
+        "--record-attempt", action="store_true",
+        help="Persist attempt coverage in PostgreSQL source health without activating data.",
     )
     subparsers.add_parser(
         "migrate-phase3-artifacts-to-postgres",
@@ -233,6 +255,30 @@ def main() -> None:
             record_limit=args.record_limit,
         )
         print(json.dumps(result, indent=2, sort_keys=True))
+    elif args.command == "stage-scoped-arcgis":
+        if args.canary and args.record_attempt:
+            parser.error("--canary cannot change canonical source health")
+        scope = ReviewedScope.load(args.scope_file)
+        selected = list(dict.fromkeys(args.source or sorted(SOURCE_CONFIGS)))
+        if args.canary and len(selected) > 5:
+            parser.error("--canary permits at most five unique sources (20 requests total)")
+        reports = []
+        for index, key in enumerate(selected):
+            if args.canary and index:
+                time.sleep(1.0)
+            reports.append(stage_scoped_source(
+                SOURCE_CONFIGS[key], scope, args.output_dir / key, canary=args.canary
+            ))
+        if args.record_attempt:
+            record_scoped_attempts(reports)
+        print(json.dumps(reports, indent=2, sort_keys=True))
+        if any(
+            report.get("error_code")
+            or (args.canary and report.get("rejected", 0) > 0)
+            or (not args.canary and report.get("coverage") != "complete")
+            for report in reports
+        ):
+            raise SystemExit(1)
     elif args.command == "migrate-phase3-artifacts-to-postgres":
         result = migrate_artifact_collections_to_postgres()
         print(json.dumps(result, indent=2, sort_keys=True))

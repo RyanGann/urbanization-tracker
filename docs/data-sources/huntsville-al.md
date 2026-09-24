@@ -61,6 +61,8 @@ Confirmed Phase 0 boundary:
 
 Boundary decision:
 
+- **2026-09-23 live correction:** the historical layer 2 URL now returns ArcGIS `Layer not found`. The service currently advertises only layer 0, `CityLimits`, a polygon in WKID `102629` with `OBJECTID` and `CityName` fields. `CityName = 'Huntsville'` returns one feature (OBJECTID `62404`); its `Eff_Date` is 2026-08-19T05:00:00Z and `Mod_Date` is 2026-09-23T18:32:17Z. Its raw polygon has a ring self-intersection. D01 therefore proposes the separately versioned `huntsville-city-limits-layer0-repaired-guard10-v1` derived candidate for review; it has not activated source data. The Phase 0 observations above remain historical and must not be used as today's layer configuration.
+
 - The MVP pilot geography is the City of Huntsville corporate limits, not all of Madison County, the Huntsville metro area, or Huntsville-adjacent county service areas.
 - Environmental/context analysis may use a buffer around the city boundary for proximity calculations, but records should be labeled as inside/outside the confirmed pilot boundary.
 - Store this boundary internally as canonical pilot geometry with source URL, retrieval timestamp, source SRID, and transformed EPSG:4326 geometry.
