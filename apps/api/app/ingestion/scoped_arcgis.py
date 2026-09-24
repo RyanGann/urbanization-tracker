@@ -58,16 +58,16 @@ def _parse_finite_float(value: str) -> float:
     return parsed
 
 
-def _valid_polygon(value: Any) -> bool:
+def _assembled_polygon(value: Any) -> MultiPolygon | None:
     if not isinstance(value, dict) or not isinstance(value.get("rings"), list):
-        return False
+        return None
     rings = value["rings"]
     if (not rings or len(rings) > 1000
         or sum(len(ring) for ring in rings if isinstance(ring, list)) > 100_000):
-        return False
+        return None
     for ring in rings:
         if not isinstance(ring, list) or len(ring) < 4 or ring[0] != ring[-1]:
-            return False
+            return None
         for point in ring:
             if (
                 not isinstance(point, list)
@@ -80,11 +80,11 @@ def _valid_polygon(value: Any) -> bool:
                 or not -180 <= point[0] <= 180
                 or not -90 <= point[1] <= 90
             ):
-                return False
+                return None
         if len({tuple(point) for point in ring[:-1]}) < 3:
-            return False
+            return None
     if value.get("spatialReference") != {"wkid": 4326}:
-        return False
+        return None
     try:
         # ArcGIS represents multipart polygons as a flat ring set. Build the
         # containment tree before checking topology so nested holes and islands
@@ -92,7 +92,7 @@ def _valid_polygon(value: Any) -> bool:
         outlines = [Polygon(ring) for ring in rings]
         if any(polygon.is_empty or not polygon.is_valid or polygon.area <= 0
                for polygon in outlines):
-            return False
+            return None
         parents: list[int | None] = []
         for index, polygon in enumerate(outlines):
             containers = [
@@ -118,9 +118,9 @@ def _valid_polygon(value: Any) -> bool:
             for index, depth in enumerate(depths) if depth % 2 == 0
         ]
         assembled = MultiPolygon(components)
-        return not assembled.is_empty and assembled.is_valid
+        return assembled if not assembled.is_empty and assembled.is_valid else None
     except (TypeError, ValueError, OverflowError, ShapelyError):
-        return False
+        return None
 
 
 @dataclass(frozen=True)
@@ -159,8 +159,11 @@ class ReviewedScope:
             raise ScopeError("boundary_repair_algorithm_missing")
         boundary = payload.get("boundary_geometry")
         context = payload.get("context_geometry")
-        if (not isinstance(boundary, dict) or not isinstance(context, dict)
-            or not _valid_polygon(boundary) or not _valid_polygon(context)):
+        if not isinstance(boundary, dict) or not isinstance(context, dict):
+            raise ScopeError("invalid_scope_polygon")
+        boundary_shape = _assembled_polygon(boundary)
+        context_shape = _assembled_polygon(context)
+        if boundary_shape is None or context_shape is None:
             raise ScopeError("invalid_scope_polygon")
         if _digest(boundary) != payload.get("boundary_sha256"):
             raise ScopeError("boundary_digest_mismatch")
@@ -170,6 +173,9 @@ class ReviewedScope:
             "EPSG:5070-buffer-510m-for-500m-screening-v1"
         ):
             raise ScopeError("context_algorithm_mismatch")
+        if (not context_shape.covers(boundary_shape)
+            or context_shape.boundary.distance(boundary_shape) <= 0):
+            raise ScopeError("context_does_not_cover_boundary")
         reviewed_at = payload.get("reviewed_at")
         if not isinstance(reviewed_at, str) or not reviewed_at:
             raise ScopeError("scope_not_reviewed")
@@ -445,9 +451,14 @@ def _stage_page(
     payload: dict[str, Any], requested: list[int] | None, oid_field: str,
     config: ArcGISLayerConfig, destination: Path, report: dict[str, Any],
 ) -> list[int]:
+    if payload.get("type") != "FeatureCollection":
+        raise ScopeError("geojson_collection_type_invalid")
     features = payload.get("features")
     if not isinstance(features, list):
         raise ScopeError("feature_list_missing")
+    if any(not isinstance(feature, dict) or feature.get("type") != "Feature"
+           for feature in features):
+        raise ScopeError("geojson_feature_type_invalid")
     returned = [_feature_id(feature, oid_field) for feature in features]
     if len(returned) != len(set(returned)):
         raise ScopeError("duplicate_feature_object_id")

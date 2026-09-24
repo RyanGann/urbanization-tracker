@@ -27,6 +27,10 @@ POLYGON = {
     "rings": [[[-87.0, 34.0], [-86.0, 34.0], [-86.0, 35.0], [-87.0, 34.0]]],
     "spatialReference": {"wkid": 4326},
 }
+CONTEXT_POLYGON = {
+    "rings": [[[-88.0, 33.0], [-85.0, 33.0], [-85.0, 36.0], [-88.0, 36.0], [-88.0, 33.0]]],
+    "spatialReference": {"wkid": 4326},
+}
 CONFIG = replace(BUILDING_PERMITS, out_fields=("PermitID",), max_records=None)
 
 
@@ -46,8 +50,8 @@ def _scope(tmp_path: Path) -> ReviewedScope:
                 "boundary_algorithm": "ArcGIS-rings-ST_MakeValid-linework-v1",
                 "boundary_geometry": POLYGON,
                 "boundary_sha256": _digest(POLYGON),
-                "context_geometry": POLYGON,
-                "context_sha256": _digest(POLYGON),
+                "context_geometry": CONTEXT_POLYGON,
+                "context_sha256": _digest(CONTEXT_POLYGON),
                 "context_buffer_m": 510,
                 "context_algorithm": "EPSG:5070-buffer-510m-for-500m-screening-v1",
                 "reviewed_at": "2026-09-22T00:00:00Z",
@@ -258,8 +262,33 @@ def test_reviewed_scope_accepts_nested_hole_and_island(tmp_path: Path) -> None:
         [[1.4, 1.4], [2, 1.4], [1.4, 2], [1.4, 1.4]],
     ]
     payload["boundary_sha256"] = _digest(payload["boundary_geometry"])
+    payload["context_geometry"] = {
+        "rings": [[[-1, -1], [5, -1], [5, 5], [-1, 5], [-1, -1]]],
+        "spatialReference": {"wkid": 4326},
+    }
+    payload["context_sha256"] = _digest(payload["context_geometry"])
     path.write_text(json.dumps(payload), encoding="utf-8")
     assert ReviewedScope.load(path).boundary_sha256 == payload["boundary_sha256"]
+
+
+@pytest.mark.parametrize("context", [
+    POLYGON,  # Coincident boundary, without a context margin.
+    {"rings": [[[0, 0], [1, 0], [1, 1], [0, 0]]],
+     "spatialReference": {"wkid": 4326}},  # Disjoint.
+    {"rings": [[[-87, 34], [-86.5, 34], [-86.5, 34.5], [-87, 34]]],
+     "spatialReference": {"wkid": 4326}},  # Strictly smaller.
+])
+def test_reviewed_context_must_cover_full_boundary_with_margin(
+    tmp_path: Path, context: dict[str, object]
+) -> None:
+    _scope(tmp_path)
+    path = tmp_path / "reviewed-scope.json"
+    payload = json.loads(path.read_text(encoding="utf-8"))
+    payload["context_geometry"] = context
+    payload["context_sha256"] = _digest(context)
+    path.write_text(json.dumps(payload), encoding="utf-8")
+    with pytest.raises(ScopeError, match="context_does_not_cover_boundary"):
+        ReviewedScope.load(path)
 
 
 @pytest.mark.parametrize("bad_number", [b"NaN", b"Infinity", b"1e1000"])
@@ -276,6 +305,31 @@ def test_nonfinite_json_page_fails_closed_and_records_report(
     assert report["coverage"] == "failed"
     assert report["error_code"] == "nonfinite_json_number"
     assert (tmp_path / "stage" / "report.json").is_file()
+
+
+@pytest.mark.parametrize(("container_type", "feature_type", "error"), [
+    (None, "Feature", "geojson_collection_type_invalid"),
+    ("Other", "Feature", "geojson_collection_type_invalid"),
+    ("FeatureCollection", None, "geojson_feature_type_invalid"),
+    ("FeatureCollection", "Other", "geojson_feature_type_invalid"),
+])
+def test_non_geojson_pages_fail_before_staging(
+    tmp_path: Path, container_type: str | None, feature_type: str | None,
+    error: str,
+) -> None:
+    feature = _feature(1)
+    if feature_type is None:
+        feature.pop("type")
+    else:
+        feature["type"] = feature_type
+    page: dict[str, object] = {"features": [feature]}
+    if container_type is not None:
+        page["type"] = container_type
+    transport, _ = _fixture([1], raw_page=json.dumps(page).encode())
+    report = _run(tmp_path, transport)
+    assert report["coverage"] == "failed"
+    assert report["error_code"] == error
+    assert not list((tmp_path / "stage").glob("page-*.geojson"))
 
 
 def test_huge_integer_feature_coordinate_is_rejected_without_aborting(tmp_path: Path) -> None:
@@ -309,9 +363,9 @@ def test_large_polygon_query_uses_form_post_under_same_request_budget(tmp_path: 
         "spatialReference": {"wkid": 4326},
     }
     payload["boundary_geometry"] = large_polygon
-    payload["context_geometry"] = large_polygon
+    payload["context_geometry"] = CONTEXT_POLYGON
     payload["boundary_sha256"] = _digest(large_polygon)
-    payload["context_sha256"] = _digest(large_polygon)
+    payload["context_sha256"] = _digest(CONTEXT_POLYGON)
     scope_path.write_text(json.dumps(payload), encoding="utf-8")
     transport, requests = _fixture([1])
     with httpx.Client(transport=transport) as client:

@@ -29,6 +29,10 @@ SCOPE_POLYGON = {
     "rings": [[[-86.6, 34.4], [-86.4, 34.4], [-86.4, 34.6], [-86.6, 34.4]]],
     "spatialReference": {"wkid": 4326},
 }
+SCOPE_CONTEXT = {
+    "rings": [[[-86.8, 34.2], [-86.2, 34.2], [-86.2, 34.8], [-86.8, 34.8], [-86.8, 34.2]]],
+    "spatialReference": {"wkid": 4326},
+}
 
 
 def _hash_records() -> str:
@@ -121,8 +125,8 @@ def _scope_file(directory: Path) -> Path:
         "boundary_algorithm": "ArcGIS-rings-ST_MakeValid-linework-v1",
         "boundary_geometry": SCOPE_POLYGON,
         "boundary_sha256": _digest(SCOPE_POLYGON),
-        "context_geometry": SCOPE_POLYGON,
-        "context_sha256": _digest(SCOPE_POLYGON),
+        "context_geometry": SCOPE_CONTEXT,
+        "context_sha256": _digest(SCOPE_CONTEXT),
         "context_buffer_m": 510,
         "context_algorithm": "EPSG:5070-buffer-510m-for-500m-screening-v1",
         "reviewed_at": "2026-09-23T00:00:00Z",
