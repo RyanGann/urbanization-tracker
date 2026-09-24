@@ -113,6 +113,39 @@ def test_hosted_ingestion_requires_complete_s3_configuration() -> None:
     assert _status_for(missing, "artifact_storage") == "fail"
 
 
+@pytest.mark.parametrize(
+    "invalid",
+    [
+        {"artifact_s3_endpoint": "http://objects.example.test"},
+        {"artifact_s3_endpoint": "https://objects.example.test/private"},
+        {"artifact_s3_endpoint": "https://objects.example.test?token=private"},
+        {"artifact_s3_region": ""},
+        {"artifact_s3_bucket": "b" * 64},
+        {"artifact_s3_access_key": ""},
+        {"artifact_s3_secret_key": ""},
+    ],
+)
+def test_hosted_ingestion_preflight_rejects_unusable_s3_settings(
+    invalid: dict[str, object],
+) -> None:
+    values: dict[str, object] = {
+        "hosted_ingestion_enabled": True,
+        "artifact_durability_required": True,
+        "artifact_sink": "s3",
+        "artifact_s3_endpoint": "https://objects.example.test",
+        "artifact_s3_bucket": "private-artifacts",
+        "artifact_s3_region": "us-east-1",
+        "artifact_s3_access_key": "synthetic-access",
+        "artifact_s3_secret_key": "synthetic-secret",
+    }
+    values.update(invalid)
+    result = run_deployment_preflight(
+        settings=production_settings(**values), check_database=False
+    )
+
+    assert _status_for(result, "artifact_storage") == "fail"
+
+
 def test_deployment_preflight_fails_without_postgis() -> None:
     result = run_deployment_preflight(
         settings=production_settings(),

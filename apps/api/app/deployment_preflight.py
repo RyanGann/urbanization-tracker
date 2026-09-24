@@ -168,18 +168,29 @@ def _check_artifact_storage(settings: Settings) -> PreflightCheck:
             status="fail",
             summary="Hosted ingestion requires verified private S3 artifact storage.",
         )
-    if not all((
-        settings.artifact_s3_endpoint,
-        settings.artifact_s3_bucket,
-        settings.artifact_s3_access_key
-        and settings.artifact_s3_access_key.get_secret_value(),
-        settings.artifact_s3_secret_key
-        and settings.artifact_s3_secret_key.get_secret_value(),
-    )):
+    from app.ingestion.artifact_s3 import validate_s3_configuration
+    from app.ingestion.artifact_sink import ArtifactError
+
+    try:
+        validate_s3_configuration(
+            endpoint=settings.artifact_s3_endpoint or "",
+            bucket=settings.artifact_s3_bucket or "",
+            region=settings.artifact_s3_region,
+            access_key=(
+                settings.artifact_s3_access_key.get_secret_value()
+                if settings.artifact_s3_access_key is not None else ""
+            ),
+            secret_key=(
+                settings.artifact_s3_secret_key.get_secret_value()
+                if settings.artifact_s3_secret_key is not None else ""
+            ),
+            allow_http=settings.artifact_s3_allow_http,
+        )
+    except ArtifactError:
         return PreflightCheck(
             key="artifact_storage",
             status="fail",
-            summary="Hosted artifact storage settings are incomplete.",
+            summary="Hosted artifact storage settings are incomplete or invalid.",
         )
     return PreflightCheck(
         key="artifact_storage",

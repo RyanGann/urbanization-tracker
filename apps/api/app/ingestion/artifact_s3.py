@@ -22,6 +22,37 @@ from app.ingestion.artifact_sink import (
 )
 
 
+def validate_s3_configuration(
+    *,
+    endpoint: str,
+    bucket: str,
+    region: str,
+    access_key: str,
+    secret_key: str,
+    allow_http: bool = False,
+) -> None:
+    """Validate sink configuration without creating a client or making a network call."""
+    try:
+        parsed = urlsplit(endpoint)
+    except ValueError:
+        raise ArtifactError("artifact_configuration") from None
+    if (
+        parsed.scheme not in ({"https", "http"} if allow_http else {"https"})
+        or not parsed.hostname
+        or parsed.username
+        or parsed.password
+        or parsed.query
+        or parsed.fragment
+        or parsed.path not in {"", "/"}
+        or not bucket
+        or len(bucket) > 63
+        or not region
+        or not access_key
+        or not secret_key
+    ):
+        raise ArtifactError("artifact_configuration")
+
+
 class S3ArtifactSink:
     def __init__(
         self,
@@ -33,25 +64,14 @@ class S3ArtifactSink:
         secret_key: str,
         allow_http: bool = False,
     ) -> None:
-        try:
-            parsed = urlsplit(endpoint)
-        except ValueError:
-            raise ArtifactError("artifact_configuration") from None
-        if (
-            parsed.scheme not in ({"https", "http"} if allow_http else {"https"})
-            or not parsed.hostname
-            or parsed.username
-            or parsed.password
-            or parsed.query
-            or parsed.fragment
-            or parsed.path not in {"", "/"}
-            or not bucket
-            or len(bucket) > 63
-            or not region
-            or not access_key
-            or not secret_key
-        ):
-            raise ArtifactError("artifact_configuration")
+        validate_s3_configuration(
+            endpoint=endpoint,
+            bucket=bucket,
+            region=region,
+            access_key=access_key,
+            secret_key=secret_key,
+            allow_http=allow_http,
+        )
         self.endpoint = endpoint.rstrip("/")
         self.bucket = bucket
         self.region = region
