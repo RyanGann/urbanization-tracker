@@ -108,12 +108,9 @@ def merge_ingestion_catalog(
         existing_model = MapLayerCatalog.model_validate(copy.deepcopy(existing))
         if existing_model.data_mode != incoming_model.data_mode:
             raise ValueError("Cannot merge map layer catalogs from different data modes")
-        expected_revision = catalog_revision(
-            {
-                "data_mode": existing_model.data_mode,
-                "layers": [layer.model_dump(mode="json") for layer in existing_model.layers],
-            }
-        )
+        existing_content = existing_model.model_dump(mode="json")
+        existing_content.pop("catalog_revision")
+        expected_revision = catalog_revision(existing_content)
         if existing_model.catalog_revision != expected_revision:
             raise ValueError("Existing map layer catalog revision is invalid")
         existing_by_id = {
@@ -135,7 +132,7 @@ def merge_ingestion_catalog(
         elif "imports" in incoming:
             result["imports"] = copy.deepcopy(incoming["imports"])
     result["catalog_revision"] = catalog_revision(
-        {"data_mode": result["data_mode"], "layers": result["layers"]}
+        {key: value for key, value in result.items() if key != "catalog_revision"}
     )
     MapLayerCatalog.model_validate(copy.deepcopy(result))
     return result

@@ -8,6 +8,7 @@ import json
 import subprocess
 import sys
 import time
+from datetime import UTC, datetime
 from pathlib import Path
 from unittest.mock import patch
 
@@ -24,9 +25,10 @@ from app.ingestion.environmental_stream import (
     inspect_overlay_file,
     stream_overlay_features,
 )
+from app.ingestion.pipeline import _write_postgres_source_state
 from app.map_layer_catalog import _project_legacy_catalog, catalog_revision
 from app.models import EnvironmentalLayer
-from app.processed_store import write_processed_payload
+from app.processed_store import read_processed_payload, write_processed_payload
 
 
 def metadata() -> dict:
@@ -470,6 +472,35 @@ module.import_environmental_file(Path(sys.argv[1]), module.ImportOptions(
     new_layer = next(layer for layer in refreshed["layers"] if layer["id"] == first_layer["id"])
     assert new_layer["title"] == first_layer["name"] and new_layer["delivery_status"] == "failed"
     checks.append("new-output-streamed-bridge-adds-human-title-without-changing-ready-layer")
+
+    incoming = _project_legacy_catalog([(metadata(), 2), (first_layer, 2)]).model_dump(mode="json")
+    before_refresh = refreshed
+    pipeline_result = _write_postgres_source_state(
+        run_id="p03-new-output",
+        checked_at=datetime.now(UTC).isoformat(),
+        source_health=[
+            {
+                "key": first_layer["id"],
+                "source_url": first_layer["source_url"],
+                "status": "healthy",
+                "metadata": {"reported_count": True, "fetched_count": 2},
+            }
+        ],
+        raw_records=[],
+        staged_records=[],
+        published_records=[],
+        overlays=[first_layer],
+        catalog=incoming,
+    )
+    assert pipeline_result["environmental_imports"][0]["status"] == "failed"
+    durable_health = read_processed_payload("source_health")
+    assert durable_health is not None and "environmental_imports" not in durable_health
+    after_refresh_response = httpx.get(f"{api_url}/api/map/layers", timeout=10)
+    assert after_refresh_response.status_code == 200
+    after_refresh = after_refresh_response.json()
+    assert after_refresh["imports"] == before_refresh["imports"]
+    assert after_refresh["layers"][0] == ready["layers"][0]
+    checks.append("canonical-refresh-preserves-imports-hash-and-post-commit-shadow-failure")
 
     snapshot_reports = verify_snapshot(snapshot) if snapshot else None
     return {

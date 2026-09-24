@@ -13,7 +13,10 @@ from app.processed_store import write_processed_payload
 client = TestClient(app)
 
 
-def test_ingestion_catalog_merge_preserves_ready_delivery_and_extension_metadata() -> None:
+@pytest.mark.parametrize("with_imports", [False, True])
+def test_ingestion_catalog_merge_preserves_ready_delivery_and_extension_metadata(
+    with_imports,
+) -> None:
     layer = {
         "id": "wetlands",
         "kind": "vector",
@@ -45,9 +48,23 @@ def test_ingestion_catalog_merge_preserves_ready_delivery_and_extension_metadata
         "data_mode": "live",
         "catalog_revision": "",
         "layers": [layer],
-        "imports": {"future": "preserved"},
     }
-    existing["catalog_revision"] = catalog_revision({"data_mode": "live", "layers": [layer]})
+    if with_imports:
+        existing["imports"] = [
+            {
+                "layer_id": "wetlands",
+                "data_version": "a" * 64,
+                "status": "loading",
+                "expected": None,
+                "seen": 1,
+                "accepted": 1,
+                "rejected": 0,
+                "checkpoint": 1,
+            }
+        ]
+    existing["catalog_revision"] = catalog_revision(
+        {key: value for key, value in existing.items() if key != "catalog_revision"}
+    )
     incoming_layer = {**layer, "data_version": "new", "delivery_status": "failed", "tile_url": None}
     incoming = {"data_mode": "live", "catalog_revision": "", "layers": [incoming_layer]}
     incoming["catalog_revision"] = catalog_revision(
@@ -57,7 +74,8 @@ def test_ingestion_catalog_merge_preserves_ready_delivery_and_extension_metadata
     merged = merge_ingestion_catalog(existing, incoming)
 
     assert merged["layers"] == [layer]
-    assert merged["imports"] == {"future": "preserved"}
+    assert merged == existing
+    assert ("imports" in merged) == with_imports
 
 
 @pytest.fixture(autouse=True)
