@@ -385,7 +385,11 @@ def import_environmental_file(
             )
         )
         if layer is not None and layer.import_status == "validated":
-            return {**_report(layer), "replayed": True, "dry_run": False}
+            report = _report(layer)
+            # The final layer commit and catalog publication are separate
+            # transactions. A retry must repair progress after a crash between them.
+            update_import_progress(selected.metadata, report)
+            return {**report, "replayed": True, "dry_run": False}
         if layer is not None and (layer.diagnostics_json or {}).get("failure") == "input_changed":
             raise InputChangedError("input_changed_version_quarantined")
         if layer is None:

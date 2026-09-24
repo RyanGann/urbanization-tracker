@@ -537,6 +537,57 @@ module.import_environmental_file(Path(sys.argv[1]), module.ImportOptions(
     assert changed_entry["caveat"] == changed_layer["caveat"]
     checks.append("non-ready-reimport-refreshes-scope-and-source-provenance")
 
+    # Simulate a process dying after the validated layer commit but before the
+    # separate catalog transaction. Replaying the immutable version repairs it.
+    stale_catalog = copy.deepcopy(changed_catalog)
+    stale_progress = next(
+        item for item in stale_catalog["imports"] if item["layer_id"] == first_layer["id"]
+    )
+    stale_progress.update({"status": "loading", "seen": 0, "accepted": 0, "checkpoint": 0})
+    stale_catalog["catalog_revision"] = catalog_revision(
+        {key: value for key, value in stale_catalog.items() if key != "catalog_revision"}
+    )
+    write_processed_payload("map_layer_catalog", stale_catalog)
+    replay = importer.import_environmental_file(
+        changed_path, ImportOptions(first_layer["id"], scope_id="revised-synthetic-scope"),
+        dry_run=False,
+    )
+    assert replay["replayed"] and replay["status"] == "validated"
+    repaired_catalog = httpx.get(f"{api_url}/api/map/layers", timeout=10).json()
+    repaired_progress = next(
+        item for item in repaired_catalog["imports"] if item["layer_id"] == first_layer["id"]
+    )
+    assert repaired_progress["status"] == "validated"
+    assert repaired_progress["seen"] == repaired_progress["accepted"] == 2
+    checks.append("validated-replay-repairs-crash-window-catalog-progress")
+
+    # The 51st layer must not fail an otherwise valid import because catalog
+    # progress is bounded to 50 entries. Keep the public catalog realistic
+    # after this capacity check for the browser phase.
+    full_catalog = copy.deepcopy(repaired_catalog)
+    full_catalog["imports"] = [
+        {
+            "layer_id": f"older-layer-{index:02d}", "data_version": f"{index:064x}",
+            "status": "validated", "expected": 1, "seen": 1, "accepted": 1,
+            "rejected": 0, "checkpoint": 1,
+        }
+        for index in range(50)
+    ]
+    full_catalog["catalog_revision"] = catalog_revision(
+        {key: value for key, value in full_catalog.items() if key != "catalog_revision"}
+    )
+    write_processed_payload("map_layer_catalog", full_catalog)
+    assert importer.import_environmental_file(
+        changed_path, ImportOptions(first_layer["id"], scope_id="revised-synthetic-scope"),
+        dry_run=False,
+    )["replayed"]
+    bounded_catalog = httpx.get(f"{api_url}/api/map/layers", timeout=10).json()
+    assert len(bounded_catalog["imports"]) == 50
+    assert bounded_catalog["imports"][-1]["layer_id"] == first_layer["id"]
+    assert all(item["layer_id"] != "older-layer-00" for item in bounded_catalog["imports"])
+    write_processed_payload("map_layer_catalog", repaired_catalog)
+    checks.append("progress-capacity-evicts-oldest-entry-without-failing-import")
+
     snapshot_reports = verify_snapshot(snapshot) if snapshot else None
     return {
         "checks": checks,

@@ -336,7 +336,9 @@ def update_import_progress(metadata: dict[str, str], report: dict[str, Any]) -> 
                 "layer_id", "data_version", "status", "expected", "seen", "accepted",
                 "rejected", "checkpoint",
             )})
-            payload["imports"] = sorted(pending, key=lambda item: item["layer_id"])
+            # Keep a bounded refresh-ordered window. Older catalogs were sorted
+            # by layer ID; after this update, refreshed layers move to the end.
+            payload["imports"] = pending[-50:]
             payload.pop("catalog_revision")
             payload["catalog_revision"] = catalog_revision(payload)
             validated = MapLayerCatalog.model_validate(payload).model_dump(mode="json")
