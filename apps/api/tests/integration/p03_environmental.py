@@ -537,6 +537,41 @@ module.import_environmental_file(Path(sys.argv[1]), module.ImportOptions(
     assert changed_entry["caveat"] == changed_layer["caveat"]
     checks.append("non-ready-reimport-refreshes-scope-and-source-provenance")
 
+    # The final layer commit and catalog publication are different transactions.
+    # A catalog outage after that commit must leave a validated shadow version
+    # that a later replay can publish, rather than relabeling it as failed.
+    publication_layer = fixture()[0]
+    publication_layer["id"] = "p03-publication-failure"
+    publication_path = output / "publication-failure-overlay.json"
+    publication_path.write_text(json.dumps([publication_layer]), encoding="utf-8")
+    publication_options = ImportOptions(publication_layer["id"], scope_id="publication-test")
+    with patch.object(
+        importer, "update_import_progress", side_effect=[None, RuntimeError("catalog_offline")]
+    ):
+        try:
+            importer.import_environmental_file(publication_path, publication_options, dry_run=False)
+        except RuntimeError as exc:
+            assert str(exc) == "catalog_offline"
+        else:
+            raise AssertionError("Expected injected catalog publication failure")
+    with SessionLocal() as session:
+        published_later = session.scalar(select(EnvironmentalLayer).where(
+            EnvironmentalLayer.layer_key == publication_layer["id"]
+        ))
+        assert published_later is not None and published_later.import_status == "validated"
+        assert "failure" not in (published_later.diagnostics_json or {})
+    retry = importer.import_environmental_file(
+        publication_path, publication_options, dry_run=False
+    )
+    assert retry["replayed"] and retry["status"] == "validated"
+    recovered_catalog = httpx.get(f"{api_url}/api/map/layers", timeout=10).json()
+    assert next(
+        item for item in recovered_catalog["imports"]
+        if item["layer_id"] == publication_layer["id"]
+    )["status"] == "validated"
+    write_processed_payload("map_layer_catalog", changed_catalog)
+    checks.append("catalog-publication-failure-keeps-validated-version-replayable")
+
     # Simulate a process dying after the validated layer commit but before the
     # separate catalog transaction. Replaying the immutable version repairs it.
     stale_catalog = copy.deepcopy(changed_catalog)

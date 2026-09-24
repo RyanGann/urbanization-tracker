@@ -472,7 +472,6 @@ def import_environmental_file(
                 layer.import_status, layer.coverage_status = report["status"], report["coverage"]
                 layer.import_finished_at = datetime.now(UTC)
                 session.commit()
-                update_import_progress(selected.metadata, report)
         except Exception as exc:
             session.rollback()
             if not dry_run:
@@ -491,6 +490,10 @@ def import_environmental_file(
                     # catalog transaction preserves the previous public catalog.
                     pass
             raise
+        if not dry_run:
+            # Catalog publication is a separate transaction. A failure here
+            # must leave the completed import intact for validated replay.
+            update_import_progress(selected.metadata, report)
         report["database_bytes"] = session.scalar(
             text("""
             SELECT pg_total_relation_size('environmental_features')
