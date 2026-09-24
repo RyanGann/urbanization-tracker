@@ -460,6 +460,9 @@ def replace_agenda_artifacts(
     artifact_sink_id: str | None = None,
     required_reference_ids: tuple[UUID, ...] = (),
 ) -> None:
+    from app.ingestion.artifact_config import require_hosted_artifact_storage
+
+    require_hosted_artifact_storage(get_settings())
     if _use_transactional_postgres():
         from app.db import SessionLocal
         from app.ingestion.artifact_manifest import require_verified_references

@@ -14,6 +14,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.config import get_settings
+from app.ingestion.artifact_config import require_hosted_artifact_storage
 from app.ingestion.artifact_manifest import require_verified_references
 from app.ingestion.artifact_sink import ArtifactError
 from app.models import SourceIdentityRegistry, SourceIngestionBatch, SourceObservation
@@ -107,6 +108,7 @@ def _merge_locked(
     batch: SourceBatch,
 ) -> dict[str, int | bool]:
     """Merge after the caller has acquired the shared C02 mutation lock."""
+    require_hosted_artifact_storage(get_settings())
     if get_settings().artifact_durability_required and batch.outcome == "success":
         if batch.artifact_sink_id is None:
             raise ArtifactError("artifact_unavailable")
