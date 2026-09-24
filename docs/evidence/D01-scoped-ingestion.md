@@ -307,3 +307,18 @@ September 1 success time and nine published records retained, and unchanged
 development rows across restart (SHA-256
 `73384a89a07948a3fa81bb390226c3b46452a93a812bd0b7d1688e5a04b786d6`).
 The disposable Compose project reports `cleanup_result: removed`.
+
+Post-rebase review added two scope/transport checks. Code head `e5950fe`
+requires the assembled context polygon to cover the full reviewed boundary
+with a positive margin, and requires each staged GeoJSON page to be a
+`FeatureCollection` of `Feature` entries. Synthetic disjoint, smaller and
+coincident contexts and malformed page types fail closed. The ignored reviewed
+city boundary/context still pass with the digests above; its earlier independent
+500 m versus guarded 510 m buffer proof remains the release-quality geometry
+evidence. Locked full API Ruff/mypy and **218 backend tests** passed. The
+isolated D01 T01 run `2026-09-24T06-31-25-557Z-dd32debe` passed with five
+complete and three expected failed synthetic requests; the failed attempt
+remained unactivated, retained the September 1 last-success time and nine
+published records, and left development rows unchanged across restart
+(SHA-256 `841fd4487cd53103bd5c1786fb1048c0bcf51916cfdb620c5048675493abe7fb`).
+Its disposable Compose project reports `cleanup_result: removed`.
