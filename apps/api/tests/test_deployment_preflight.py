@@ -1,12 +1,16 @@
 from __future__ import annotations
 
+from typing import Any
+
+import pytest
+
 from app import deployment_preflight
 from app.config import Settings
 from app.deployment_preflight import DatabaseProbeResult, run_deployment_preflight
 
 
 def production_settings(**overrides: object) -> Settings:
-    values = {
+    values: dict[str, Any] = {
         "database_url": "postgresql://tracker:secret@db.internal:5432/tracker",
         "cors_origins": "https://tracker.example.test",
         "reviewer_api_token": "reviewer-secret-token-with-length",
@@ -156,7 +160,7 @@ def test_deployment_preflight_rejects_non_origin_public_base_url() -> None:
     assert "https://tracker.example.test/app?preview=1" in public_base_url_check["detail"]
 
 
-def test_probe_database_uses_bounded_timeouts(monkeypatch) -> None:
+def test_probe_database_uses_bounded_timeouts(monkeypatch: pytest.MonkeyPatch) -> None:
     calls: list[dict[str, object]] = []
 
     def fake_create_engine(url: str, **kwargs: object) -> object:

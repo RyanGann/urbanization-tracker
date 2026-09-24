@@ -1,6 +1,6 @@
 from datetime import datetime
-from uuid import UUID
 from typing import Any
+from uuid import UUID
 
 from geoalchemy2 import Geometry
 from sqlalchemy import (
