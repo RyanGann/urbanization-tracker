@@ -483,6 +483,7 @@ module.import_environmental_file(Path(sys.argv[1]), module.ImportOptions(
                 "key": first_layer["id"],
                 "source_url": first_layer["source_url"],
                 "status": "healthy",
+                "error_count": 0,
                 "metadata": {"reported_count": True, "fetched_count": 2},
             }
         ],
