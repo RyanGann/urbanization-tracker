@@ -127,13 +127,13 @@ def _source_snapshot(session: Session, layer: EnvironmentalLayer) -> str:
         "duplicate_count": layer.duplicate_count,
     }) + b"\n")
     rows = session.execute(text("""
-        SELECT id, source_feature_id, import_fingerprint
+        SELECT source_feature_id, import_fingerprint
         FROM environmental_features
         WHERE environmental_layer_id = :layer_id AND import_managed IS TRUE
-        ORDER BY id
+        ORDER BY source_feature_id
     """).execution_options(yield_per=128), {"layer_id": layer.id})
-    for feature_id, source_id, fingerprint in rows:
-        digest.update(canonical_bytes([feature_id, source_id, fingerprint]) + b"\n")
+    for source_id, fingerprint in rows:
+        digest.update(canonical_bytes([source_id, fingerprint]) + b"\n")
     return digest.hexdigest()
 
 

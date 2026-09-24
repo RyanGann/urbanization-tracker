@@ -36,3 +36,10 @@ Machine-readable local artifacts are under
 (`manifest.json`, `p04a/results.json`, `cleanup-result.json`). This test uses
 synthetic geometry and does not establish production FEMA or wetlands coverage,
 source rights, or public activation; P04b must check those independent gates.
+
+The builder only inserts parts/results for a version and verifies them on
+replay. Unique keys, restricted parent deletes, and the refusal to downgrade
+protect version/checkpoint evidence, but the database does not prohibit a
+privileged writer from updating an existing part. P04b retention will need
+controlled deletion; any public activation must reverify the derivative and
+source provenance rather than treating the P04a status as a DB write lock.
