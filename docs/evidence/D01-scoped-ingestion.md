@@ -260,3 +260,14 @@ preserved nine published records and the September 1 last-success time, and
 left development rows unchanged across restart (SHA-256
 `d020a6d6621d1af39189d20125c16c37f20efa1fa2d8a8498b009f079ba03b5e`).
 Its disposable Compose project reports `cleanup_result: removed`.
+
+The next review found that a page with a valid object ID and geometry but a
+missing configured source property could be counted as accepted. Code head
+`bac72c2` checks required per-feature property keys before acceptance, so such
+a page is partial. Locked full API Ruff/mypy and **173 backend tests** passed.
+The isolated D01 T01 run `2026-09-24T05-37-25-948Z-18e22b9f` passed with five
+complete and three expected failed fixture requests; the failed attempt
+remained unactivated and preserved last-good records through restart (identical
+development SHA-256 before/after:
+`357684e3880849e553322b0d1d0ba3913f39f9cac9d2a7489c47fd6899953540`).
+Its disposable Compose project reports `cleanup_result: removed`.
