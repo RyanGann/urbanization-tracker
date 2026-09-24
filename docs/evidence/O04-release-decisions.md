@@ -1,6 +1,6 @@
 # O04 release decision sheet — owner review
 
-Prepared 2026-09-24 UTC on `38ebf7c`. [Source-by-source evidence](O04-source-use-inventory.md) is the companion record. These are proposed decisions and copy, not selected terms, a legal determination, or a launch approval. No root `LICENSE` exists and no source redistribution clearance is recorded by this document. O04 depends on D01, which is not merged at this draft's base; reconcile its final catalog IDs, boundary provenance and coverage behavior before opening the O04 PR.
+Prepared 2026-09-24 UTC and reconciled against merged D01 main `f450108`. [Source-by-source evidence](O04-source-use-inventory.md) is the companion record. These are proposed decisions and copy, not selected terms, a legal determination, or a launch approval. No root `LICENSE` exists and no source redistribution clearance is recorded by this document. D01 adds scoped staging and canaries, not source activation or rights clearance; its final [coverage evidence](D01-scoped-ingestion.md) remains a separate data-quality record.
 
 ## 1. Code license: owner choice required
 
@@ -66,4 +66,4 @@ Before merging an implementation that claims O04 complete, record the selected v
 4. Public address/parcel and submission/watch-area retention/notice policy.
 5. A live API/browser verification that rights gates, privacy allowlist, source/date/coverage copy and attribution match the selected decisions. In particular, exercise `/api/environmental-overlays` and any cached tile/export path.
 
-This documentation-only draft changes no runtime behavior. It requires link/config/source-ID reconciliation after D01, then review of the concrete owner decisions. No upstream data was fetched, no provider account was created, and no root license was selected.
+This documentation-only draft changes no runtime behavior. Its source IDs, boundary scope and coverage claims were reconciled against merged D01. The concrete owner decisions and runtime rights gates remain open. No upstream dataset was fetched, no provider account was created, and no root license was selected.
