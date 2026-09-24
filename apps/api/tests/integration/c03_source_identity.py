@@ -507,26 +507,42 @@ def main() -> None:
             "source_url": NEW_SUBDIVISIONS.layer_url,
             "error_count": 0,
             "validation_errors": [],
-        }
+        },
+        {
+            "key": "other_source",
+            "source_url": "https://example.test/other-source",
+            "error_count": 0,
+            "validation_errors": [],
+        },
     ]
     provisional_staged, provisional_published = _quarantine_duplicate_source_records(
         [
             {**staged(), "id": "stage-collision", "raw_record_id": "anchor-A"},
-            {**staged(), "id": "stage-collision", "raw_record_id": "anchor-B"},
+            {
+                **staged(),
+                "id": "stage-collision",
+                "raw_record_id": "anchor-B",
+                "source_key": "other_source",
+            },
         ],
         [
             {**record(title="Anchor A"), "public_id": "collision"},
-            {**record(title="Anchor B"), "public_id": "collision"},
+            {
+                **record(title="Anchor B"),
+                "public_id": "collision",
+                "source_url": "https://example.test/other-source",
+            },
         ],
         provisional_health,
     )
     if (
         provisional_staged
         or provisional_published
-        or provisional_health[0]["quarantined_count"] != 2
+        or [item.get("quarantined_count") for item in provisional_health] != [1, 1]
         or not any(
             "duplicate provisional public ID" in error
-            for error in provisional_health[0]["validation_errors"]
+            for health in provisional_health
+            for error in health["validation_errors"]
         )
     ):
         raise AssertionError("distinct anchors with one provisional ID were coalesced")

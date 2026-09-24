@@ -330,10 +330,12 @@ def _quarantine_duplicate_source_records(
 
     def source_key_for(published: dict[str, Any]) -> str:
         staged = staged_by_provisional_id.get(str(published.get("public_id"))) or {}
-        key = str(published.get("source_key") or staged.get("source_key") or "")
+        key = str(published.get("source_key") or "")
         if not key:
             source = source_by_url.get(str(published.get("source_url")))
             key = str(source.get("key")) if source else ""
+        if not key:
+            key = str(staged.get("source_key") or "")
         return key
 
     provisional_counts: dict[str, int] = {}
