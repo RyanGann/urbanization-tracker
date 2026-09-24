@@ -1,6 +1,6 @@
 # S02 — Public input, privacy and shared quota evidence
 
-Implemented September 22, 2026. This report covers S02; it does not establish deployment readiness. Operator configuration and recovery are in [public input limits](../security/public-input-limits.md).
+Implemented September 22–24, 2026. This report covers S02; it does not establish deployment readiness. Operator configuration and recovery are in [public input limits](../security/public-input-limits.md).
 
 ## Implemented behavior
 
@@ -10,15 +10,13 @@ The participation form submits unknown location explicitly until U03 supplies an
 
 ## Clean committed real-stack acceptance
 
-Tested implementation commit: `551e4901928f99383ccfe8e8bad876c67af60513`. That earlier branch included temporary C03 schema/helper dependency commits. The final local integration instead uses reviewed C03 commit `a212ee3a57e6e6eb4c271e79347a97d7e0e733c4` with only S02's schema, implementation and evidence commits on top. The S02 migration is revision `20260922_0005`; it is not applied to the user's saved snapshot.
-
-The dependency-integrated S02 head `b8b54df42456c865a1f206b6f9c2e5679133ba8b` passed a second clean `input-limits` run, `2026-09-22T14-42-23-853Z-1cc41a47`, with the same committed acceptance JSON SHA256 `ae65d5dd6a596c39687393d1b7e8b2aaf99040b33b03f48b596f04c3369c64d2`. The run manifest records a clean tree, `passed` outcome and removal of its isolated resources. At that same head, C03's `c03-source-identity` real-stack regression passed in run `2026-09-22T14-43-39-879Z-dd02dfe3`, with cleanup removed and result SHA256 `b9127000aae57559093b7d33ea647edc74af36bffbcd77371faad1f691106e70`. These local runs do not replace the final PR-head CI and review gates.
+S02's four commits were rebased onto merged C03 and the latest documentation-only main commit `4923c4b`. The final dependency-integrated code head `31b066cdaa4af5047e7cff3bfe6df1db75299f49` passed a clean `input-limits` run, `2026-09-24T04-48-42-605Z-ca0532ed`, with committed acceptance JSON SHA256 `ae65d5dd6a596c39687393d1b7e8b2aaf99040b33b03f48b596f04c3369c64d2`. Its project `urbanization_t01_b7b65d320c8a` was removed. At the same code head, C03's `c03-source-identity` real-stack regression passed in run `2026-09-24T04-50-28-446Z-f44a86dd`, with result SHA256 `8e49c1c16e0278d9c0955edfce80eb805c5b38d8d9e273474ee0ef746f964f8d` and project `urbanization_t01_326f2a284250` removed. Both manifests record `working_tree_dirty: false`, `outcome: passed` and `cleanup_result: removed`. The S02 migration is revision `20260922_0005`; it was not applied to the user's saved snapshot. These local runs do not replace the final PR-head CI and review gates.
 
 ```text
 node scripts/run-integration.mjs --suite api --scenario input-limits
 ```
 
-Run `2026-09-22T13-54-18-368Z-76bde6db`, project `urbanization_t01_66b55265d9ef`: **passed**, working tree clean, cleanup removed the exact labelled resources. The synthetic base fixture SHA256 is `932eacb03655a3dee1a2838abf9ddf8d5dfa44f744482408611b61a2561bbee2`. The committed [acceptance report](S02/acceptance.json) SHA256 is `ae65d5dd6a596c39687393d1b7e8b2aaf99040b33b03f48b596f04c3369c64d2`.
+Run `2026-09-24T04-48-42-605Z-ca0532ed`, project `urbanization_t01_b7b65d320c8a`: **passed**, working tree clean, cleanup removed the exact labelled resources. The synthetic base fixture SHA256 is `932eacb03655a3dee1a2838abf9ddf8d5dfa44f744482408611b61a2561bbee2`. The committed [acceptance report](S02/acceptance.json) SHA256 is `ae65d5dd6a596c39687393d1b7e8b2aaf99040b33b03f48b596f04c3369c64d2`.
 
 Observed through real HTTP and PostgreSQL:
 
@@ -40,9 +38,9 @@ Run `2026-09-22T13-55-01-876Z-2352332d` at the same clean implementation commit:
 
 Other executed checks:
 
-- Locked Python 3.12 container: Ruff over affected application/tests/migration, mypy over 38 modules, and 19 focused S02 tests passed. Earlier affected API regression run had 44 passing tests. Broader API run had 107 passes and two repository-root mount failures; those two Render-blueprint tests passed after mounting the complete repository. These are separate runs, not a claim of one final complete suite.
-- Node 22: web typecheck, six web tests and production build passed. Build still reports the existing large-map-chunk warning; S02 does not claim a performance budget improvement.
-- Playwright 1.60 Chromium: `npx playwright test --grep 'public tip keeps unknown'` passed at the committed head on a 390×844 viewport. It verifies the actual form sends null geometry and displays the server's 429 message. Full UI smoke, all other live scenarios and final rebased CI remain PR gates.
+- At the rebased S02 code head, locked Python 3.12 container `ruff check .`, `mypy app` (42 source files), and `PYTHONPATH=/src/apps/api pytest -q` all passed: 141 API tests, with two upstream deprecation warnings. The readiness-plan validator passed.
+- On the rebased code, web typecheck, six web tests and production build passed. Build still reports the existing large-map-chunk warning; S02 does not claim a performance budget improvement.
+- The 390×844 Playwright 1.60 Chromium test previously passed at the earlier committed S02 head; it verifies the actual form sends null geometry and displays the server's 429 message. A final Windows Node 20 rerun failed during Playwright runner initialization before collecting any tests (`test() called here`), so the final PR's Linux Node 22 browser CI is required evidence. Full UI smoke and other live scenarios remain PR gates.
 
 The initial exploratory real run was dirty and is superseded by the clean run above. The user's saved snapshot, preview and unrelated database were not used or changed. No external source refresh, delivery or deployment occurred.
 
