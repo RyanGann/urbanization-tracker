@@ -9,6 +9,7 @@ from urllib.parse import parse_qs
 import httpx
 import pytest
 
+from app.ingestion.pipeline import _aggregate_status
 from app.ingestion.scoped_arcgis import (
     CollectionBudget,
     ReviewedScope,
@@ -19,7 +20,6 @@ from app.ingestion.scoped_arcgis import (
     source_batch_from_staging,
     stage_scoped_source,
 )
-from app.ingestion.pipeline import _aggregate_status
 from app.ingestion.source_merge import SourceRecord
 from app.ingestion.sources.huntsville import BUILDING_PERMITS, NEW_SUBDIVISIONS
 
