@@ -7,10 +7,12 @@ import subprocess
 from pathlib import Path
 from typing import Any
 from urllib.request import Request, urlopen
+from uuid import UUID
 
 import certifi
 import httpx
 
+from app.config import get_settings
 from app.ingestion.agenda import (
     PLANNING_AGENCY,
     PLANNING_ARCHIVE_URL,
@@ -18,12 +20,17 @@ from app.ingestion.agenda import (
     extract_pdf_text,
     parse_agenda_items,
 )
+from app.ingestion.artifact_config import require_hosted_artifact_storage
+from app.ingestion.artifact_manifest import public_source_url
+from app.ingestion.artifact_service import ArtifactService
+from app.ingestion.artifact_sink import ArtifactError
 from app.ingestion.artifacts import (
     ensure_data_dirs,
     iso_now,
     read_json,
     record_artifact,
-    write_json,
+    write_staged_bytes,
+    write_staged_json,
 )
 from app.ingestion.connectors.agenda import discover_agenda_links
 from app.phase3_store import build_duplicate_candidates, replace_agenda_artifacts
@@ -58,6 +65,7 @@ def ingest_huntsville_agendas(
     document_limit: int = 3,
     client: httpx.Client | None = None,
 ) -> dict[str, Any]:
+    require_hosted_artifact_storage(get_settings())
     ensure_data_dirs(data_dir)
     checked_at = iso_now()
     owned_client = client is None
@@ -73,11 +81,22 @@ def ingest_huntsville_agendas(
     source_documents: list[dict[str, Any]] = []
     staged_records: list[dict[str, Any]] = []
     errors: list[str] = []
+    required_references: list[UUID] = []
+    artifact_pending = False
+    run_id = checked_at.replace(":", "").replace("+", "Z")
+    artifact_service: ArtifactService | None = None
+    if get_settings().artifact_durability_required:
+        from app.db import SessionLocal
+
+        artifact_service = ArtifactService(
+            get_settings().model_copy(update={"ingestion_data_dir": data_dir}), SessionLocal
+        )
 
     try:
         archive_html, discovery_method = _fetch_archive_html(client)
         archive_path = data_dir / "raw" / "planning_agendas" / "archive-page.json"
-        write_json(
+        write_staged_json(
+            data_dir,
             archive_path,
             {
                 "url": PLANNING_ARCHIVE_URL,
@@ -91,10 +110,27 @@ def ingest_huntsville_agendas(
             path=archive_path,
             artifact_type="archive_page",
             source_key="huntsville_planning_agendas",
-            run_id=checked_at.replace(":", "").replace("+", "Z"),
+            run_id=run_id,
             source_url=PLANNING_ARCHIVE_URL,
             content_type="application/json",
         )
+        if artifact_service is not None:
+            try:
+                archive_reference = artifact_service.upload_file(
+                    path=archive_path,
+                    source_key="huntsville_planning_agendas",
+                    run_id=run_id,
+                    artifact_type="archive_page",
+                    logical_key="archive",
+                    required=False,
+                    content_type="application/json",
+                    source_url=PLANNING_ARCHIVE_URL,
+                )
+                artifact_service.cleanup_verified(archive_reference, archive_path)
+            except ArtifactError:
+                # Archive discovery is optional provenance; exact PDF/text pairs
+                # still determine whether the parsed revision may publish.
+                pass
         if archive_html:
             links = discover_agenda_links(
                 archive_html,
@@ -111,17 +147,26 @@ def ingest_huntsville_agendas(
 
         for link in links:
             try:
-                document, records = _fetch_and_parse_document(
+                document, records, references = _fetch_and_parse_document(
                     client=client,
                     data_dir=data_dir,
                     title=link.title,
                     url=link.url,
                     checked_at=checked_at,
+                    artifact_service=artifact_service,
                 )
                 source_documents.append(document)
                 staged_records.extend(records)
+                required_references.extend(references)
+            except ArtifactError as exc:
+                artifact_pending = True
+                errors.append(exc.code)
             except Exception as exc:
-                errors.append(f"{link.url}: {exc}")
+                if artifact_service is not None:
+                    artifact_pending = True
+                    errors.append("agenda_source_error")
+                else:
+                    errors.append(f"{link.url}: {exc}")
 
         staged_records = _dedupe(staged_records, key="id")
         published_records = _published_records(data_dir)
@@ -143,11 +188,16 @@ def ingest_huntsville_agendas(
                 "discovery_method": discovery_method,
             },
         }
+        if artifact_pending:
+            return health
         replace_agenda_artifacts(
             source_documents=source_documents,
             staged_records=staged_records,
             duplicate_candidates=duplicate_candidates,
             health=health,
+            run_id=run_id if artifact_service is not None else None,
+            artifact_sink_id=artifact_service.sink_id if artifact_service is not None else None,
+            required_reference_ids=tuple(required_references),
         )
         return health
     finally:
@@ -162,14 +212,15 @@ def _fetch_and_parse_document(
     title: str,
     url: str,
     checked_at: str,
-) -> tuple[dict[str, Any], list[dict[str, Any]]]:
+    artifact_service: ArtifactService | None = None,
+) -> tuple[dict[str, Any], list[dict[str, Any]], tuple[UUID, ...]]:
     pdf_bytes, content_type = _fetch_pdf_bytes(client, url)
     digest = hashlib.sha256(pdf_bytes).hexdigest()
     document_id = f"agenda-{digest[:12]}"
     run_id = checked_at.replace(":", "").replace("+", "Z")
     raw_path = data_dir / "raw" / "planning_agendas" / f"{document_id}.pdf"
     raw_path.parent.mkdir(parents=True, exist_ok=True)
-    raw_path.write_bytes(pdf_bytes)
+    write_staged_bytes(data_dir, raw_path, pdf_bytes)
     raw_artifact = record_artifact(
         data_dir=data_dir,
         path=raw_path,
@@ -179,11 +230,24 @@ def _fetch_and_parse_document(
         source_url=url,
         content_type=content_type,
     )
+    pdf_reference = (
+        artifact_service.upload_file(
+            path=raw_path,
+            source_key="huntsville_planning_agendas",
+            run_id=run_id,
+            artifact_type="source_pdf",
+            logical_key=document_id,
+            required=True,
+            content_type=content_type,
+            source_url=url,
+        )
+        if artifact_service is not None else None
+    )
 
     extracted_text, extraction_status = extract_pdf_text(pdf_bytes)
     text_path = data_dir / "processed" / "source_documents" / f"{document_id}.txt"
     text_path.parent.mkdir(parents=True, exist_ok=True)
-    text_path.write_text(extracted_text, encoding="utf-8")
+    write_staged_bytes(data_dir, text_path, extracted_text.encode("utf-8"))
     text_artifact = record_artifact(
         data_dir=data_dir,
         path=text_path,
@@ -194,17 +258,36 @@ def _fetch_and_parse_document(
         content_type="text/plain; charset=utf-8",
         metadata={"source_document_id": document_id},
     )
+    text_reference = (
+        artifact_service.upload_file(
+            path=text_path,
+            source_key="huntsville_planning_agendas",
+            run_id=run_id,
+            artifact_type="extracted_text",
+            logical_key=f"{document_id}:extract-v1",
+            required=True,
+            content_type="text/plain; charset=utf-8",
+            source_url=url,
+            parent_reference_id=pdf_reference,
+        )
+        if artifact_service is not None else None
+    )
+    if artifact_service is not None and pdf_reference is not None and text_reference is not None:
+        artifact_service.cleanup_verified(pdf_reference, raw_path)
+        artifact_service.cleanup_verified(text_reference, text_path)
 
     source_document = {
         "id": document_id,
         "title": title or "Planning Commission agenda",
-        "url": url,
+        "url": public_source_url(url) or "",
         "document_date": document_date_from_title(title, url),
         "fetched_at": checked_at,
         "sha256": digest,
         "content_type": content_type,
         "storage_uri": raw_artifact["storage_uri"],
         "extracted_text_uri": text_artifact["storage_uri"],
+        "pdf_reference_id": str(pdf_reference) if pdf_reference is not None else None,
+        "text_reference_id": str(text_reference) if text_reference is not None else None,
         "extraction_status": extraction_status,
         "parsed_item_count": 0,
         "text_excerpt": _excerpt(extracted_text),
@@ -215,7 +298,8 @@ def _fetch_and_parse_document(
         checked_at=checked_at,
     )
     source_document["parsed_item_count"] = len(staged_records)
-    return source_document, staged_records
+    references = tuple(ref for ref in (pdf_reference, text_reference) if ref is not None)
+    return source_document, staged_records, references
 
 
 def _published_records(data_dir: Path) -> list[dict[str, Any]]:

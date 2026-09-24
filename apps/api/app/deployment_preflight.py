@@ -57,6 +57,7 @@ def run_deployment_preflight(
         _check_reviewer_token(active_settings),
         _check_phase3_store(active_settings),
         _check_processed_store(active_settings),
+        _check_artifact_storage(active_settings),
         _check_cors_origins(active_settings),
         _check_public_base_url(active_settings),
         _check_alert_delivery(active_settings),
@@ -151,6 +152,50 @@ def _check_processed_store(settings: Settings) -> PreflightCheck:
         key="processed_store",
         status="pass",
         summary="Canonical processed collections use Postgres.",
+    )
+
+
+def _check_artifact_storage(settings: Settings) -> PreflightCheck:
+    if not settings.hosted_ingestion_enabled:
+        return PreflightCheck(
+            key="artifact_storage",
+            status="pass",
+            summary="Hosted ingestion is disabled.",
+        )
+    if not settings.artifact_durability_required or settings.artifact_sink != "s3":
+        return PreflightCheck(
+            key="artifact_storage",
+            status="fail",
+            summary="Hosted ingestion requires verified private S3 artifact storage.",
+        )
+    from app.ingestion.artifact_s3 import validate_s3_configuration
+    from app.ingestion.artifact_sink import ArtifactError
+
+    try:
+        validate_s3_configuration(
+            endpoint=settings.artifact_s3_endpoint or "",
+            bucket=settings.artifact_s3_bucket or "",
+            region=settings.artifact_s3_region,
+            access_key=(
+                settings.artifact_s3_access_key.get_secret_value()
+                if settings.artifact_s3_access_key is not None else ""
+            ),
+            secret_key=(
+                settings.artifact_s3_secret_key.get_secret_value()
+                if settings.artifact_s3_secret_key is not None else ""
+            ),
+            allow_http=settings.artifact_s3_allow_http,
+        )
+    except ArtifactError:
+        return PreflightCheck(
+            key="artifact_storage",
+            status="fail",
+            summary="Hosted artifact storage settings are incomplete or invalid.",
+        )
+    return PreflightCheck(
+        key="artifact_storage",
+        status="pass",
+        summary="Hosted ingestion uses the private S3 artifact sink.",
     )
 
 

@@ -4,11 +4,14 @@ import argparse
 import json
 import time
 from pathlib import Path
+from uuid import UUID
 
 from app.alert_delivery import send_queued_email_alerts
 from app.config import get_settings
 from app.deployment_preflight import run_deployment_preflight
 from app.ingestion.agenda_pipeline import ingest_huntsville_agendas
+from app.ingestion.artifact_service import ArtifactService
+from app.ingestion.artifact_sink import ArtifactError
 from app.ingestion.environmental_import import ImportOptions, import_environmental_file
 from app.ingestion.pipeline import ingest_huntsville, ingest_madison_county
 from app.ingestion.scoped_arcgis import (
@@ -169,6 +172,17 @@ def main() -> None:
         type=Path,
         help="Optional explicit JSON output path for the stable source-to-public mapping.",
     )
+    resume_artifact = subparsers.add_parser(
+        "artifact-resume", help="Retry a durable artifact copy from local staging."
+    )
+    resume_artifact.add_argument("--reference-id", type=UUID, required=True)
+    resume_artifact.add_argument("--path", type=Path, required=True)
+    resume_artifact.add_argument("--data-dir", type=Path, default=get_settings().ingestion_data_dir)
+    audit_artifact = subparsers.add_parser(
+        "artifact-audit", help="Verify durable bytes for one manifest reference."
+    )
+    audit_artifact.add_argument("--reference-id", type=UUID, required=True)
+    audit_artifact.add_argument("--data-dir", type=Path, default=get_settings().ingestion_data_dir)
     send_alerts = subparsers.add_parser(
         "send-alerts",
         help="Deliver queued email alerts through the configured SMTP provider.",
@@ -205,6 +219,36 @@ def main() -> None:
                 sort_keys=True,
             )
         )
+        return
+
+    if args.command in HOSTED_INGESTION_COMMANDS and (
+        not get_settings().artifact_durability_required or get_settings().artifact_sink != "s3"
+    ):
+        print(json.dumps({
+            "command": args.command,
+            "reason": "artifact_s3_required",
+            "status": "disabled",
+        }, sort_keys=True))
+        return
+
+    if args.command in {"artifact-resume", "artifact-audit"}:
+        from app.db import SessionLocal
+
+        settings = get_settings().model_copy(update={"ingestion_data_dir": args.data_dir})
+        try:
+            service = ArtifactService(settings, SessionLocal)
+            if args.command == "artifact-resume":
+                service.resume(args.reference_id, args.path)
+            else:
+                service.audit(args.reference_id)
+        except ArtifactError as exc:
+            print(json.dumps({
+                "reference_id": str(args.reference_id), "status": "failed", "reason": exc.code,
+            }, sort_keys=True))
+            raise SystemExit(1) from None
+        print(json.dumps(
+            {"reference_id": str(args.reference_id), "status": "verified"}, sort_keys=True
+        ))
         return
 
     if args.command == "import-environmental":

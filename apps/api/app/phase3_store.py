@@ -9,6 +9,7 @@ from collections.abc import Callable
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any, cast
+from uuid import UUID
 
 from pydantic import ValidationError
 from sqlalchemy import delete, func, select
@@ -455,7 +456,60 @@ def replace_agenda_artifacts(
     staged_records: list[dict[str, Any]],
     duplicate_candidates: list[dict[str, Any]],
     health: dict[str, Any],
+    run_id: str | None = None,
+    artifact_sink_id: str | None = None,
+    required_reference_ids: tuple[UUID, ...] = (),
 ) -> None:
+    from app.ingestion.artifact_config import require_hosted_artifact_storage
+
+    require_hosted_artifact_storage(get_settings())
+    if _use_transactional_postgres():
+        from app.db import SessionLocal
+        from app.ingestion.artifact_manifest import require_verified_references
+        from app.ingestion.artifact_sink import ArtifactError
+        from app.models import Phase3CollectionItem
+        from app.transactional_store import CollectionUnitOfWork
+
+        if get_settings().artifact_durability_required and (not run_id or not artifact_sink_id):
+            raise ArtifactError("artifact_unavailable")
+        collections = {
+            "source_documents": source_documents,
+            "agenda_staged_records": staged_records,
+            "duplicate_candidates": duplicate_candidates,
+            "agenda_health": [health],
+        }
+        with SessionLocal.begin() as session:
+            with CollectionUnitOfWork(session).canonical_mutation():
+                if get_settings().artifact_durability_required:
+                    assert run_id is not None and artifact_sink_id is not None
+                    require_verified_references(
+                        session,
+                        reference_ids=required_reference_ids,
+                        source_key="huntsville_planning_agendas",
+                        run_id=run_id,
+                        sink_id=artifact_sink_id,
+                    )
+                for name, items in collections.items():
+                    session.execute(
+                        delete(Phase3CollectionItem).where(
+                            Phase3CollectionItem.collection_name == name
+                        )
+                    )
+                    session.add_all(
+                        Phase3CollectionItem(
+                            collection_name=name,
+                            item_id=_collection_item_id(name, index, item),
+                            sort_order=index,
+                            payload_json=copy.deepcopy(item),
+                        )
+                        for index, item in enumerate(items)
+                    )
+                session.flush()
+        return
+    if get_settings().artifact_durability_required:
+        from app.ingestion.artifact_sink import ArtifactError
+
+        raise ArtifactError("artifact_configuration")
     _write_collection("source_documents", source_documents)
     _write_collection("agenda_staged_records", staged_records)
     _write_collection("duplicate_candidates", duplicate_candidates)

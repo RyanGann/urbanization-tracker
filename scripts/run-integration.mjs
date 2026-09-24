@@ -10,6 +10,9 @@ const root = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const composeFile = join(root, "compose.integration.yml");
 const fixturePath = join(root, "apps", "api", "tests", "integration", "fixture.json");
 const u00FixturePath = join(root, "apps", "api", "tests", "integration", "u00_filter_fixture.json");
+const garageAccessKey = `GK${"1".repeat(32)}`;
+const garageSecretKey = "2".repeat(64);
+const garageImage = "dxflrs/garage@sha256:866bd13ed2038ba7e7190e840482bc27234c4afaf77be8cfa439ae088c1e4690";
 const supportedSuites = new Set(["api", "live", "concurrency", "performance"]);
 const requestedArgs = process.argv.slice(2);
 let interrupted = false;
@@ -29,7 +32,7 @@ for (const signal of ["SIGINT", "SIGTERM"]) {
 
 function usage(message) {
   if (message) console.error(`Error: ${message}`);
-  console.error("Usage: node scripts/run-integration.mjs --suite api|live|concurrency|performance [--scenario functional|representative|snapshot|catalog-development|c01-data-modes|u00-filters|c03-source-identity|input-limits|layer-import|d01-scoped] [--snapshot-dir DISPOSABLE_COPY] [--profile desktop|mobile] [--smoke] [--keep-on-failure]");
+  console.error("Usage: node scripts/run-integration.mjs --suite api|live|concurrency|performance [--scenario functional|representative|snapshot|catalog-development|c01-data-modes|u00-filters|c03-source-identity|input-limits|layer-import|d01-scoped|o01-artifacts] [--snapshot-dir DISPOSABLE_COPY] [--profile desktop|mobile] [--smoke] [--keep-on-failure]");
   process.exitCode = 2;
 }
 
@@ -61,7 +64,10 @@ function parseArgs(argv) {
     if (!["desktop", "mobile"].includes(options.profile)) throw new Error("Performance profile must be desktop or mobile");
   } else {
     if (options.profile || options.smoke || (options.snapshotDir && options.scenario !== "layer-import")) throw new Error("Performance options require --suite performance");
-    if (options.scenario && !["c01-data-modes", "u00-filters", "c03-source-identity", "input-limits", "layer-import", "d01-scoped"].includes(options.scenario)) throw new Error(`Scenario '${options.scenario}' is not implemented`);
+    if (options.scenario && !["c01-data-modes", "u00-filters", "c03-source-identity", "input-limits", "layer-import", "d01-scoped", "o01-artifacts"].includes(options.scenario)) throw new Error(`Scenario '${options.scenario}' is not implemented`);
+    if (options.scenario === "o01-artifacts" && (options.suite !== "api" || options.assertFailure || options.isolationCheck || options.child)) {
+      throw new Error("--scenario o01-artifacts requires the top-level api suite without assertion or isolation flags");
+    }
     if (options.scenario === "input-limits" && (options.suite !== "api" || options.assertFailure || options.isolationCheck || options.child)) {
       throw new Error("--scenario input-limits requires the top-level api suite without assertion or isolation flags");
     }
@@ -118,19 +124,21 @@ function run(command, args, { cwd = root, env, log, allowFailure = false, timeou
       clearTimeout(timeout);
       clearTimeout(killEscalation);
       activeChildren.delete(child);
-      if (log) log.push(`$ ${command} ${args.join(" ")}\n${output}`);
+      if (log) log.push(redact(`$ ${command} ${args.join(" ")}\n${output}`));
       if (timedOut) {
         rejectRun(new Error(`${command} exceeded its ${timeoutMs}ms timeout`));
         return;
       }
       if (code === 0 || allowFailure) resolveRun({ code, output });
-      else rejectRun(new Error(`${command} exited with ${code}\n${output}`));
+      else rejectRun(new Error(`${command} exited with ${code}\n${redact(output)}`));
     });
   });
 }
 
 function redact(text, token) {
-  return text.replaceAll(token, "[redacted]");
+  return (token ? text.replaceAll(token, "[redacted]") : text)
+    .replaceAll(garageAccessKey, "[redacted-storage-key]")
+    .replaceAll(garageSecretKey, "[redacted-storage-secret]");
 }
 
 async function waitForHealth(apiUrl, timeoutMs = 90_000) {
@@ -308,6 +316,7 @@ async function runSuite(options) {
   const demoSubmissionTitle = `C01 demo submission ${sentinel}`;
   let apiUrl = "";
   const compose = ["compose", "--project-name", project, "--project-directory", root, "--env-file", envFile, "-f", composeFile];
+  if (options.scenario === "o01-artifacts") compose.push("--profile", "o01");
   let failed = false;
   let failureMessage = null;
   let imageDigests = {};
@@ -334,6 +343,9 @@ async function runSuite(options) {
   }
   if (options.scenario === "d01-scoped") {
     await mkdir(join(artifactDir, "d01-data"), { recursive: true });
+  }
+  if (options.scenario === "o01-artifacts") {
+    await mkdir(join(artifactDir, "o01-data"), { recursive: true });
   }
   await writeFile(envFile, [
     `INTEGRATION_ARTIFACT_DIR=${artifactDir.replaceAll("\\", "/")}`,
@@ -646,6 +658,102 @@ async function runSuite(options) {
     if (phase === "verify") scenarioArtifacts.p03 = "p03/results.json";
   };
 
+  const runO01Artifacts = async () => {
+    const result = await run("docker", [
+      ...compose,
+      "run", "--rm", "--no-deps",
+      "--volume", `${join(root, "apps", "api", "tests", "integration").replaceAll("\\", "/")}:/integration:ro`,
+      "api", "python", "/integration/o01_artifacts.py"
+    ], { log, timeoutMs: 120_000 });
+    const output = result.output.trim().split(/\r?\n/).findLast((line) => line.startsWith("{"));
+    if (!output) throw new Error("O01 manifest scenario did not return JSON");
+    const checks = JSON.parse(output);
+    if (Object.values(checks).some((value) => value !== true)) {
+      throw new Error(`O01 manifest scenario failed: ${output}`);
+    }
+    const resultPath = join(artifactDir, "o01-results.json");
+    await writeFile(resultPath, `${JSON.stringify(checks, null, 2)}\n`);
+    scenarioArtifacts.o01_results_sha256 = createHash("sha256").update(await readFile(resultPath)).digest("hex");
+
+    const garage = async (args, extra = {}) => run("docker", [
+      ...compose, "exec", "-T", "artifact-store", "/garage", ...args
+    ], { log, timeoutMs: 30_000, ...extra });
+    await run("docker", [...compose, "up", "--detach", "artifact-store"], { log, timeoutMs: 120_000 });
+    let nodeOutput = "";
+    for (let attempt = 0; attempt < 30; attempt += 1) {
+      const probe = await garage(["node", "id"], { allowFailure: true });
+      if (probe.code === 0) { nodeOutput = probe.output; break; }
+      await new Promise((resolveDelay) => setTimeout(resolveDelay, 500));
+    }
+    const nodeId = nodeOutput.match(/[0-9a-f]{64}/i)?.[0];
+    if (!nodeId) throw new Error("Garage single-node ID was unavailable");
+    await garage(["layout", "assign", "--zone", "o01", "--capacity", "1GB", nodeId]);
+    await garage(["layout", "apply", "--version", "1"]);
+    await garage(["key", "import", "--yes", "-n", "o01-test", garageAccessKey, garageSecretKey]);
+    for (const bucket of ["integration-artifacts", "integration-artifacts-restore"]) {
+      await garage(["bucket", "create", bucket]);
+      await garage(["bucket", "allow", "--read", "--write", "--owner", bucket, "--key", "o01-test"]);
+    }
+
+    const runGarageMode = async (mode, { restore = false, allowFailure = false } = {}) => {
+      const response = await run("docker", [
+        ...compose, "run", "--rm", "--no-deps",
+        "--volume", `${join(root, "apps", "api", "tests", "integration").replaceAll("\\", "/")}:/integration:ro`,
+        "--volume", `${join(artifactDir, "o01-data").replaceAll("\\", "/")}:/o01-data`,
+        "--env", "ARTIFACT_SINK=s3",
+        "--env", "ARTIFACT_SINK_ID=o01-isolated",
+        "--env", "ARTIFACT_S3_ENDPOINT=http://artifact-store:3900",
+        "--env", `ARTIFACT_S3_BUCKET=${restore ? "integration-artifacts-restore" : "integration-artifacts"}`,
+        "--env", "ARTIFACT_S3_REGION=garage",
+        "--env", `ARTIFACT_S3_ACCESS_KEY=${garageAccessKey}`,
+        "--env", `ARTIFACT_S3_SECRET_KEY=${garageSecretKey}`,
+        "--env", "ARTIFACT_S3_ALLOW_HTTP=true",
+        ...(restore ? ["--env", "DATABASE_URL=postgresql+psycopg://integration:integration@db:5432/o01_restore"] : []),
+        "api", "python", "/integration/o01_garage.py", mode
+      ], { log, timeoutMs: 180_000, allowFailure });
+      if (response.code !== 0) return null;
+      const output = response.output.trim().split(/\r?\n/).findLast((line) => line.startsWith("{"));
+      if (!output) throw new Error(`O01 Garage ${mode} returned no JSON`);
+      return JSON.parse(output);
+    };
+    let garageProbe = null;
+    for (let attempt = 0; attempt < 30; attempt += 1) {
+      garageProbe = await runGarageMode("probe", { allowFailure: true });
+      if (garageProbe?.private_bucket_reachable && garageProbe?.wrong_credentials_rejected) break;
+      await new Promise((resolveDelay) => setTimeout(resolveDelay, 500));
+    }
+    if (!garageProbe?.private_bucket_reachable || !garageProbe?.wrong_credentials_rejected) {
+      throw new Error("Garage S3 bootstrap did not pass its authenticated probe");
+    }
+    const initial = await runGarageMode("initial");
+    if (!initial?.staging_empty || !initial?.interrupted_retry_verified || !initial?.wrong_credentials_rejected || !initial?.checksum_mismatch_rejected) {
+      throw new Error("Garage initial upload checks failed");
+    }
+    await run("docker", [...compose, "restart", "artifact-store", "api"], { log, timeoutMs: 120_000 });
+    apiUrl = await publishedPort(compose, "api-gateway", 8000, log);
+    await waitForHealth(apiUrl);
+    const restarted = await runGarageMode("restart");
+    if (Object.values(restarted ?? {}).some((value) => value !== true) || !restarted?.restart_without_staging) {
+      throw new Error("Garage restart with empty staging failed");
+    }
+    const restoreSql = "createdb -U integration o01_restore && pg_dump -U integration -Fc -f /tmp/o01.dump integration && pg_restore --exit-on-error -U integration -d o01_restore /tmp/o01.dump >/dev/null";
+    try {
+      await run("docker", [...compose, "exec", "-T", "db", "sh", "-ec", restoreSql], { log, timeoutMs: 120_000 });
+      const restored = await runGarageMode("restore", { restore: true });
+      if (Object.values(restored ?? {}).some((value) => value !== true) || !restored?.copied_object_bytes_verified) {
+        throw new Error("Garage database/object copied restore failed");
+      }
+      const proof = { probe: garageProbe, initial, restarted, restored };
+      const proofPath = join(artifactDir, "o01-garage-proof.json");
+      await writeFile(proofPath, `${JSON.stringify(proof, null, 2)}\n`);
+      scenarioArtifacts.o01_garage_proof_sha256 = createHash("sha256").update(await readFile(proofPath)).digest("hex");
+      scenarioArtifacts.o01_manifest_sha256 = createHash("sha256")
+        .update(await readFile(join(artifactDir, "o01-data", "results.json"))).digest("hex");
+    } finally {
+      await run("docker", [...compose, "exec", "-T", "db", "sh", "-ec", "dropdb -U integration --if-exists o01_restore && rm -f /tmp/o01.dump"], { log, allowFailure: true, ignoreInterrupt: true });
+    }
+  };
+
   try {
     const requiresBrowser = options.suite === "live" || performance || options.scenario === "c01-data-modes";
     await run("docker", [...compose, "build", "api", ...(requiresBrowser ? ["web", "browser"] : [])], { log, timeoutMs: 300_000 });
@@ -692,6 +800,7 @@ async function runSuite(options) {
       await waitForHealth(apiUrl);
       await assertApi(apiUrl, reviewerToken, fixture, false);
       if (options.scenario === "c03-source-identity") await runC03SourceIdentity();
+      if (options.scenario === "o01-artifacts") await runO01Artifacts();
       if (options.scenario === "input-limits") {
         await runS02InputLimits("verify");
         scenarioArtifacts.s02_results_sha256 = createHash("sha256")
@@ -749,7 +858,8 @@ async function runSuite(options) {
       for (const [name, image] of Object.entries({
         database: "postgis/postgis:16-3.4",
         mail: "axllent/mailpit:v1.27.1",
-        browser: "mcr.microsoft.com/playwright:v1.60.0-noble"
+        browser: "mcr.microsoft.com/playwright:v1.60.0-noble",
+        ...(options.scenario === "o01-artifacts" ? { artifact_store: garageImage } : {})
       })) {
         const digest = await run("docker", ["image", "inspect", image, "--format", "{{join .RepoDigests \",\"}}"], { log, allowFailure: true, ignoreInterrupt: true });
         imageDigests[name] = digest.code === 0 ? digest.output.trim() || null : null;
@@ -795,7 +905,8 @@ async function runSuite(options) {
       images: {
         database: "postgis/postgis:16-3.4",
         mail: "axllent/mailpit:v1.27.1",
-        browser: "mcr.microsoft.com/playwright:v1.60.0-noble"
+        browser: "mcr.microsoft.com/playwright:v1.60.0-noble",
+        ...(options.scenario === "o01-artifacts" ? { artifact_store: garageImage } : {})
       },
       image_digests: imageDigests,
       image_ids: imageIds,

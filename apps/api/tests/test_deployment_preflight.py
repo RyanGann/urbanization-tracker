@@ -1,12 +1,16 @@
 from __future__ import annotations
 
+from typing import Any
+
+import pytest
+
 from app import deployment_preflight
 from app.config import Settings
 from app.deployment_preflight import DatabaseProbeResult, run_deployment_preflight
 
 
 def production_settings(**overrides: object) -> Settings:
-    values = {
+    values: dict[str, Any] = {
         "database_url": "postgresql://tracker:secret@db.internal:5432/tracker",
         "cors_origins": "https://tracker.example.test",
         "reviewer_api_token": "reviewer-secret-token-with-length",
@@ -76,6 +80,72 @@ def test_deployment_preflight_fails_when_processed_store_is_not_postgres() -> No
     assert "PROCESSED_STORE_BACKEND" in processed_store_check["summary"]
 
 
+def test_hosted_ingestion_rejects_local_artifact_sink() -> None:
+    result = run_deployment_preflight(
+        settings=production_settings(
+            hosted_ingestion_enabled=True,
+            artifact_durability_required=True,
+            artifact_sink="local",
+        ),
+        check_database=False,
+    )
+
+    assert _status_for(result, "artifact_storage") == "fail"
+
+
+def test_hosted_ingestion_requires_complete_s3_configuration() -> None:
+    settings = production_settings(
+        hosted_ingestion_enabled=True,
+        artifact_durability_required=True,
+        artifact_sink="s3",
+        artifact_s3_endpoint="https://objects.example.test",
+        artifact_s3_bucket="private-artifacts",
+        artifact_s3_access_key="synthetic-access",
+        artifact_s3_secret_key="synthetic-secret",
+    )
+    configured = run_deployment_preflight(settings=settings, check_database=False)
+    missing = run_deployment_preflight(
+        settings=settings.model_copy(update={"artifact_s3_bucket": None}),
+        check_database=False,
+    )
+
+    assert _status_for(configured, "artifact_storage") == "pass"
+    assert _status_for(missing, "artifact_storage") == "fail"
+
+
+@pytest.mark.parametrize(
+    "invalid",
+    [
+        {"artifact_s3_endpoint": "http://objects.example.test"},
+        {"artifact_s3_endpoint": "https://objects.example.test/private"},
+        {"artifact_s3_endpoint": "https://objects.example.test?token=private"},
+        {"artifact_s3_region": ""},
+        {"artifact_s3_bucket": "b" * 64},
+        {"artifact_s3_access_key": ""},
+        {"artifact_s3_secret_key": ""},
+    ],
+)
+def test_hosted_ingestion_preflight_rejects_unusable_s3_settings(
+    invalid: dict[str, object],
+) -> None:
+    values: dict[str, object] = {
+        "hosted_ingestion_enabled": True,
+        "artifact_durability_required": True,
+        "artifact_sink": "s3",
+        "artifact_s3_endpoint": "https://objects.example.test",
+        "artifact_s3_bucket": "private-artifacts",
+        "artifact_s3_region": "us-east-1",
+        "artifact_s3_access_key": "synthetic-access",
+        "artifact_s3_secret_key": "synthetic-secret",
+    }
+    values.update(invalid)
+    result = run_deployment_preflight(
+        settings=production_settings(**values), check_database=False
+    )
+
+    assert _status_for(result, "artifact_storage") == "fail"
+
+
 def test_deployment_preflight_fails_without_postgis() -> None:
     result = run_deployment_preflight(
         settings=production_settings(),
@@ -123,7 +193,7 @@ def test_deployment_preflight_rejects_non_origin_public_base_url() -> None:
     assert "https://tracker.example.test/app?preview=1" in public_base_url_check["detail"]
 
 
-def test_probe_database_uses_bounded_timeouts(monkeypatch) -> None:
+def test_probe_database_uses_bounded_timeouts(monkeypatch: pytest.MonkeyPatch) -> None:
     calls: list[dict[str, object]] = []
 
     def fake_create_engine(url: str, **kwargs: object) -> object:
