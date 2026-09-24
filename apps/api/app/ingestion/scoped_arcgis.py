@@ -66,6 +66,8 @@ def _valid_polygon(value: Any) -> bool:
                     or not math.isfinite(axis)
                     for axis in point
                 )
+                or not -180 <= point[0] <= 180
+                or not -90 <= point[1] <= 90
             ):
                 return False
     return value.get("spatialReference") == {"wkid": 4326}

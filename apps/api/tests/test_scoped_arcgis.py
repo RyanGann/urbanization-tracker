@@ -196,6 +196,25 @@ def test_valid_polygon_and_multipolygon_are_accepted() -> None:
     )
 
 
+@pytest.mark.parametrize("bad_point", [
+    [-181.0, 34.0], [-87.0, 91.0], [1200000.0, 500000.0],
+])
+def test_reviewed_scope_rejects_out_of_range_wgs84_coordinates(
+    tmp_path: Path, bad_point: list[float]
+) -> None:
+    _scope(tmp_path)
+    path = tmp_path / "reviewed-scope.json"
+    payload = json.loads(path.read_text(encoding="utf-8"))
+    for geometry_name in ("boundary_geometry", "context_geometry"):
+        polygon = payload[geometry_name]
+        polygon["rings"][0][0] = bad_point
+        polygon["rings"][0][-1] = bad_point
+        payload[geometry_name.replace("geometry", "sha256")] = _digest(polygon)
+    path.write_text(json.dumps(payload), encoding="utf-8")
+    with pytest.raises(ScopeError, match="invalid_scope_polygon"):
+        ReviewedScope.load(path)
+
+
 def test_empty_scope_and_canary_are_distinct(tmp_path: Path) -> None:
     transport, _ = _fixture([])
     empty = _run(tmp_path, transport)
