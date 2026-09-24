@@ -191,6 +191,59 @@ def initial() -> dict[str, object]:
         "sha256": interrupted_blob.sha256,
         "byte_size": interrupted_blob.byte_size,
     }
+    # Garage's NoSuchUpload must discard the stale manifest checkpoint, so a
+    # later worker can create a fresh multipart upload for the same reference.
+    vanished_data = b"v" * (PART_BYTES + 11)
+    vanished_path = stage / "vanished-upload.bin"
+    vanished_path.write_bytes(vanished_data)
+    paths.append(vanished_path)
+    with vanished_path.open("rb") as handle:
+        vanished_blob = hash_stream(handle)
+    vanished_reference = service.manifest.reserve(
+        blob=vanished_blob,
+        sink_id=service.sink_id,
+        source_key=source_key,
+        run_id=run_id,
+        artifact_type="source_payload",
+        logical_key="vanished-upload",
+        required=True,
+    )
+    vanished_lease = service.manifest.claim(vanished_reference, service.sink_id)
+    assert vanished_lease is not None
+    vanished_upload_id = service.sink.begin(vanished_blob)
+    vanished_first_part = service.sink.upload_part(
+        vanished_blob, vanished_upload_id, 1, vanished_data[:PART_BYTES]
+    )
+    service.manifest.checkpoint(vanished_lease, vanished_upload_id, (vanished_first_part,))
+    service.sink.abort(vanished_blob, vanished_upload_id)
+    with SessionLocal.begin() as session:
+        session.execute(
+            update(ArtifactCopy)
+            .where(
+                ArtifactCopy.blob_id == vanished_lease.blob_id,
+                ArtifactCopy.sink_id == service.sink_id,
+            )
+            .values(lease_expires_at=datetime.now(UTC) - timedelta(seconds=1))
+        )
+    try:
+        service.resume(vanished_reference, vanished_path)
+    except ArtifactError as error:
+        assert error.code == "artifact_checkpoint"
+    else:
+        raise AssertionError("Garage's deleted multipart ID did not fail the first retry")
+    with SessionLocal.begin() as session:
+        copy = session.get(ArtifactCopy, (vanished_lease.blob_id, service.sink_id))
+        assert copy is not None
+        assert copy.state == "failed"
+        assert copy.multipart_upload_id is None and copy.multipart_parts == []
+        # Advance only the disposable fixture past its bounded retry delay.
+        copy.next_attempt_at = None
+    service.resume(vanished_reference, vanished_path)
+    reference_ids.append(str(vanished_reference))
+    blobs["vanished-upload"] = {
+        "sha256": vanished_blob.sha256,
+        "byte_size": vanished_blob.byte_size,
+    }
     with SessionLocal.begin() as session:
         with CollectionUnitOfWork(session).canonical_mutation():
             require_verified_references(
@@ -240,6 +293,7 @@ def initial() -> dict[str, object]:
         "sink_id": service.sink_id,
         "staging_empty": True,
         "interrupted_retry_verified": True,
+        "vanished_multipart_retry_verified": True,
         "wrong_credentials_rejected": True,
         "checksum_mismatch_rejected": True,
     }

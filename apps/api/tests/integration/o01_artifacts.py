@@ -341,6 +341,49 @@ def run_manifest_checks() -> dict[str, object]:
         assert published_agenda["agenda_staged_records"] == next_records
         assert published_agenda["duplicate_candidates"] == next_candidates
         assert published_agenda["agenda_health"] == [next_health]
+
+        retry_data = b"fresh upload after vanished multipart checkpoint"
+        retry_blob = BlobIdentity(hashlib.sha256(retry_data).hexdigest(), len(retry_data))
+        retry_reference = manifest.reserve(
+            blob=retry_blob,
+            sink_id=service.sink_id,
+            source_key=source,
+            run_id="run-invalid-multipart-checkpoint",
+            artifact_type="raw",
+            logical_key="source",
+            required=True,
+        )
+        invalid_lease = manifest.claim(retry_reference, service.sink_id)
+        assert invalid_lease is not None
+        manifest.checkpoint(invalid_lease, "removed-remote-upload", ())
+        manifest.failed(invalid_lease, ArtifactError("artifact_checkpoint"))
+        with SessionLocal.begin() as session:
+            copy = session.get(ArtifactCopy, (invalid_lease.blob_id, service.sink_id))
+            assert copy is not None
+            assert copy.state == "failed"
+            assert copy.multipart_upload_id is None and copy.multipart_parts == []
+            # Advance only this disposable fixture past its bounded retry delay.
+            copy.next_attempt_at = None
+        retry_lease = manifest.claim(retry_reference, service.sink_id)
+        assert retry_lease is not None
+        assert retry_lease.upload_id is None and retry_lease.parts == ()
+        retry_path = root / "retry-raw.bin"
+        retry_path.write_bytes(retry_data)
+        with retry_path.open("rb") as retry_file:
+            upload(
+                sink=service.sink,
+                source=retry_file,
+                blob=retry_blob,
+                upload_id=retry_lease.upload_id,
+                parts=retry_lease.parts,
+                checkpoint=lambda upload_id, parts: manifest.checkpoint(
+                    retry_lease, upload_id, parts
+                ),
+                assert_lease=lambda: manifest.heartbeat(retry_lease),
+                mark_uploaded=lambda: manifest.uploaded(retry_lease),
+            )
+        manifest.verified(retry_lease)
+        verify(service.sink, retry_blob)
         path.unlink()
         service.audit(reference_one)
         verify(service.sink, blob)
@@ -360,6 +403,7 @@ def run_manifest_checks() -> dict[str, object]:
             "verified_retry_merges_once": True,
             "pending_agenda_preserves_prior_revision": True,
             "verified_agenda_replaces_four_collections_atomically": True,
+            "invalid_multipart_checkpoint_recovers": True,
         }
 
 
