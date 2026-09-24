@@ -8,10 +8,14 @@ import json
 from dataclasses import dataclass
 from datetime import datetime
 from typing import Any, Literal
+from uuid import UUID
 
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from app.config import get_settings
+from app.ingestion.artifact_manifest import require_verified_references
+from app.ingestion.artifact_sink import ArtifactError
 from app.models import SourceIdentityRegistry, SourceIngestionBatch, SourceObservation
 from app.public_fields import public_source_fields
 from app.transactional_store import CollectionUnitOfWork
@@ -47,6 +51,8 @@ class SourceBatch:
     accepted_count: int | None = None
     rejected_count: int | None = None
     scope_metadata: dict[str, Any] | None = None
+    required_reference_ids: tuple[UUID, ...] = ()
+    artifact_sink_id: str | None = None
 
 
 class CanonicalPublicationWriter:
@@ -101,6 +107,16 @@ def _merge_locked(
     batch: SourceBatch,
 ) -> dict[str, int | bool]:
     """Merge after the caller has acquired the shared C02 mutation lock."""
+    if get_settings().artifact_durability_required and batch.outcome == "success":
+        if batch.artifact_sink_id is None:
+            raise ArtifactError("artifact_unavailable")
+        require_verified_references(
+            session,
+            reference_ids=batch.required_reference_ids,
+            source_key=batch.source_key,
+            run_id=batch.run_id,
+            sink_id=batch.artifact_sink_id,
+        )
     existing_batch = session.scalar(
         select(SourceIngestionBatch).where(
             SourceIngestionBatch.run_id == batch.run_id,
