@@ -69,6 +69,10 @@ class RegistryInitializationRequired(RuntimeError):
     """Existing source rows need an audited backfill before creating new anchors."""
 
 
+class PublicIdCollisionError(RuntimeError):
+    """A new source anchor cannot claim a public ID owned by another record."""
+
+
 def merge_postgres_batch(
     session: Session,
     batch: SourceBatch,
@@ -156,6 +160,15 @@ def _merge_locked(
                     f"{batch.source_key} has unresolved canonical rows without a registry "
                     "anchor; "
                     "run the dry-run backfill and resolve its diagnostics first"
+                )
+            if input_record.provisional_public_id in current or session.scalar(
+                select(SourceIdentityRegistry.id).where(
+                    SourceIdentityRegistry.public_id == input_record.provisional_public_id
+                )
+            ) is not None:
+                raise PublicIdCollisionError(
+                    f"{batch.source_key}:{input_record.source_record_id} cannot claim "
+                    f"occupied public ID {input_record.provisional_public_id}"
                 )
             registry = SourceIdentityRegistry(
                 source_key=batch.source_key,

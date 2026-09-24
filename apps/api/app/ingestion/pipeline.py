@@ -559,10 +559,12 @@ def _write_postgres_source_state(
                     ),
                     unit_of_work=unit,
                 )
-            for raw_record in raw_records:
+            for occurrence, raw_record in enumerate(raw_records):
                 source_key = str(raw_record.get("data_source_key") or "unknown")
                 payload_digest = str(raw_record.get("payload_sha256") or _sha256(raw_record))
-                raw_key = f"{source_key}:{run_id}:{payload_digest}"
+                # Keep even byte-identical rows in the same run as separate evidence.
+                # Input order is stable for a replay of the same fetched collection.
+                raw_key = f"{source_key}:{run_id}:{payload_digest}:{occurrence:08d}"
                 unit.upsert_processed(
                     "raw_records", raw_key, {**raw_record, "ingestion_run_id": run_id}
                 )

@@ -26,7 +26,13 @@ from app.ingestion.source_backfill import (
     dry_run_source_identity_backfill,
     export_source_identity_mapping,
 )
-from app.ingestion.source_merge import Coverage, SourceBatch, SourceRecord, merge_postgres_batch
+from app.ingestion.source_merge import (
+    Coverage,
+    PublicIdCollisionError,
+    SourceBatch,
+    SourceRecord,
+    merge_postgres_batch,
+)
 from app.ingestion.sources.huntsville import NEW_SUBDIVISIONS
 from app.map_layer_catalog import catalog_revision
 from app.models import (
@@ -300,6 +306,67 @@ def main() -> None:
         if applied["applied"] != 1:
             raise AssertionError(f"backfill did not apply: {applied!r}")
 
+    manual_collision = SourceRecord(
+        "new-manual-collision",
+        "manual-citation",
+        record(title="Cannot replace manual record"),
+        {**staged(), "id": "stage-manual-citation"},
+    )
+    try:
+        merge_batch(run_id="c03-manual-collision", coverage="partial", records=(manual_collision,))
+    except PublicIdCollisionError:
+        pass
+    else:
+        raise AssertionError("new source anchor replaced an unrelated manual public ID")
+    with SessionLocal() as session:
+        unit = CollectionUnitOfWork(session)
+        manual_record = unit.get_processed("development_records", "manual-citation")
+        if manual_record is None or manual_record["title"] != "Manual citation":
+            raise AssertionError("colliding source batch changed the manual record")
+        if session.scalar(
+            select(SourceIngestionBatch).where(
+                SourceIngestionBatch.run_id == "c03-manual-collision"
+            )
+        ) is not None:
+            raise AssertionError("refused source batch was partially committed")
+
+    with SessionLocal.begin() as session:
+        session.add(
+            SourceIdentityRegistry(
+                source_key="unrelated_source",
+                source_record_id="other-anchor",
+                public_id="registry-owned",
+                first_discovered_at=datetime(2026, 9, 20, tzinfo=UTC),
+            )
+        )
+    registry_collision = SourceRecord(
+        "new-registry-collision",
+        "registry-owned",
+        record(title="Cannot claim registry mapping"),
+        {**staged(), "id": "stage-registry-owned"},
+    )
+    try:
+        merge_batch(
+            run_id="c03-registry-collision", coverage="partial", records=(registry_collision,)
+        )
+    except PublicIdCollisionError:
+        pass
+    else:
+        raise AssertionError("new source anchor claimed another registry mapping")
+    with SessionLocal.begin() as session:
+        if session.scalar(
+            select(SourceIngestionBatch).where(
+                SourceIngestionBatch.run_id == "c03-registry-collision"
+            )
+        ) is not None:
+            raise AssertionError("registry collision left a committed batch")
+        session.execute(
+            delete(SourceIdentityRegistry).where(
+                SourceIdentityRegistry.source_key == "unrelated_source",
+                SourceIdentityRegistry.source_record_id == "other-anchor",
+            )
+        )
+
     changed = record(title="Changed title", status="preliminary")
     changed["public_id"] = "new-unstable-id"
     source_record = SourceRecord("001", "new-unstable-id", changed, staged())
@@ -440,7 +507,14 @@ def main() -> None:
                 "payload_json": {"private_raw": "retained only in raw evidence"},
                 "payload_sha256": "c03-raw-environment-digest",
                 "fetched_at": "2026-09-20T00:00:00+00:00",
-            }
+            },
+            {
+                "data_source_key": "huntsville_usfws_wetlands",
+                "source_record_id": None,
+                "payload_json": {"private_raw": "retained only in raw evidence"},
+                "payload_sha256": "c03-raw-environment-digest",
+                "fetched_at": "2026-09-20T00:00:00+00:00",
+            },
         ],
         staged_records=[],
         published_records=[],
@@ -520,9 +594,9 @@ def main() -> None:
                 SourceIdentityRegistry.public_id == "bookmarked-legacy-id"
             )
         )
-        raw = unit.get_processed(
-            "raw_records", "huntsville_usfws_wetlands:c03-adapter:c03-raw-environment-digest"
-        )
+        raw_prefix = "huntsville_usfws_wetlands:c03-adapter:c03-raw-environment-digest"
+        raw = unit.get_processed("raw_records", f"{raw_prefix}:00000000")
+        duplicate_raw = unit.get_processed("raw_records", f"{raw_prefix}:00000001")
         retained_overlay = unit.get_processed("environmental_overlays", "retained-overlay")
         manual = unit.get_processed("development_records", "manual-citation")
         madison_records = [
@@ -562,10 +636,11 @@ def main() -> None:
         raise AssertionError("explicit failed coverage was downgraded by quarantined input")
     if (
         raw is None
+        or duplicate_raw != raw
         or raw.get("ingestion_run_id") != "c03-adapter"
-        or adapter_health["records"]["raw"] != 1
+        or adapter_health["records"]["raw"] != 2
     ):
-        raise AssertionError("adapter did not retain run-scoped raw evidence")
+        raise AssertionError("adapter did not retain both identical quarantined raw observations")
     if retained_overlay != {"id": "retained-overlay", "version": "good"}:
         raise AssertionError("failed environmental source replaced the prior overlay")
     if manual is None or adapter_health["records"]["published"] < 2:
@@ -582,7 +657,7 @@ def main() -> None:
         or madison_records[0].get("source_record_id") != "95"
         or manual is None
         or not isinstance(merged_health, dict)
-        or merged_health["records"]["raw"] < 2
+        or merged_health["records"]["raw"] < 3
         or merged_health["records"]["published"] < 4
     ):
         raise AssertionError(
