@@ -1,8 +1,10 @@
 # O01 durable artifact evidence
 
-## P03-based normalization checkpoint
+## Merged-P03 clean-head validation
 
-On the isolated `codex/o01-normalized` branch based on P03 `ad062be`, the full API suite passed **191 tests** in a disposable, no-network container with a read-only worktree mount. Ruff passed for `app tests`; strict mypy passed for 53 application source files and four changed test files. All 57 `requirements.lock` package pins matched the installed test image. A first suite run caught internal storage locators still present in the public `SourceDocument` schema; those fields were removed before the passing rerun. Two upstream dependency deprecation warnings remain. The normalized branch has not yet run the Garage/PostGIS scenario and must be rebased onto final merged P03 before that acceptance run.
+The isolated `codex/o01-normalized` branch was rebased without conflicts onto merged P03 main `96aaa5b9af9626063db88cfc7e5adacfd0ae7e6c`. On O01 code head `f11608e`, Ruff passed for `app tests`; strict mypy passed for 53 application source files and four changed test files; and the full API suite passed **191 tests** in a disposable, no-network container with a read-only worktree mount. All 57 `requirements.lock` package pins matched the installed test image. Two upstream dependency deprecation warnings remain.
+
+The exact-head Garage/PostGIS command below passed at `tmp/integration/2026-09-24T06-22-17-648Z-1e296f1a/`. Its manifest recorded `outcome: passed`, `cleanup_result: removed`, fixture SHA-256 `932eacb03655a3dee1a2838abf9ddf8d5dfa44f744482408611b61a2561bbee2`, 17 true manifest assertions, and no failure. The O01 result SHA-256 was `3634d3e5084c454054001ef409827d3567eb2206c00dfb9d70f51d1f1521e49a`, Garage proof SHA-256 `7786bd7bb5439150a3d01a50750fa1aacbbb2e005ee2096f32120adb4a36657f`, and source manifest SHA-256 `c0f76f175e678b0c29ae45cf79a27362b4695e404724a5f719eaebfa876d61af`. The proof covers private-bucket access, wrong credentials, checksum mismatch, interrupted multipart retry, restart without staging, and copied PostgreSQL/object-byte restore. An independent exact-project check found zero residual containers and volumes for `urbanization_t01_81fb8f217a85`. If another dependency merges into main before O01, rebase and rerun the affected gates before merge.
 
 O01 adds a private S3-compatible sink, immutable database references, bounded upload leases, and publication checks. The isolated test command is:
 
