@@ -156,6 +156,22 @@ export interface SourceHealth {
     records_created: number;
     error_count: number;
     validation_errors: string[];
+    coverage?: { status: "complete" | "partial" | "failed" | "unknown" };
+    latest_attempt?: {
+      status: "complete" | "partial" | "failed" | "unknown";
+      publication_status: "not_activated" | "activated";
+      scope_id?: string;
+      scope_version?: string;
+      boundary_sha256?: string;
+      expected?: number;
+      fetched?: number;
+      accepted?: number;
+      rejected?: number;
+    } | null;
+    last_attempt_at?: string | null;
+    last_success_at?: string | null;
+    attempt_records_staged?: number | null;
+    error_code?: string | null;
   }>;
 }
 

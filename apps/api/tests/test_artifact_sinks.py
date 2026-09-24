@@ -76,6 +76,73 @@ def test_first_checkpoint_failure_aborts_unrecorded_upload(tmp_path: Path) -> No
     assert not (tmp_path / ".pending" / blob.sha256 / created[0]).exists()
 
 
+def test_lost_local_pending_directory_requires_fresh_checkpoint(tmp_path: Path) -> None:
+    data = b"retryable local bytes"
+    blob = hash_stream(io.BytesIO(data))
+    sink = LocalArtifactSink(tmp_path)
+    old_upload = sink.begin(blob)
+    (tmp_path / ".pending" / blob.sha256 / old_upload).rmdir()
+    with pytest.raises(ArtifactError, match="artifact_checkpoint"):
+        sink.upload_part(blob, old_upload, 1, data)
+    with pytest.raises(ArtifactError, match="artifact_checkpoint"):
+        upload(
+            sink=sink,
+            source=io.BytesIO(data),
+            blob=blob,
+            upload_id=old_upload,
+            parts=(),
+            checkpoint=lambda *_: None,
+            assert_lease=lambda: None,
+        )
+    upload(
+        sink=sink,
+        source=io.BytesIO(data),
+        blob=blob,
+        upload_id=None,
+        parts=(),
+        checkpoint=lambda *_: None,
+        assert_lease=lambda: None,
+    )
+    verify(sink, blob)
+
+
+@pytest.mark.parametrize("missing", ["directory", "part"])
+def test_lost_local_checkpointed_part_requires_fresh_upload(
+    tmp_path: Path, missing: str
+) -> None:
+    data = b"checkpointed local bytes"
+    blob = hash_stream(io.BytesIO(data))
+    sink = LocalArtifactSink(tmp_path)
+    old_upload = sink.begin(blob)
+    part = sink.upload_part(blob, old_upload, 1, data)
+    pending = tmp_path / ".pending" / blob.sha256 / old_upload
+    (pending / "1").unlink()
+    if missing == "directory":
+        pending.rmdir()
+    with pytest.raises(ArtifactError, match="artifact_checkpoint"):
+        sink.complete(blob, old_upload, (part,))
+    with pytest.raises(ArtifactError, match="artifact_checkpoint"):
+        upload(
+            sink=sink,
+            source=io.BytesIO(data),
+            blob=blob,
+            upload_id=old_upload,
+            parts=(part,),
+            checkpoint=lambda *_: None,
+            assert_lease=lambda: None,
+        )
+    upload(
+        sink=sink,
+        source=io.BytesIO(data),
+        blob=blob,
+        upload_id=None,
+        parts=(),
+        checkpoint=lambda *_: None,
+        assert_lease=lambda: None,
+    )
+    verify(sink, blob)
+
+
 def test_local_existing_corruption_is_never_overwritten(tmp_path: Path) -> None:
     data = b"original"
     blob = hash_stream(io.BytesIO(data))

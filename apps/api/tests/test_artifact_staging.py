@@ -76,6 +76,68 @@ def test_cleanup_requires_verified_matching_bytes(
     assert not path.exists()
 
 
+def test_pipeline_relative_path_uses_checked_in_data_root(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setenv("INGESTION_DATA_DIR", "./data")
+    get_settings.cache_clear()
+    root = Path("./data")
+    staged = root / "raw" / "source" / "run.geojson"
+    staged.parent.mkdir(parents=True)
+    staged.write_bytes(b"pipeline bytes")
+    # A root-relative interpretation points at different, existing bytes.
+    # The pipeline's CWD-relative path must still select the original.
+    decoy = root / staged
+    decoy.parent.mkdir(parents=True)
+    decoy.write_bytes(b"wrong bytes")
+    try:
+        configured = get_settings()
+        assert configured.ingestion_data_dir == root
+    finally:
+        get_settings.cache_clear()
+    settings = configured.model_copy(
+        update={
+            "data_mode": "live",
+            "processed_store_backend": "postgres",
+            "ingestion_data_dir": root,
+        }
+    )
+    service = ArtifactService.__new__(ArtifactService)
+    service.settings = settings
+    service.sink_id = "test-sink"
+    reference_id = uuid4()
+    with staged.open("rb") as source:
+        blob = hash_stream(source)
+    service.manifest = SimpleNamespace(  # type: ignore[assignment]
+        reserve=lambda **_kwargs: reference_id,
+        lookup=lambda _reference_id, _sink_id: (blob, "verified"),
+    )
+    resumed: list[Path] = []
+    monkeypatch.setattr(service, "resume", lambda _reference_id, path: resumed.append(path))
+    assert service.upload_file(
+        path=staged,
+        source_key="source",
+        run_id="run",
+        artifact_type="raw_geojson",
+        logical_key="source",
+        required=True,
+    ) == reference_id
+    assert resumed == [staged.resolve()]
+    service.cleanup_verified(reference_id, staged)
+    assert not staged.exists()
+    assert decoy.read_bytes() == b"wrong bytes"
+
+    outside = tmp_path / "outside.geojson"
+    outside.write_bytes(b"outside")
+    with pytest.raises(ArtifactError, match="artifact_path"):
+        service.staging_path(outside)
+    linked = root / "raw" / "link.geojson"
+    linked.symlink_to(outside)
+    with pytest.raises(ArtifactError, match="artifact_path"):
+        service.staging_path(linked)
+
+
 def test_concurrent_staging_writers_share_one_budget(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:

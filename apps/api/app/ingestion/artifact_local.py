@@ -81,6 +81,8 @@ class LocalArtifactSink:
     ) -> UploadedPart:
         validate_part(number, data, blob)
         path = self._upload(blob, upload_id)
+        if not path.is_dir():
+            raise ArtifactError("artifact_checkpoint")
         temporary: str | None = None
         try:
             with tempfile.NamedTemporaryFile(dir=path, delete=False) as output:
@@ -89,6 +91,8 @@ class LocalArtifactSink:
                 output.flush()
                 os.fsync(output.fileno())
             os.replace(temporary, path / str(number))
+        except FileNotFoundError:
+            raise ArtifactError("artifact_checkpoint") from None
         except OSError:
             raise ArtifactError("artifact_unavailable") from None
         finally:
@@ -99,7 +103,9 @@ class LocalArtifactSink:
 
     def complete(self, blob: BlobIdentity, upload_id: str, parts: tuple[UploadedPart, ...]) -> None:
         validate_parts(parts, blob)
-        self._upload(blob, upload_id)
+        pending = self._upload(blob, upload_id)
+        if not pending.is_dir():
+            raise ArtifactError("artifact_checkpoint")
         target = self._path(blob.key)
         temporary: str | None = None
         try:
@@ -108,9 +114,13 @@ class LocalArtifactSink:
                 temporary = output.name
                 for part in parts:
                     digest = hashlib.sha256()
-                    with self._path(f".pending/{blob.sha256}/{upload_id}/{part.number}").open(
-                        "rb"
-                    ) as source:
+                    try:
+                        source = self._path(
+                            f".pending/{blob.sha256}/{upload_id}/{part.number}"
+                        ).open("rb")
+                    except FileNotFoundError:
+                        raise ArtifactError("artifact_checkpoint") from None
+                    with source:
                         total = 0
                         while chunk := source.read(CHUNK_BYTES):
                             total += len(chunk)
