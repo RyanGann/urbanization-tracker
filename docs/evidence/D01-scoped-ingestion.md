@@ -271,3 +271,14 @@ remained unactivated and preserved last-good records through restart (identical
 development SHA-256 before/after:
 `357684e3880849e553322b0d1d0ba3913f39f9cac9d2a7489c47fd6899953540`).
 Its disposable Compose project reports `cleanup_result: removed`.
+
+The CLI now exits nonzero for any full staging run whose coverage is not
+`complete`, including rejected-feature partial results with no transport error;
+canaries remain unknown by design. Code head `ce67c68` passed locked full API
+Ruff/mypy and **177 backend tests**, including CLI exit-status regressions. Its
+isolated D01 T01 run `2026-09-24T05-53-29-694Z-104e267a` passed with five
+complete and three expected failed fixture requests. The failed attempt was
+unactivated, retained the September 1 success time and nine published records,
+and left development records unchanged through restart (SHA-256
+`6118c305216f99a0126eb01dbd00297ae2601a2cea0eb1a3ee2411e36833ee69`).
+The disposable Compose project reports `cleanup_result: removed`.
