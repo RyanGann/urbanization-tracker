@@ -199,6 +199,7 @@ def _merge_locked(
         staged = copy.deepcopy(input_record.staged)
         staged["id"] = f"stage-{registry.public_id}"
         staged["raw_record_id"] = input_record.source_record_id
+        staged["date_discovered"] = after["date_discovered"]
         unit_of_work.upsert_processed("staged_development_records", staged["id"], staged)
         session.add(
             SourceObservation(

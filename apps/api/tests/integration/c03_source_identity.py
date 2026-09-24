@@ -111,39 +111,62 @@ def madison_arcgis_handler(request: httpx.Request) -> httpx.Response:
             },
         )
     if params.get("returnCountOnly") == "true":
-        return httpx.Response(200, json={"count": 1})
+        return httpx.Response(200, json={"count": 4})
+    valid_feature = {
+        "type": "Feature",
+        "properties": {
+            "OBJECTID": 7,
+            "Subd_ID": 95,
+            "Subd_Name": "C03 Madison Fixture",
+            "Parcels": "8",
+            "YearFiled": 1987,
+            "DateFiled": "6/24/1987",
+        },
+        "geometry": {
+            "type": "Polygon",
+            "coordinates": [
+                [
+                    [-86.72, 34.72],
+                    [-86.71, 34.72],
+                    [-86.71, 34.73],
+                    [-86.72, 34.73],
+                    [-86.72, 34.72],
+                ]
+            ],
+        },
+    }
+    duplicate_feature = {
+        **valid_feature,
+        "properties": {**valid_feature["properties"], "OBJECTID": 8, "Subd_ID": 96},
+    }
+    missing_id_feature = {
+        **valid_feature,
+        "properties": {"OBJECTID": 9, "Subd_Name": "Missing source ID"},
+    }
     return httpx.Response(
         200,
         json={
             "type": "FeatureCollection",
             "features": [
-                {
-                    "type": "Feature",
-                    "properties": {
-                        "OBJECTID": 7,
-                        "Subd_ID": 95,
-                        "Subd_Name": "C03 Madison Fixture",
-                        "Parcels": "8",
-                        "YearFiled": 1987,
-                        "DateFiled": "6/24/1987",
-                    },
-                    "geometry": {
-                        "type": "Polygon",
-                        "coordinates": [
-                            [
-                                [-86.72, 34.72],
-                                [-86.71, 34.72],
-                                [-86.71, 34.73],
-                                [-86.72, 34.73],
-                                [-86.72, 34.72],
-                            ]
-                        ],
-                    },
-                }
+                valid_feature,
+                duplicate_feature,
+                duplicate_feature,
+                missing_id_feature,
             ],
             "exceededTransferLimit": False,
         },
     )
+
+
+def madison_quarantine_only_handler(request: httpx.Request) -> httpx.Response:
+    response = madison_arcgis_handler(request)
+    if request.url.path.endswith("/0") and request.url.params.get("f") == "json":
+        return response
+    if request.url.params.get("returnCountOnly") == "true":
+        return httpx.Response(200, json={"count": 3})
+    payload = response.json()
+    payload["features"] = payload["features"][1:]
+    return httpx.Response(200, json=payload)
 
 
 def request_submission(api_url: str) -> tuple[int, dict]:
@@ -369,7 +392,9 @@ def main() -> None:
 
     changed = record(title="Changed title", status="preliminary")
     changed["public_id"] = "new-unstable-id"
-    source_record = SourceRecord("001", "new-unstable-id", changed, staged())
+    source_record = SourceRecord(
+        "001", "new-unstable-id", changed, {**staged(), "date_discovered": "2026-09-20"}
+    )
     merged = merge_batch(run_id="c03-first", coverage=None, records=(source_record,))
     replay = merge_batch(run_id="c03-first", coverage=None, records=(source_record,))
     partial = merge_batch(run_id="c03-partial", coverage="partial", records=())
@@ -581,6 +606,24 @@ def main() -> None:
         or madison_artifact["sha256"] != madison_source_health["raw_artifact_sha256"]
     ):
         raise AssertionError("Madison raw artifact manifest did not retain its byte/hash evidence")
+    quarantine_transport = httpx.MockTransport(madison_quarantine_only_handler)
+    with ArcGISRestConnector(transport=quarantine_transport) as connector:
+        quarantine_only_health = ingest_madison_county(
+            data_dir=madison_data_dir,
+            record_limit=3,
+            connector=connector,
+        )
+    quarantine_only_source = next(
+        item
+        for item in quarantine_only_health["sources"]
+        if item["key"] == "madison_county_subdivisions"
+    )
+    if (
+        quarantine_only_source["records_seen"] != 3
+        or quarantine_only_source["records_created"] != 0
+        or quarantine_only_health["batches"]["madison_county_subdivisions"]["source_missing"]
+    ):
+        raise AssertionError("quarantine-only Madison run reported accepted or missing records")
 
     with SessionLocal() as session:
         unit = CollectionUnitOfWork(session)
@@ -589,6 +632,11 @@ def main() -> None:
             raise AssertionError("legacy bookmarked public ID disappeared")
         if canonical["date_discovered"] != "2025-01-02" or canonical["title"] != "Changed title":
             raise AssertionError(f"source update did not preserve ID/discovery date: {canonical!r}")
+        staged_canonical = unit.get_processed(
+            "staged_development_records", "stage-bookmarked-legacy-id"
+        )
+        if staged_canonical is None or staged_canonical["date_discovered"] != "2025-01-02":
+            raise AssertionError("refreshed staged record advanced its original discovery date")
         batches = session.scalars(
             select(SourceIngestionBatch).order_by(SourceIngestionBatch.id)
         ).all()
@@ -671,12 +719,21 @@ def main() -> None:
         or madison_records[0].get("source_record_id") != "95"
         or manual is None
         or not isinstance(merged_health, dict)
-        or merged_health["records"]["raw"] < 4
+        or merged_health["records"]["raw"] < 7
         or merged_health["records"]["published"] < 4
     ):
         raise AssertionError(
             "real Madison PostgreSQL ingestion did not preserve source or other records"
         )
+    if (
+        madison_source_health["records_seen"] != 4
+        or madison_source_health["records_created"] != 1
+        or not any(
+            "identity_quarantined" in error
+            for error in madison_source_health["validation_errors"]
+        )
+    ):
+        raise AssertionError("Madison health counted quarantined source rows as accepted")
 
     args.result.parent.mkdir(parents=True, exist_ok=True)
     args.result.write_text(
@@ -719,6 +776,14 @@ def main() -> None:
                     "raw_artifact_bytes": madison_artifact["byte_size"],
                     "raw_observations": merged_health["records"]["raw"],
                     "published": merged_health["records"]["published"],
+                    "accepted_of_seen": [
+                        madison_source_health["records_created"],
+                        madison_source_health["records_seen"],
+                    ],
+                    "quarantine_only_accepted_of_seen": [
+                        quarantine_only_source["records_created"],
+                        quarantine_only_source["records_seen"],
+                    ],
                 },
             },
             indent=2,

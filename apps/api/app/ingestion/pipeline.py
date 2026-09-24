@@ -93,6 +93,9 @@ def ingest_huntsville(
         staged_records, published_records = _quarantine_duplicate_source_records(
             staged_records, published_records, source_health
         )
+        _set_accepted_development_counts(
+            source_health, published_records, {source.key for source in DEVELOPMENT_SOURCES}
+        )
         compute_proximity_flags(published_records, environmental_collections)
         overlays = _environmental_overlays(environmental_collections)
         catalog = build_catalog(environmental_catalog_sources)
@@ -154,6 +157,11 @@ def ingest_madison_county(
 
         staged_records, published_records = _quarantine_duplicate_source_records(
             staged_records, published_records, source_health
+        )
+        _set_accepted_development_counts(
+            source_health,
+            published_records,
+            {source.key for source in MADISON_COUNTY_DEVELOPMENT_SOURCES},
         )
 
         health = _write_processed_state(
@@ -277,6 +285,23 @@ def _raw_records(
 def _quarantine_identity(health: dict[str, Any], error: SourceIdentityError) -> None:
     health["error_count"] += 1
     health["validation_errors"].append(f"identity_quarantined: {error}")
+
+
+def _set_accepted_development_counts(
+    source_health: list[dict[str, Any]],
+    published_records: list[dict[str, Any]],
+    development_keys: set[str],
+) -> None:
+    """Count accepted output after quarantine, including refreshes rather than net-new inserts."""
+    counts: dict[str, int] = {}
+    for record in published_records:
+        key = record.get("source_key")
+        if isinstance(key, str) and key in development_keys:
+            counts[key] = counts.get(key, 0) + 1
+    for health in source_health:
+        key = health.get("key")
+        if key in development_keys:
+            health["records_created"] = counts.get(key, 0)
 
 
 def _dedupe_records(records: list[dict[str, Any]], *, key: str) -> list[dict[str, Any]]:
