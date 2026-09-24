@@ -8,8 +8,8 @@ from __future__ import annotations
 
 import hashlib
 import math
-from datetime import UTC, datetime
 from collections.abc import Callable
+from datetime import UTC, datetime
 from typing import Any
 
 from sqlalchemy import select, text
@@ -505,7 +505,10 @@ def _validate_checkpoint(
         if len(part_shas) != current["part_count"]:
             raise DisplayBuildError("checkpoint_feature_parts_mismatch")
         if current["status"] == "failed":
-            if current["simplified_geometry_sha256"] != EMPTY_SHA or current["output_sha256"] != EMPTY_SHA:
+            if (
+                current["simplified_geometry_sha256"] != EMPTY_SHA
+                or current["output_sha256"] != EMPTY_SHA
+            ):
                 raise DisplayBuildError("checkpoint_failed_result_mismatch")
         elif sha256(canonical_bytes({
             "simplified": current["simplified_geometry_sha256"], "parts": part_shas,
@@ -513,7 +516,10 @@ def _validate_checkpoint(
             raise DisplayBuildError("checkpoint_output_digest_mismatch")
 
     for row in joined:
-        if current is None or row["environmental_feature_id"] != current["environmental_feature_id"]:
+        if (
+            current is None
+            or row["environmental_feature_id"] != current["environmental_feature_id"]
+        ):
             finish_feature()
             current = dict(row)
             part_shas = []
@@ -559,7 +565,10 @@ def _validate_checkpoint(
             if oversized else row["ewkb"] is not None
             and sha256(_bytes(row["ewkb"])) == row["input_geometry_sha256"]
         )
-        if not digest_matches or row["input_fingerprint"] != (row["import_fingerprint"] or EMPTY_SHA):
+        if (
+            not digest_matches
+            or row["input_fingerprint"] != (row["import_fingerprint"] or EMPTY_SHA)
+        ):
             raise DisplayBuildError("canonical_geometry_changed_since_checkpoint")
         checked += 1
     if checked != band.processed_count:

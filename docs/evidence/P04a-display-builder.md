@@ -31,6 +31,13 @@ resume, the source snapshot hash yielded a new immutable display version while
 the prior shadow build stayed intact. No public catalog or active pointer
 changed. The run removed its Docker project.
 
+The locked `c04-api-check:local` image subsequently passed `ruff check app
+tests alembic`, `mypy app` (55 source files), and 31 affected unit tests
+(`test_display_config.py`, `test_environmental_import.py`,
+`test_environmental_output.py`, `test_ingestion_cli.py`). A follow-up changed
+the source snapshot hash to stable source identities instead of database IDs;
+the full real-stack scenario will be rerun after rebasing onto merged O01.
+
 Machine-readable local artifacts are under
 `tmp/agents/p04a/tmp/integration/2026-09-24T07-28-21-674Z-abcd3264/`
 (`manifest.json`, `p04a/results.json`, `cleanup-result.json`). This test uses
