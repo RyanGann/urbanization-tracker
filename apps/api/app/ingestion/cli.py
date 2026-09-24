@@ -12,6 +12,7 @@ from app.deployment_preflight import run_deployment_preflight
 from app.ingestion.agenda_pipeline import ingest_huntsville_agendas
 from app.ingestion.artifact_service import ArtifactService
 from app.ingestion.artifact_sink import ArtifactError
+from app.ingestion.display_builder import build_environmental_display
 from app.ingestion.environmental_import import ImportOptions, import_environmental_file
 from app.ingestion.pipeline import ingest_huntsville, ingest_madison_county
 from app.ingestion.scoped_arcgis import (
@@ -62,6 +63,14 @@ def main() -> None:
         "--apply", action="store_true", help="Write shadow versions; never activate.",
     )
     environmental.add_argument("--report", type=Path)
+    display = subparsers.add_parser(
+        "build-environmental-display",
+        help="Build shadow, immutable projected display parts without activating a layer.",
+    )
+    display.add_argument("--layer-id", required=True)
+    display.add_argument("--data-version", required=True)
+    display.add_argument("--batch-size", type=int, default=8)
+    display.add_argument("--report", type=Path)
 
     huntsville = subparsers.add_parser(
         "ingest-huntsville",
@@ -274,6 +283,21 @@ def main() -> None:
             result = {"status": "failed", "code": (
                 "import_busy" if isinstance(exc, ImportBusyError) else "environmental_import_failed"
             )}
+        output = json.dumps(result, indent=2, sort_keys=True)
+        if args.report:
+            args.report.write_text(output + "\n", encoding="utf-8")
+        print(output)
+        if result["status"] == "failed":
+            raise SystemExit(1)
+    elif args.command == "build-environmental-display":
+        try:
+            result = build_environmental_display(
+                args.layer_id, args.data_version, batch_size=args.batch_size
+            )
+        except Exception:
+            # Driver errors may contain SQL or source fields. Detailed bounded
+            # diagnostics are on the build/band rows, not in public CLI output.
+            result = {"status": "failed", "code": "display_build_failed"}
         output = json.dumps(result, indent=2, sort_keys=True)
         if args.report:
             args.report.write_text(output + "\n", encoding="utf-8")

@@ -273,6 +273,128 @@ class EnvironmentalFeature(Base):
     import_fingerprint: Mapped[str | None] = mapped_column(String(64))
 
 
+class EnvironmentalDisplayBuild(Base):
+    """Immutable display recipe over one P03 canonical layer version."""
+
+    __tablename__ = "environmental_display_builds"
+    __table_args__ = (
+        UniqueConstraint(
+            "environmental_layer_id", "display_version", name="uq_environmental_display_build"
+        ),
+        CheckConstraint(
+            "status IN ('building', 'validated', 'failed')",
+            name="ck_environmental_display_build_status",
+        ),
+    )
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    environmental_layer_id: Mapped[int] = mapped_column(
+        ForeignKey("environmental_layers.id", ondelete="RESTRICT"), nullable=False
+    )
+    layer_key: Mapped[str] = mapped_column(String(100), nullable=False)
+    data_version: Mapped[str] = mapped_column(String(64), nullable=False)
+    source_checksum: Mapped[str] = mapped_column(String(64), nullable=False)
+    source_snapshot_sha256: Mapped[str] = mapped_column(String(64), nullable=False)
+    display_version: Mapped[str] = mapped_column(String(64), nullable=False)
+    config_sha256: Mapped[str] = mapped_column(String(64), nullable=False)
+    config_json: Mapped[dict[str, Any]] = mapped_column(JSON, nullable=False)
+    status: Mapped[str] = mapped_column(String(16), nullable=False, default="building")
+    summary_json: Mapped[dict[str, Any]] = mapped_column(JSON, nullable=False, default=dict)
+    started_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
+    finished_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
+
+class EnvironmentalDisplayBand(Base):
+    __tablename__ = "environmental_display_bands"
+    __table_args__ = (
+        UniqueConstraint("build_id", "band_key", name="uq_environmental_display_band"),
+        CheckConstraint(
+            "status IN ('building', 'validated', 'failed')",
+            name="ck_environmental_display_band_status",
+        ),
+    )
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    build_id: Mapped[int] = mapped_column(
+        ForeignKey("environmental_display_builds.id", ondelete="RESTRICT"), nullable=False
+    )
+    band_key: Mapped[str] = mapped_column(String(16), nullable=False)
+    status: Mapped[str] = mapped_column(String(16), nullable=False, default="building")
+    checkpoint_feature_id: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    processed_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    part_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    collapsed_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    invalid_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    diagnostics_json: Mapped[dict[str, Any]] = mapped_column(JSON, nullable=False, default=dict)
+    parts_sha256: Mapped[str | None] = mapped_column(String(64))
+    finished_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
+
+class EnvironmentalDisplayFeatureResult(Base):
+    __tablename__ = "environmental_display_feature_results"
+    __table_args__ = (
+        UniqueConstraint(
+            "build_id", "band_key", "environmental_feature_id",
+            name="uq_environmental_display_feature_result",
+        ),
+        CheckConstraint(
+            "status IN ('built', 'collapsed', 'failed')",
+            name="ck_environmental_display_feature_status",
+        ),
+    )
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    build_id: Mapped[int] = mapped_column(
+        ForeignKey("environmental_display_builds.id", ondelete="RESTRICT"), nullable=False
+    )
+    environmental_feature_id: Mapped[int] = mapped_column(
+        ForeignKey("environmental_features.id", ondelete="RESTRICT"), nullable=False
+    )
+    band_key: Mapped[str] = mapped_column(String(16), nullable=False)
+    source_feature_id: Mapped[str] = mapped_column(String(255), nullable=False)
+    input_fingerprint: Mapped[str] = mapped_column(String(64), nullable=False)
+    input_geometry_sha256: Mapped[str] = mapped_column(String(64), nullable=False)
+    simplified_geometry_sha256: Mapped[str] = mapped_column(String(64), nullable=False)
+    output_sha256: Mapped[str] = mapped_column(String(64), nullable=False)
+    status: Mapped[str] = mapped_column(String(16), nullable=False)
+    error_code: Mapped[str | None] = mapped_column(String(80))
+    part_count: Mapped[int] = mapped_column(Integer, nullable=False)
+    source_holes: Mapped[int] = mapped_column(Integer, nullable=False)
+    display_holes: Mapped[int] = mapped_column(Integer, nullable=False)
+    source_components: Mapped[int] = mapped_column(Integer, nullable=False)
+    display_components: Mapped[int] = mapped_column(Integer, nullable=False)
+    collapsed: Mapped[bool] = mapped_column(Boolean, nullable=False)
+
+
+class EnvironmentalDisplayPart(Base):
+    __tablename__ = "environmental_display_parts"
+    __table_args__ = (
+        UniqueConstraint(
+            "build_id", "band_key", "environmental_feature_id", "part_number",
+            name="uq_environmental_display_part",
+        ),
+        Index("ix_environmental_display_parts_build_band", "build_id", "band_key"),
+        Index("ix_environmental_display_parts_geometry", "geometry", postgresql_using="gist"),
+    )
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    build_id: Mapped[int] = mapped_column(
+        ForeignKey("environmental_display_builds.id", ondelete="RESTRICT"), nullable=False
+    )
+    environmental_feature_id: Mapped[int] = mapped_column(
+        ForeignKey("environmental_features.id", ondelete="RESTRICT"), nullable=False
+    )
+    band_key: Mapped[str] = mapped_column(String(16), nullable=False)
+    source_feature_id: Mapped[str] = mapped_column(String(255), nullable=False)
+    part_number: Mapped[int] = mapped_column(Integer, nullable=False)
+    geometry_sha256: Mapped[str] = mapped_column(String(64), nullable=False)
+    geometry: Mapped[Any] = mapped_column(
+        Geometry("POLYGON", srid=3857, spatial_index=False), nullable=False
+    )
+
+
 class ProximityFlag(Base):
     __tablename__ = "proximity_flags"
 

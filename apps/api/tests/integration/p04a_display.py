@@ -1,0 +1,407 @@
+"""Real PostGIS shadow-display replay, kill/resume and geometry acceptance."""
+
+from __future__ import annotations
+
+import argparse
+import hashlib
+import json
+import subprocess
+import sys
+import time
+from pathlib import Path
+from unittest.mock import patch
+
+from sqlalchemy import text
+
+from app.db import SessionLocal
+from app.ingestion import display_builder
+from app.ingestion.display_builder import DisplayBuildError, build_environmental_display
+
+LAYER = "p04a_synthetic_wetland"
+VERSION = "a" * 64
+
+
+def _digest(value: object) -> str:
+    return hashlib.sha256(
+        json.dumps(value, sort_keys=True, separators=(",", ":")).encode()
+    ).hexdigest()
+
+
+def _fixture() -> list[tuple[str, dict]]:
+    outer = [
+        [-86.8, 34.7], [-86.5, 34.7], [-86.5, 34.9], [-86.8, 34.9], [-86.8, 34.7],
+    ]
+    hole = [
+        [-86.74, 34.76], [-86.74, 34.83], [-86.65, 34.83],
+        [-86.65, 34.76], [-86.74, 34.76],
+    ]
+    multipolygon = [
+        [[[-86.49, 34.72], [-86.45, 34.72], [-86.45, 34.76],
+          [-86.49, 34.76], [-86.49, 34.72]]],
+        [[[-86.43, 34.72], [-86.39, 34.72], [-86.39, 34.76],
+          [-86.43, 34.76], [-86.43, 34.72]]],
+    ]
+    channel = [
+        [-86.38, 34.7], [-86.28, 34.7], [-86.28, 34.7015],
+        [-86.38, 34.7015], [-86.38, 34.7],
+    ]
+    adjacent = [
+        [-86.5, 34.7], [-86.4, 34.7], [-86.4, 34.9], [-86.5, 34.9], [-86.5, 34.7],
+    ]
+    # A dense boundary forces ST_Subdivide at the highest zoom band.
+    import math
+
+    dense = [
+        [-86.18 + 0.04 * math.cos(i * 2 * math.pi / 600),
+         34.75 + 0.04 * math.sin(i * 2 * math.pi / 600)]
+        for i in range(600)
+    ]
+    dense.append(dense[0])
+    return [
+        ("hole", {"type": "Polygon", "coordinates": [outer, hole]}),
+        ("multipart", {"type": "MultiPolygon", "coordinates": multipolygon}),
+        ("channel", {"type": "Polygon", "coordinates": [channel]}),
+        ("adjacent", {"type": "Polygon", "coordinates": [adjacent]}),
+        ("dense", {"type": "Polygon", "coordinates": [dense]}),
+    ]
+
+
+def _seed_layer(layer_key: str, version: str, shapes: list[tuple[str, dict]]) -> int:
+    with SessionLocal.begin() as session:
+        layer_id = session.scalar(text("""
+            INSERT INTO environmental_layers
+                (name, category, source_url, geom_type, layer_key, data_version,
+                 source_checksum, importer_format, scope_json, import_status,
+                 coverage_status, expected_count, seen_count, accepted_count,
+                 rejected_count, duplicate_count, import_checkpoint)
+            VALUES ('P04a synthetic', 'wetlands', 'https://example.test/p04a',
+                    'polygon', :layer_key, :version, :source_checksum,
+                    'environmental-v1', CAST(:scope AS json), 'validated', 'unknown',
+                    :count, :count, :count, 0, 0, :count)
+            RETURNING id
+        """), {
+            "layer_key": layer_key, "version": version,
+            "source_checksum": "f" * 64, "scope": json.dumps({"fixture": True}),
+            "count": len(shapes),
+        })
+        for source_id, geometry in shapes:
+            session.execute(text("""
+                INSERT INTO environmental_features
+                    (environmental_layer_id, source_feature_id, attributes_json,
+                     import_managed, import_fingerprint, geometry)
+                VALUES (:layer_id, :source_id, CAST('{}' AS json), true,
+                        :fingerprint, ST_GeomFromGeoJSON(:geometry))
+            """), {
+                "layer_id": layer_id, "source_id": source_id,
+                "fingerprint": _digest([source_id, geometry]),
+                "geometry": json.dumps(geometry),
+            })
+    return int(layer_id)
+
+
+def _canonical_hash(layer_id: int) -> str:
+    with SessionLocal() as session:
+        rows = session.execute(text("""
+            SELECT source_feature_id, ST_AsEWKB(geometry) AS ewkb
+            FROM environmental_features WHERE environmental_layer_id = :id
+            ORDER BY source_feature_id
+        """), {"id": layer_id})
+        digest = hashlib.sha256()
+        for source_id, ewkb in rows:
+            digest.update(source_id.encode())
+            digest.update(bytes(ewkb))
+        return digest.hexdigest()
+
+
+def _screening(layer_id: int) -> int:
+    with SessionLocal() as session:
+        return int(session.scalar(text("""
+            SELECT count(*) FROM environmental_features
+            WHERE environmental_layer_id = :id
+              AND ST_Intersects(geometry, ST_SetSRID(ST_MakePoint(-86.55, 34.75), 4326))
+        """), {"id": layer_id}) or 0)
+
+
+def _part_hash(build_id: int) -> str:
+    with SessionLocal() as session:
+        rows = session.execute(text("""
+            SELECT band_key, environmental_feature_id, part_number,
+                   geometry_sha256, ST_AsEWKB(geometry)
+            FROM environmental_display_parts WHERE build_id = :id
+            ORDER BY band_key, environmental_feature_id, part_number
+        """), {"id": build_id})
+        digest = hashlib.sha256()
+        for band, feature_id, number, part_sha, ewkb in rows:
+            assert hashlib.sha256(bytes(ewkb)).hexdigest() == part_sha
+            digest.update(f"{band}:{feature_id}:{number}:{part_sha}\n".encode())
+        return digest.hexdigest()
+
+
+def _build_id(layer_id: int) -> int:
+    with SessionLocal() as session:
+        result = session.scalar(text("""
+            SELECT id FROM environmental_display_builds WHERE environmental_layer_id = :id
+        """), {"id": layer_id})
+        assert result is not None
+        return int(result)
+
+
+def _kill_after_first_checkpoint(output: Path) -> None:
+    sentinel = output / "checkpoint-ready"
+    code = """
+import sys, time
+from pathlib import Path
+from app.ingestion.display_builder import build_environmental_display
+def pause(batch):
+    if batch == 1:
+        Path(sys.argv[1]).write_text('committed')
+        time.sleep(3600)
+build_environmental_display(sys.argv[2], sys.argv[3], batch_size=2, after_checkpoint=pause)
+"""
+    child = subprocess.Popen(
+        [sys.executable, "-c", code, str(sentinel), LAYER, VERSION],
+        stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+    )
+    try:
+        deadline = time.monotonic() + 45
+        while not sentinel.exists():
+            if child.poll() is not None:
+                raise AssertionError("display builder child exited before a checkpoint")
+            if time.monotonic() >= deadline:
+                raise AssertionError("display builder checkpoint timed out")
+            time.sleep(0.1)
+        child.kill()
+        child.wait(timeout=10)
+    finally:
+        if child.poll() is None:
+            child.kill()
+            child.wait(timeout=10)
+
+
+def run(output: Path) -> dict:
+    output.mkdir(parents=True, exist_ok=True)
+    fixture = _fixture()
+    layer_id = _seed_layer(LAYER, VERSION, fixture)
+    original_hash = _canonical_hash(layer_id)
+    original_screening = _screening(layer_id)
+    with SessionLocal() as session:
+        catalog_before = session.scalar(text("""
+            SELECT payload_json::text FROM processed_collection_items
+            WHERE collection_name = 'map_layer_catalog' AND item_id = 'latest'
+        """))
+    _kill_after_first_checkpoint(output)
+    with SessionLocal() as session:
+        building = session.execute(text("""
+            SELECT b.status, sum(d.processed_count), sum(d.part_count)
+            FROM environmental_display_builds b
+            JOIN environmental_display_bands d ON d.build_id = b.id
+            WHERE b.environmental_layer_id = :id GROUP BY b.status
+        """), {"id": layer_id}).one()
+    assert building[0] == "building" and building[1] == 2
+    assert _canonical_hash(layer_id) == original_hash
+    first = build_environmental_display(LAYER, VERSION, batch_size=3)
+    assert first["display_status"] == "validated" and not first["publicly_active"]
+    assert first["coverage_status"] == "unknown"
+    assert all(band["status"] == "validated" for band in first["bands"])
+    build_id = _build_id(layer_id)
+    first_part_hash = _part_hash(build_id)
+    replay = build_environmental_display(LAYER, VERSION, batch_size=7)
+    assert replay["replayed"] and replay["display_version"] == first["display_version"]
+    assert _part_hash(build_id) == first_part_hash
+    # A coherent edit to geometry and its row SHA must still be detected by
+    # the independently stored per-feature output digest on replay.
+    with SessionLocal.begin() as session:
+        part_id, original_ewkb, original_part_sha = session.execute(text("""
+            SELECT id, ST_AsEWKB(geometry), geometry_sha256
+            FROM environmental_display_parts WHERE build_id = :id
+            ORDER BY id LIMIT 1
+        """), {"id": build_id}).one()
+        changed = session.scalar(text("""
+            UPDATE environmental_display_parts
+            SET geometry = ST_Translate(geometry, 1, 0)
+            WHERE id = :id RETURNING ST_AsEWKB(geometry)
+        """), {"id": part_id})
+        session.execute(text("""
+            UPDATE environmental_display_parts SET geometry_sha256 = :sha WHERE id = :id
+        """), {"id": part_id, "sha": hashlib.sha256(bytes(changed)).hexdigest()})
+    try:
+        try:
+            build_environmental_display(LAYER, VERSION)
+        except DisplayBuildError as exc:
+            assert str(exc) == "checkpoint_output_digest_mismatch"
+        else:
+            raise AssertionError("coherent part tamper passed replay validation")
+    finally:
+        with SessionLocal.begin() as session:
+            session.execute(text("""
+                UPDATE environmental_display_parts
+                SET geometry = ST_GeomFromEWKB(:ewkb), geometry_sha256 = :sha
+                WHERE id = :id
+            """), {"id": part_id, "ewkb": bytes(original_ewkb), "sha": original_part_sha})
+    assert build_environmental_display(LAYER, VERSION)["replayed"]
+    assert _canonical_hash(layer_id) == original_hash
+    assert _screening(layer_id) == original_screening
+    with SessionLocal() as session:
+        hole = session.execute(text("""
+            SELECT r.source_holes, r.display_holes FROM environmental_display_feature_results r
+            WHERE r.build_id = :id AND r.band_key = 'z17_18' AND r.source_feature_id = 'hole'
+        """), {"id": build_id}).one()
+        multipart = session.execute(text("""
+            SELECT r.source_components, r.display_components
+            FROM environmental_display_feature_results r
+            WHERE r.build_id = :id AND r.band_key = 'z17_18'
+              AND r.source_feature_id = 'multipart'
+        """), {"id": build_id}).one()
+        dense_parts = session.scalar(text("""
+            SELECT count(*) FROM environmental_display_parts
+            WHERE build_id = :id AND band_key = 'z17_18' AND source_feature_id = 'dense'
+        """), {"id": build_id})
+        maximum_vertices = session.scalar(text("""
+            SELECT max(ST_NPoints(geometry)) FROM environmental_display_parts
+            WHERE build_id = :id
+        """), {"id": build_id})
+        assert hole == (1, 1) and multipart == (2, 2)
+        assert dense_parts > 1 and maximum_vertices <= 256
+        plan_query = """
+            EXPLAIN (FORMAT JSON) SELECT id FROM environmental_display_parts
+            WHERE build_id = :id AND band_key = 'z17_18'
+              AND geometry && ST_MakeEnvelope(-96e5, 40e5, -95e5, 41e5, 3857)
+        """
+        default_plan = session.execute(text(plan_query), {"id": build_id}).scalar()
+        session.execute(text("SET LOCAL enable_seqscan = off"))
+        forced_plan = session.execute(text("""
+            EXPLAIN (FORMAT JSON) SELECT id FROM environmental_display_parts
+            WHERE geometry && ST_MakeEnvelope(-96e5, 40e5, -95e5, 41e5, 3857)
+        """)).scalar()
+        assert "ix_environmental_display_parts_geometry" in json.dumps(forced_plan)
+        catalog_after = session.scalar(text("""
+            SELECT payload_json::text FROM processed_collection_items
+            WHERE collection_name = 'map_layer_catalog' AND item_id = 'latest'
+        """))
+        assert catalog_after == catalog_before
+
+    # An in-domain source with a deliberate SQL error for one feature proves a
+    # savepoint rollback leaves the outer transaction able to store the next row.
+    failure_layer = "p04a_savepoint"
+    failure_version = "b" * 64
+    failure_id = _seed_layer(failure_layer, failure_version, fixture[:2])
+    with SessionLocal.begin() as session:
+        session.execute(text("""
+            UPDATE environmental_layers
+            SET import_status = 'failed', coverage_status = 'partial',
+                expected_count = 3, seen_count = 3, rejected_count = 1
+            WHERE id = :id
+        """), {"id": failure_id})
+    with SessionLocal() as session:
+        first_id = session.scalar(text("""
+            SELECT min(id) FROM environmental_features WHERE environmental_layer_id = :id
+        """), {"id": failure_id})
+    original_simplified = display_builder._simplified
+
+    def one_sql_failure(session, feature_id, tolerance):
+        if feature_id == first_id:
+            session.execute(text("SELECT 1/0"))
+        return original_simplified(session, feature_id, tolerance)
+
+    with patch.object(display_builder, "_simplified", one_sql_failure):
+        failed = build_environmental_display(failure_layer, failure_version, batch_size=2)
+    assert failed["display_status"] == "failed" and not failed["publicly_active"]
+    assert failed["import_status"] == "failed" and failed["coverage_status"] == "partial"
+    assert failed["source_counts"] == {
+        "expected": 3, "seen": 3, "accepted": 2, "rejected": 1,
+    }
+    with SessionLocal() as session:
+        statuses = [tuple(row) for row in session.execute(text("""
+            SELECT source_feature_id, status FROM environmental_display_feature_results
+            WHERE build_id = :id AND band_key = 'z17_18' ORDER BY source_feature_id
+        """), {"id": _build_id(failure_id)}).all()]
+    assert statuses == [("hole", "failed"), ("multipart", "built")]
+
+    partial_id = _seed_layer("p04a_partial_import", "d" * 64, fixture[:1])
+    with SessionLocal.begin() as session:
+        session.execute(text("""
+            UPDATE environmental_layers
+            SET import_status = 'failed', coverage_status = 'partial',
+                expected_count = 2, seen_count = 2, rejected_count = 1
+            WHERE id = :id
+        """), {"id": partial_id})
+    partial = build_environmental_display("p04a_partial_import", "d" * 64)
+    assert partial["display_status"] == "validated"
+    assert partial["import_status"] == "failed" and partial["coverage_status"] == "partial"
+    assert partial["source_counts"] == {
+        "expected": 2, "seen": 2, "accepted": 1, "rejected": 1,
+    }
+    assert not partial["publicly_active"]
+    # A same-data-version P03 resume changes the source snapshot. Its full
+    # derivative must get a new identity; the partial shadow build stays intact.
+    resumed_source_id, resumed_geometry = fixture[1]
+    with SessionLocal.begin() as session:
+        session.execute(text("""
+            INSERT INTO environmental_features
+                (environmental_layer_id, source_feature_id, attributes_json,
+                 import_managed, import_fingerprint, geometry)
+            VALUES (:layer_id, :source_id, CAST('{}' AS json), true,
+                    :fingerprint, ST_GeomFromGeoJSON(:geometry))
+        """), {
+            "layer_id": partial_id, "source_id": resumed_source_id,
+            "fingerprint": _digest([resumed_source_id, resumed_geometry]),
+            "geometry": json.dumps(resumed_geometry),
+        })
+        session.execute(text("""
+            UPDATE environmental_layers
+            SET import_status = 'validated', coverage_status = 'unknown',
+                accepted_count = 2, rejected_count = 0, import_checkpoint = 2
+            WHERE id = :id
+        """), {"id": partial_id})
+    resumed = build_environmental_display("p04a_partial_import", "d" * 64)
+    assert resumed["display_status"] == "validated"
+    assert resumed["display_version"] != partial["display_version"]
+    assert resumed["source_snapshot_sha256"] != partial["source_snapshot_sha256"]
+    assert not resumed["publicly_active"]
+    with SessionLocal() as session:
+        old = session.execute(text("""
+            SELECT status, summary_json FROM environmental_display_builds
+            WHERE environmental_layer_id = :id AND display_version = :version
+        """), {"id": partial_id, "version": partial["display_version"]}).one()
+        assert old.status == "validated" and old.summary_json["canonical_feature_count"] == 1
+
+    out_of_domain = "p04a_projection_failure"
+    bad_id = _seed_layer(out_of_domain, "c" * 64, [(
+        "latitude-86", {"type": "Polygon", "coordinates": [[
+            [-86.7, 86.0], [-86.6, 86.0], [-86.6, 86.1],
+            [-86.7, 86.1], [-86.7, 86.0],
+        ]]},
+    )])
+    bad_hash = _canonical_hash(bad_id)
+    bad = build_environmental_display(out_of_domain, "c" * 64)
+    assert bad["display_status"] == "failed" and all(
+        band["invalid"] == 1 for band in bad["bands"]
+    )
+    assert _canonical_hash(bad_id) == bad_hash
+    result = {
+        "fixture_sha256": _digest(fixture),
+        "original_geometry_sha256": original_hash,
+        "screening_hits": original_screening,
+        "display_version": first["display_version"],
+        "config_sha256": first["config_sha256"],
+        "part_sha256": first_part_hash,
+        "bands": first["bands"],
+        "hole_counts": list(hole), "multipart_components": list(multipart),
+        "dense_parts": dense_parts, "maximum_part_vertices": maximum_vertices,
+        "default_plan": default_plan, "forced_plan": forced_plan,
+        "savepoint_statuses": statuses,
+        "partial_import_display_status": partial["display_status"],
+        "resumed_display_version": resumed["display_version"],
+        "projection_failed_bands": len(bad["bands"]),
+        "publicly_active": False,
+    }
+    (output / "results.json").write_text(json.dumps(result, indent=2, sort_keys=True) + "\n")
+    return result
+
+
+if __name__ == "__main__":
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--output", type=Path, required=True)
+    arguments = parser.parse_args()
+    result = run(arguments.output)
+    print(json.dumps({"status": "passed", "result_sha256": _digest(result)}, sort_keys=True))
