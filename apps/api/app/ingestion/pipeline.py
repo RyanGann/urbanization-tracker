@@ -327,6 +327,15 @@ def _quarantine_duplicate_source_records(
     staged_by_provisional_id = {
         str(staged.get("id", "")).removeprefix("stage-"): staged for staged in staged_records
     }
+
+    def source_key_for(published: dict[str, Any]) -> str:
+        staged = staged_by_provisional_id.get(str(published.get("public_id"))) or {}
+        key = str(published.get("source_key") or staged.get("source_key") or "")
+        if not key:
+            source = source_by_url.get(str(published.get("source_url")))
+            key = str(source.get("key")) if source else ""
+        return key
+
     provisional_counts: dict[str, int] = {}
     for published in published_records:
         public_id = str(published.get("public_id"))
@@ -341,10 +350,7 @@ def _quarantine_duplicate_source_records(
         staged = staged_by_provisional_id.get(str(published.get("public_id")))
         if staged is None or not staged.get("raw_record_id"):
             continue
-        source_key = str(published.get("source_key") or staged.get("source_key") or "")
-        if not source_key:
-            source = source_by_url.get(str(published.get("source_url")))
-            source_key = str(source.get("key")) if source else ""
+        source_key = source_key_for(published)
         if source_key:
             anchor = (source_key, str(staged["raw_record_id"]))
             anchor_counts[anchor] = anchor_counts.get(anchor, 0) + 1
@@ -357,10 +363,7 @@ def _quarantine_duplicate_source_records(
         staged = staged_by_provisional_id.get(str(published.get("public_id")))
         if staged is None:
             continue
-        source_key = str(published.get("source_key") or staged.get("source_key") or "")
-        if not source_key:
-            source = source_by_url.get(str(published.get("source_url")))
-            source_key = str(source.get("key")) if source else ""
+        source_key = source_key_for(published)
         anchor = (source_key, str(staged.get("raw_record_id")))
         if anchor in duplicates:
             rejected_public_ids.add(str(published.get("public_id")))
@@ -375,7 +378,7 @@ def _quarantine_duplicate_source_records(
             )
     for public_id in sorted(duplicate_provisional_ids):
         source_keys = {
-            str(published.get("source_key") or "")
+            source_key_for(published)
             for published in published_records
             if str(published.get("public_id")) == public_id
         }
@@ -390,7 +393,7 @@ def _quarantine_duplicate_source_records(
     for published in published_records:
         if str(published.get("public_id")) not in rejected_public_ids:
             continue
-        source_key = str(published.get("source_key") or "")
+        source_key = source_key_for(published)
         health = next((item for item in source_health if item.get("key") == source_key), None)
         if health is not None:
             health["quarantined_count"] = int(health.get("quarantined_count", 0)) + 1
