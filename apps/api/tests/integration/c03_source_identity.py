@@ -489,7 +489,8 @@ def main() -> None:
                 "key": NEW_SUBDIVISIONS.key,
                 "source_url": NEW_SUBDIVISIONS.layer_url,
                 "status": "healthy",
-                "error_count": 0,
+                "error_count": 1,
+                "validation_errors": ["identity_quarantined: duplicate source anchor"],
                 "metadata": {"reported_count": 1, "fetched_count": 1},
             },
             {
@@ -509,10 +510,17 @@ def main() -> None:
                 "fetched_at": "2026-09-20T00:00:00+00:00",
             },
             {
-                "data_source_key": "huntsville_usfws_wetlands",
-                "source_record_id": None,
-                "payload_json": {"private_raw": "retained only in raw evidence"},
-                "payload_sha256": "c03-raw-environment-digest",
+                "data_source_key": NEW_SUBDIVISIONS.key,
+                "source_record_id": "quarantined-duplicate",
+                "payload_json": {"private_raw": "duplicate source anchor"},
+                "payload_sha256": "c03-raw-duplicate-digest",
+                "fetched_at": "2026-09-20T00:00:00+00:00",
+            },
+            {
+                "data_source_key": NEW_SUBDIVISIONS.key,
+                "source_record_id": "quarantined-duplicate",
+                "payload_json": {"private_raw": "duplicate source anchor"},
+                "payload_sha256": "c03-raw-duplicate-digest",
                 "fetched_at": "2026-09-20T00:00:00+00:00",
             },
         ],
@@ -594,9 +602,13 @@ def main() -> None:
                 SourceIdentityRegistry.public_id == "bookmarked-legacy-id"
             )
         )
-        raw_prefix = "huntsville_usfws_wetlands:c03-adapter:c03-raw-environment-digest"
-        raw = unit.get_processed("raw_records", f"{raw_prefix}:00000000")
-        duplicate_raw = unit.get_processed("raw_records", f"{raw_prefix}:00000001")
+        raw = unit.get_processed(
+            "raw_records",
+            "huntsville_usfws_wetlands:c03-adapter:c03-raw-environment-digest:00000000",
+        )
+        raw_prefix = f"{NEW_SUBDIVISIONS.key}:c03-adapter:c03-raw-duplicate-digest"
+        duplicate_raw_first = unit.get_processed("raw_records", f"{raw_prefix}:00000001")
+        duplicate_raw_second = unit.get_processed("raw_records", f"{raw_prefix}:00000002")
         retained_overlay = unit.get_processed("environmental_overlays", "retained-overlay")
         manual = unit.get_processed("development_records", "manual-citation")
         madison_records = [
@@ -636,9 +648,11 @@ def main() -> None:
         raise AssertionError("explicit failed coverage was downgraded by quarantined input")
     if (
         raw is None
-        or duplicate_raw != raw
+        or duplicate_raw_first is None
+        or duplicate_raw_first != duplicate_raw_second
+        or duplicate_raw_first["source_record_id"] != "quarantined-duplicate"
         or raw.get("ingestion_run_id") != "c03-adapter"
-        or adapter_health["records"]["raw"] != 2
+        or adapter_health["records"]["raw"] != 3
     ):
         raise AssertionError("adapter did not retain both identical quarantined raw observations")
     if retained_overlay != {"id": "retained-overlay", "version": "good"}:
@@ -657,7 +671,7 @@ def main() -> None:
         or madison_records[0].get("source_record_id") != "95"
         or manual is None
         or not isinstance(merged_health, dict)
-        or merged_health["records"]["raw"] < 3
+        or merged_health["records"]["raw"] < 4
         or merged_health["records"]["published"] < 4
     ):
         raise AssertionError(
