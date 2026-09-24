@@ -1,3 +1,5 @@
+import re
+from datetime import datetime
 from typing import Any, Literal
 from urllib.parse import urlsplit, urlunsplit
 
@@ -149,10 +151,86 @@ def _public_http_url(value: object) -> str | None:
 
 
 class PublicSourceCounts(BaseModel):
-    raw: int = 0
-    staged: int = 0
-    published: int = 0
-    proximity_flags: int = 0
+    raw: int | None = None
+    staged: int | None = None
+    published: int | None = None
+    proximity_flags: int | None = None
+
+    @field_validator("raw", "staged", "published", "proximity_flags", mode="before")
+    @classmethod
+    def public_count(cls, value: object) -> int | None:
+        return value if type(value) is int and 0 <= value <= 1_000_000_000 else None
+
+
+def _public_identifier(value: object, *, limit: int = 160) -> str | None:
+    if isinstance(value, str) and len(value) <= limit and re.fullmatch(
+        r"[A-Za-z0-9._:-]+", value
+    ):
+        return value
+    return None
+
+
+def _public_timestamp(value: object) -> str | None:
+    if not isinstance(value, str) or len(value) > 64:
+        return None
+    try:
+        datetime.fromisoformat(value.replace("Z", "+00:00"))
+    except ValueError:
+        return None
+    return value
+
+
+class PublicSourceCoverage(BaseModel):
+    status: Literal["complete", "partial", "failed", "unknown"] = "unknown"
+
+    @field_validator("status", mode="before")
+    @classmethod
+    def public_status(cls, value: object) -> str:
+        allowed = {"complete", "partial", "failed", "unknown"}
+        return value if isinstance(value, str) and value in allowed else "unknown"
+
+
+class PublicSourceAttempt(BaseModel):
+    status: Literal["complete", "partial", "failed", "unknown"] = "unknown"
+    publication_status: Literal["not_activated", "activated"] = "not_activated"
+    scope_id: str | None = None
+    scope_version: str | None = None
+    boundary_sha256: str | None = None
+    expected: int | None = None
+    fetched: int | None = None
+    accepted: int | None = None
+    rejected: int | None = None
+
+    @field_validator("status", mode="before")
+    @classmethod
+    def public_status(cls, value: object) -> str:
+        allowed = {"complete", "partial", "failed", "unknown"}
+        return value if isinstance(value, str) and value in allowed else "unknown"
+
+    @field_validator("publication_status", mode="before")
+    @classmethod
+    def public_publication_status(cls, value: object) -> str:
+        return (
+            value if isinstance(value, str) and value in {"not_activated", "activated"}
+            else "not_activated"
+        )
+
+    @field_validator("scope_id", "scope_version", mode="before")
+    @classmethod
+    def public_scope(cls, value: object) -> str | None:
+        return _public_identifier(value)
+
+    @field_validator("boundary_sha256", mode="before")
+    @classmethod
+    def public_digest(cls, value: object) -> str | None:
+        if isinstance(value, str) and re.fullmatch(r"[0-9a-f]{64}", value):
+            return value
+        return None
+
+    @field_validator("expected", "fetched", "accepted", "rejected", mode="before")
+    @classmethod
+    def public_count(cls, value: object) -> int | None:
+        return value if type(value) is int and 0 <= value <= 1_000_000_000 else None
 
 
 class PublicSourceHealthRow(BaseModel):
@@ -167,11 +245,46 @@ class PublicSourceHealthRow(BaseModel):
     validation_errors: list[str] = Field(default_factory=list)
     raw_artifact_sha256: str | None = None
     raw_artifact_bytes: int | None = None
+    coverage: PublicSourceCoverage = Field(default_factory=PublicSourceCoverage)
+    latest_attempt: PublicSourceAttempt | None = None
+    last_attempt_at: str | None = None
+    last_success_at: str | None = None
+    attempt_records_staged: int | None = None
+    error_code: str | None = None
 
     @field_validator("source_url", mode="before")
     @classmethod
     def public_url(cls, value: object) -> str:
         return _public_http_url(value) or ""
+
+    @field_validator("coverage", mode="before")
+    @classmethod
+    def public_coverage(cls, value: object) -> dict[str, object]:
+        if isinstance(value, dict):
+            return value
+        return {"status": value}
+
+    @field_validator("latest_attempt", mode="before")
+    @classmethod
+    def public_attempt(cls, value: object) -> object:
+        return value if isinstance(value, dict) else None
+
+    @field_validator("last_attempt_at", "last_success_at", mode="before")
+    @classmethod
+    def public_time(cls, value: object) -> str | None:
+        return _public_timestamp(value)
+
+    @field_validator("attempt_records_staged", mode="before")
+    @classmethod
+    def public_staged_count(cls, value: object) -> int | None:
+        return value if type(value) is int and 0 <= value <= 1_000_000_000 else None
+
+    @field_validator("error_code", mode="before")
+    @classmethod
+    def public_error_code(cls, value: object) -> str | None:
+        if isinstance(value, str) and re.fullmatch(r"[a-z_]{1,64}", value):
+            return value
+        return None
 
     @field_validator("validation_errors", mode="before")
     @classmethod

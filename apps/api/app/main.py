@@ -244,7 +244,9 @@ def get_environmental_overlays() -> list[EnvironmentalOverlay]:
     return list_environmental_overlays()
 
 
-@app.get("/api/source-health", response_model=PublicSourceHealth)
+@app.get(
+    "/api/source-health", response_model=PublicSourceHealth, response_model_exclude_none=True
+)
 def get_source_health() -> PublicSourceHealth:
     return PublicSourceHealth.model_validate(load_source_health())
 

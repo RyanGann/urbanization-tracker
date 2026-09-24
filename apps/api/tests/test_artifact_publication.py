@@ -6,11 +6,13 @@ from uuid import UUID, uuid4
 
 import httpx
 import pytest
+from fastapi.testclient import TestClient
 
 from app.config import Settings, get_settings
 from app.ingestion import agenda_pipeline
 from app.ingestion.artifact_config import require_hosted_artifact_storage
 from app.ingestion.artifact_sink import ArtifactError
+from app.main import app
 from app.schemas import PublicSourceHealth, SourceDocument
 
 
@@ -40,6 +42,21 @@ def test_public_provenance_omits_internal_locators_and_signed_queries() -> None:
                     "raw_artifact": f"C:/private/{private}",
                     "validation_errors": [f"upload failed at {private}"],
                     "metadata": {"signed_url": f"https://example.test/?secret={private}"},
+                    "coverage": {"status": "complete", "private_locator": private},
+                    "latest_attempt": {
+                        "status": "failed",
+                        "publication_status": "not_activated",
+                        "scope_id": "city-scope-v1:" + "a" * 64,
+                        "scope_version": "city-scope-v1",
+                        "boundary_sha256": "b" * 64,
+                        "expected": 2,
+                        "fetched": 0,
+                        "accepted": 0,
+                        "rejected": 0,
+                        "signed_url": f"https://example.test/?secret={private}",
+                    },
+                    "last_success_at": "2026-09-23T00:00:00Z",
+                    "error_code": "count_id_mismatch",
                 }
             ],
         }
@@ -61,6 +78,38 @@ def test_public_provenance_omits_internal_locators_and_signed_queries() -> None:
     assert "raw_artifact" not in health_data["sources"][0]
     assert "storage_uri" not in document_data
     assert "https://example.test/agenda.pdf" in document
+    assert health_data["sources"][0]["coverage"] == {"status": "complete"}
+    assert health_data["sources"][0]["latest_attempt"]["status"] == "failed"
+    assert health_data["sources"][0]["latest_attempt"]["scope_id"].startswith("city-scope")
+    assert health_data["sources"][0]["last_success_at"] == "2026-09-23T00:00:00Z"
+    sparse = PublicSourceHealth.model_validate({"records": {"published": 9}})
+    assert sparse.model_dump(exclude_none=True)["records"] == {"published": 9}
+
+
+def test_public_source_health_route_keeps_sparse_active_counts(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(
+        "app.main.load_source_health",
+        lambda: {
+            "status": "degraded",
+            "records": {"published": 9},
+            "sources": [{
+                "key": "huntsville_building_permits",
+                "status": "failing",
+                "coverage": {"status": "complete"},
+                "latest_attempt": {
+                    "status": "failed", "publication_status": "not_activated",
+                },
+            }],
+        },
+    )
+    response = TestClient(app).get("/api/source-health")
+    assert response.status_code == 200
+    assert response.json()["records"] == {"published": 9}
+    assert response.json()["sources"][0]["latest_attempt"] == {
+        "status": "failed", "publication_status": "not_activated",
+    }
 
 
 def test_agenda_parser_failure_preserves_existing_revision_in_durable_mode(

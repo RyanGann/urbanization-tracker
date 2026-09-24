@@ -28,7 +28,10 @@ class ArtifactService:
     def staging_path(self, path: Path) -> Path:
         try:
             root = self.settings.ingestion_data_dir.resolve()
-            candidate = path if path.is_absolute() else root / path
+            # Relative paths, including those returned by pipeline writers,
+            # have one meaning: relative to the worker's current directory.
+            # The configured root only constrains the resulting path.
+            candidate = path if path.is_absolute() else Path.cwd() / path
             resolved = candidate.resolve(strict=True)
             if not resolved.is_relative_to(root) or not resolved.is_file():
                 raise ArtifactError("artifact_path")
