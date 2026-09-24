@@ -2,7 +2,7 @@ import { defineConfig, devices } from "@playwright/test";
 
 export default defineConfig({
   testDir: "./e2e",
-  testMatch: /(?:live-smoke|data-modes\.live|u00-filters\.live)\.spec\.ts/,
+  testMatch: /(?:live-smoke|data-modes\.live|u00-filters\.live|p03-layer-import\.live)\.spec\.ts/,
   fullyParallel: false,
   outputDir: process.env.PLAYWRIGHT_OUTPUT_DIR ?? "test-results-live",
   reporter: [["list"], ["junit", { outputFile: process.env.PLAYWRIGHT_JUNIT_OUTPUT_NAME }]],

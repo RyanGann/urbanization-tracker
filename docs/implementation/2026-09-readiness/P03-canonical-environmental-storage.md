@@ -50,6 +50,8 @@ These are inspection starting points, not a requirement to put all new code in e
 
 ## Rollout and recovery
 
+The implementation's [operating guide and measured evidence](../../evidence/P03-environmental-storage.md) records the additive schema, safe dry-run/apply commands, interruption recovery, quarantine semantics and verification limitations. In particular, P03 never activates a layer; failed imports retain their accepted rows and diagnostics for investigation, with the previous ready catalog entry preserved.
+
 Additive schema and shadow import first. Keep raw originals, record a checksum report, and do not remove legacy artifacts until O03 recovery verification.
 
 ## Outside this PR

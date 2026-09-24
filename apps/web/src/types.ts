@@ -115,6 +115,16 @@ export interface MapLayerCatalog {
   data_mode: "live" | "demo";
   catalog_revision: string;
   layers: MapLayer[];
+  imports?: {
+    layer_id: string;
+    data_version: string;
+    status: "loading" | "validated" | "failed";
+    expected: number | null;
+    seen: number;
+    accepted: number;
+    rejected: number;
+    checkpoint: number;
+  }[];
 }
 export interface EnvironmentalOverlay {
   id: string;

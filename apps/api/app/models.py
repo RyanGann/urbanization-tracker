@@ -9,11 +9,13 @@ from sqlalchemy import (
     DateTime,
     Float,
     ForeignKey,
+    Index,
     Integer,
     String,
     Text,
     UniqueConstraint,
     func,
+    text,
 )
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
@@ -198,6 +200,17 @@ class MapLayer(Base):
 
 class EnvironmentalLayer(Base):
     __tablename__ = "environmental_layers"
+    __table_args__ = (
+        UniqueConstraint("layer_key", "data_version", name="uq_environmental_layer_version"),
+        CheckConstraint(
+            "(layer_key IS NULL) = (data_version IS NULL)",
+            name="ck_environmental_layer_version_pair",
+        ),
+        CheckConstraint(
+            "import_status IS NULL OR import_status IN ('loading', 'validated', 'failed')",
+            name="ck_environmental_import_status",
+        ),
+    )
 
     id: Mapped[int] = mapped_column(primary_key=True)
     name: Mapped[str] = mapped_column(String(255), nullable=False)
@@ -208,10 +221,39 @@ class EnvironmentalLayer(Base):
     loaded_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     license_notes: Mapped[str | None] = mapped_column(Text)
     geom_type: Mapped[str] = mapped_column(String(50), nullable=False)
+    # Legacy scaffold rows deliberately keep version/provenance columns null.
+    layer_key: Mapped[str | None] = mapped_column(String(100))
+    data_version: Mapped[str | None] = mapped_column(String(64))
+    source_checksum: Mapped[str | None] = mapped_column(String(64))
+    importer_format: Mapped[str | None] = mapped_column(String(32))
+    scope_json: Mapped[dict[str, Any] | None] = mapped_column(JSON)
+    import_status: Mapped[str | None] = mapped_column(String(16))
+    coverage_status: Mapped[str | None] = mapped_column(String(16))
+    expected_count: Mapped[int | None] = mapped_column(Integer)
+    seen_count: Mapped[int | None] = mapped_column(Integer)
+    accepted_count: Mapped[int | None] = mapped_column(Integer)
+    rejected_count: Mapped[int | None] = mapped_column(Integer)
+    duplicate_count: Mapped[int | None] = mapped_column(Integer)
+    import_checkpoint: Mapped[int | None] = mapped_column(Integer)
+    bounds_json: Mapped[list[float] | None] = mapped_column(JSON)
+    diagnostics_json: Mapped[dict[str, Any] | None] = mapped_column(JSON)
+    import_started_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    import_finished_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
 
 
 class EnvironmentalFeature(Base):
     __tablename__ = "environmental_features"
+    __table_args__ = (
+        Index(
+            "uq_environmental_managed_feature", "environmental_layer_id", "source_feature_id",
+            unique=True, postgresql_where=text("import_managed IS TRUE"),
+        ),
+        CheckConstraint(
+            "NOT import_managed OR (source_feature_id IS NOT NULL "
+            "AND btrim(source_feature_id) <> '')",
+            name="ck_environmental_managed_feature_identity",
+        ),
+    )
 
     id: Mapped[int] = mapped_column(primary_key=True)
     environmental_layer_id: Mapped[int] = mapped_column(
@@ -221,6 +263,10 @@ class EnvironmentalFeature(Base):
     name: Mapped[str | None] = mapped_column(String(255))
     attributes_json: Mapped[dict[str, Any] | None] = mapped_column(JSON)
     geometry: Mapped[Any] = mapped_column(Geometry("GEOMETRY", srid=4326), nullable=False)
+    import_managed: Mapped[bool] = mapped_column(
+        Boolean, default=False, server_default=text("false"), nullable=False
+    )
+    import_fingerprint: Mapped[str | None] = mapped_column(String(64))
 
 
 class ProximityFlag(Base):

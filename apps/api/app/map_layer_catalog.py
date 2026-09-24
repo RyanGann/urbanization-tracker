@@ -108,12 +108,9 @@ def merge_ingestion_catalog(
         existing_model = MapLayerCatalog.model_validate(copy.deepcopy(existing))
         if existing_model.data_mode != incoming_model.data_mode:
             raise ValueError("Cannot merge map layer catalogs from different data modes")
-        expected_revision = catalog_revision(
-            {
-                "data_mode": existing_model.data_mode,
-                "layers": [layer.model_dump(mode="json") for layer in existing_model.layers],
-            }
-        )
+        existing_content = existing_model.model_dump(mode="json")
+        existing_content.pop("catalog_revision")
+        expected_revision = catalog_revision(existing_content)
         if existing_model.catalog_revision != expected_revision:
             raise ValueError("Existing map layer catalog revision is invalid")
         existing_by_id = {
@@ -135,7 +132,7 @@ def merge_ingestion_catalog(
         elif "imports" in incoming:
             result["imports"] = copy.deepcopy(incoming["imports"])
     result["catalog_revision"] = catalog_revision(
-        {"data_mode": result["data_mode"], "layers": result["layers"]}
+        {key: value for key, value in result.items() if key != "catalog_revision"}
     )
     MapLayerCatalog.model_validate(copy.deepcopy(result))
     return result
@@ -276,14 +273,75 @@ def _validate_catalog(payload: Any) -> MapLayerCatalog:
         raise DataUnavailableError(
             collection=CATALOG_COLLECTION, availability=Availability.UNAVAILABLE
         ) from exc
-    expected_revision = catalog_revision(
-        {
-            "data_mode": catalog.data_mode,
-            "layers": [layer.model_dump(mode="json") for layer in catalog.layers],
-        }
-    )
+    content = catalog.model_dump(mode="json")
+    content.pop("catalog_revision")
+    expected_revision = catalog_revision(content)
     if catalog.catalog_revision != expected_revision:
         raise DataUnavailableError(
             collection=CATALOG_COLLECTION, availability=Availability.UNAVAILABLE
         )
     return catalog
+
+
+def update_import_progress(metadata: dict[str, str], report: dict[str, Any]) -> None:
+    """Publish bounded import metadata without changing an existing ready layer."""
+    from sqlalchemy import select
+
+    from app.db import SessionLocal
+    from app.models import EnvironmentalLayer
+    from app.transactional_store import CollectionUnitOfWork
+
+    with SessionLocal.begin() as session:
+        unit = CollectionUnitOfWork(session)
+        with unit.canonical_mutation():
+            latest = session.scalar(select(EnvironmentalLayer.data_version).where(
+                EnvironmentalLayer.layer_key == metadata["id"],
+            ).order_by(EnvironmentalLayer.import_started_at.desc(), EnvironmentalLayer.id.desc())
+                .limit(1))
+            if latest != report["data_version"]:
+                return
+            existing = unit.get_processed(CATALOG_COLLECTION, "latest")
+            if existing is None:
+                catalog = _project_legacy_catalog([(metadata, report["seen"])])
+            else:
+                catalog = _validate_catalog(existing)
+            payload = catalog.model_dump(mode="json")
+            current = next(
+                (item for item in payload["layers"] if item["id"] == metadata["id"]), None
+            )
+            incoming_layer = _project_legacy_catalog([(metadata, report["seen"])]).model_dump(
+                mode="json"
+            )["layers"][0]
+            if current is None:
+                current = incoming_layer
+                payload["layers"].append(current)
+            if current["delivery_status"] != "ready":
+                for field in (
+                    "title", "category", "source_name", "source_url", "attribution", "caveat"
+                ):
+                    current[field] = incoming_layer[field]
+                current["delivery_status"] = (
+                    "failed" if report["status"] == "failed" else "processing"
+                )
+                current["coverage"].update({
+                    "status": report["coverage"],
+                    "scope_id": report["scope"]["scope_id"],
+                    "fetched_count": report["seen"],
+                    "reported_count": report["expected"],
+                })
+            pending = [
+                item for item in payload.get("imports", []) if item["layer_id"] != metadata["id"]
+            ]
+            pending.append({key: report[key] for key in (
+                "layer_id", "data_version", "status", "expected", "seen", "accepted",
+                "rejected", "checkpoint",
+            )})
+            # Keep a bounded refresh-ordered window. Older catalogs were sorted
+            # by layer ID; after this update, refreshed layers move to the end.
+            payload["imports"] = pending[-50:]
+            payload.pop("catalog_revision")
+            payload["catalog_revision"] = catalog_revision(payload)
+            validated = MapLayerCatalog.model_validate(payload).model_dump(mode="json")
+            if len(json.dumps(validated).encode()) > 50 * 1024:
+                raise ValueError("catalog_metadata_limit")
+            unit.upsert_processed(CATALOG_COLLECTION, "latest", validated)

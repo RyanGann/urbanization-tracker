@@ -1,8 +1,8 @@
 #!/usr/bin/env node
 import { createHash, randomBytes, randomUUID } from "node:crypto";
-import { mkdir, readFile, rm, writeFile } from "node:fs/promises";
+import { mkdir, readFile, realpath, rm, writeFile } from "node:fs/promises";
 import { spawn } from "node:child_process";
-import { dirname, join, resolve } from "node:path";
+import { dirname, isAbsolute, join, relative, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { preparePerformance, enableMeasurementLimits, captureDatabase, startResourceSampling } from "./performance/integration.mjs";
 
@@ -29,7 +29,7 @@ for (const signal of ["SIGINT", "SIGTERM"]) {
 
 function usage(message) {
   if (message) console.error(`Error: ${message}`);
-  console.error("Usage: node scripts/run-integration.mjs --suite api|live|concurrency|performance [--scenario functional|representative|snapshot|catalog-development|c01-data-modes|u00-filters|c03-source-identity] [--snapshot-dir DISPOSABLE_COPY] [--profile desktop|mobile] [--smoke] [--keep-on-failure]");
+  console.error("Usage: node scripts/run-integration.mjs --suite api|live|concurrency|performance [--scenario functional|representative|snapshot|catalog-development|c01-data-modes|u00-filters|c03-source-identity|layer-import] [--snapshot-dir DISPOSABLE_COPY] [--profile desktop|mobile] [--smoke] [--keep-on-failure]");
   process.exitCode = 2;
 }
 
@@ -60,10 +60,13 @@ function parseArgs(argv) {
     if ((options.scenario === "snapshot") !== !!options.snapshotDir) throw new Error("Snapshot scenario requires --snapshot-dir; other scenarios forbid it");
     if (!["desktop", "mobile"].includes(options.profile)) throw new Error("Performance profile must be desktop or mobile");
   } else {
-    if (options.profile || options.smoke || options.snapshotDir) throw new Error("Performance options require --suite performance");
-    if (options.scenario && !["c01-data-modes", "u00-filters", "c03-source-identity", "input-limits"].includes(options.scenario)) throw new Error(`Scenario '${options.scenario}' is not implemented`);
+    if (options.profile || options.smoke || (options.snapshotDir && options.scenario !== "layer-import")) throw new Error("Performance options require --suite performance");
+    if (options.scenario && !["c01-data-modes", "u00-filters", "c03-source-identity", "input-limits", "layer-import"].includes(options.scenario)) throw new Error(`Scenario '${options.scenario}' is not implemented`);
     if (options.scenario === "input-limits" && (options.suite !== "api" || options.assertFailure || options.isolationCheck || options.child)) {
       throw new Error("--scenario input-limits requires the top-level api suite without assertion or isolation flags");
+    }
+    if (options.scenario === "layer-import" && (!["api", "live"].includes(options.suite) || options.assertFailure || options.isolationCheck || options.child)) {
+      throw new Error("--scenario layer-import requires the top-level api or live suite without assertion or isolation flags");
     }
     if (options.scenario === "c01-data-modes" && (options.suite !== "api" || options.assertFailure || options.isolationCheck || options.child)) {
       throw new Error("--scenario c01-data-modes requires the top-level api suite without assertion or isolation flags");
@@ -587,11 +590,42 @@ async function runSuite(options) {
       "--result", "/results/s02-input-limits.json", "--phase", phase], { log, timeoutMs: 180_000 });
   };
 
+  const runP03Import = async (phase) => {
+    let snapshotArgs = [];
+    if (phase === "verify" && options.snapshotDir) {
+      const temporaryRoot = await realpath(join(root, "tmp"));
+      const snapshotRoot = await realpath(resolve(root, options.snapshotDir));
+      const snapshotFile = await realpath(join(snapshotRoot, "environmental_overlays.json"));
+      for (const candidate of [snapshotRoot, snapshotFile]) {
+        const within = relative(temporaryRoot, candidate);
+        if (!within || within.startsWith("..") || isAbsolute(within)) {
+          throw new Error("P03 snapshot must be an explicit disposable copy inside this checkout's tmp directory");
+        }
+      }
+      snapshotArgs = ["--volume", `${snapshotRoot.replaceAll("\\", "/")}:/snapshot:ro`];
+    }
+    await run("docker", [
+      ...compose, "run", "--rm", "--no-deps",
+      "--volume", `${join(root, "apps", "api", "tests", "integration").replaceAll("\\", "/")}:/integration:ro`,
+      "--volume", `${artifactDir.replaceAll("\\", "/")}:/p03-artifacts`,
+      ...snapshotArgs,
+      "api", "python", "/integration/p03_environmental.py", "--phase", phase,
+      "--output", "/p03-artifacts/p03",
+      ...(phase === "verify" ? ["--api-url", "http://api-gateway:8000"] : []),
+      ...(snapshotArgs.length ? ["--snapshot", "/snapshot/environmental_overlays.json"] : [])
+    ], { log, timeoutMs: options.snapshotDir ? 1_800_000 : 180_000 });
+    if (phase === "verify") scenarioArtifacts.p03 = "p03/results.json";
+  };
+
   try {
     const requiresBrowser = options.suite === "live" || performance || options.scenario === "c01-data-modes";
     await run("docker", [...compose, "build", "api", ...(requiresBrowser ? ["web", "browser"] : [])], { log, timeoutMs: 300_000 });
     await run("docker", [...compose, "up", "--detach", "db", "mail"], { log, timeoutMs: 300_000 });
     await waitForDatabase(compose, log);
+    if (options.scenario === "layer-import") {
+      await run("docker", [...compose, "run", "--rm", "--no-deps", "api", "alembic", "upgrade", "20260922_0005"], { log });
+      await runP03Import("seed-legacy");
+    }
     await run("docker", [...compose, "run", "--rm", "--no-deps", "api", "alembic", "upgrade", "head"], { log });
     if (options.scenario === "u00-filters") {
       await run("docker", [
@@ -621,6 +655,7 @@ async function runSuite(options) {
       await runU00HttpAssertions("after-restart");
     } else {
       await assertApi(apiUrl, reviewerToken, fixture, options.assertFailure);
+      if (options.scenario === "layer-import") await runP03Import("verify");
       if (options.suite === "concurrency") await runC02Transactions("create");
       if (options.scenario === "input-limits") await runS02InputLimits("create");
       await run("docker", [...compose, "restart", "api"], { log });
@@ -650,6 +685,8 @@ async function runSuite(options) {
       await waitForWeb(compose, log);
       if (options.scenario === "u00-filters") {
         await runU00BrowserAssertions();
+      } else if (options.scenario === "layer-import") {
+        await run("docker", [...compose, "run", "--rm", "--env", "P03_IMPORTS=1", ...(options.snapshotDir ? ["--env", "P03_SNAPSHOT=1"] : []), "browser"], { log, timeoutMs: 300_000 });
       } else {
         await run("docker", [...compose, "run", "--rm", ...(performance ? ["--entrypoint", "node"] : []), "browser", ...(performance ? [options.scenario === "catalog-development" ? "e2e/catalog-development.mjs" : "e2e/performance-baseline.mjs"] : [])], { log, timeoutMs: performance ? 14_400_000 : 300_000 });
       }

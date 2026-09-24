@@ -690,6 +690,18 @@ def _write_postgres_source_state(
                 if overlay_source is not None and overlay_source.get("status") == "failing":
                     continue
                 unit.upsert_processed("environmental_overlays", str(overlay["id"]), overlay)
+    if overlays:
+        from app.ingestion.environmental_output import import_environmental_output
+
+        # Heavy staging/validation begins only after the canonical transaction
+        # commits. Shadow failures retain canonical rows and ready catalog data.
+        # This returned/run-artifact summary never rewrites persisted source health.
+        health = {
+            **health,
+            "environmental_imports": import_environmental_output(
+                overlays, source_health=source_health
+            ),
+        }
     return health
 
 

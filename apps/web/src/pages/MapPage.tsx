@@ -254,6 +254,26 @@ export function MapPage() {
               })}
             </div>
           ) : null}
+          {!catalogQuery.isError && catalogQuery.data?.imports?.length ? (
+            <div className="layer-list">
+              {catalogQuery.data.imports.map((progress) => {
+                const layer = catalogLayers.find((item) => item.id === progress.layer_id);
+                return (
+                  <p className="muted" key={progress.layer_id} role="status" aria-live="polite">
+                    {layer?.title ?? "Environmental layer"}
+                    {": "}{progress.seen} source records checked, {progress.rejected} need review.
+                    {progress.status === "failed"
+                      ? layer?.delivery_status === "ready"
+                        ? " The update needs attention; existing map data has been retained."
+                        : " The update needs attention; this layer is unavailable."
+                      : progress.status === "validated"
+                        ? " Source data checked; map preparation is pending."
+                        : " Source data preparation is in progress."}
+                  </p>
+                );
+              })}
+            </div>
+          ) : null}
         </section>
 
         <section className="panel record-list-panel">
