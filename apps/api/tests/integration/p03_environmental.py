@@ -503,6 +503,40 @@ module.import_environmental_file(Path(sys.argv[1]), module.ImportOptions(
     assert after_refresh["layers"][0] == ready["layers"][0]
     checks.append("canonical-refresh-preserves-imports-hash-and-post-commit-shadow-failure")
 
+    # A later shadow import must expose its own scope and source provenance.
+    # The already-ready layer remains pinned to its previous public metadata.
+    changed_layer = fixture()[0]
+    changed_layer.update({
+        "id": first_layer["id"],
+        "name": "Revised environmental fixture",
+        "category": "floodplain",
+        "source_url": "https://example.test/revised-environment",
+        "attribution": "Revised synthetic source",
+        "caveat": "Revised fixture only",
+    })
+    changed_path = output / "revised-overlay.json"
+    changed_path.write_text(json.dumps([changed_layer]), encoding="utf-8")
+    changed_report = importer.import_environmental_file(
+        changed_path,
+        ImportOptions(first_layer["id"], scope_id="revised-synthetic-scope"),
+        dry_run=False,
+    )
+    assert changed_report["status"] == "validated"
+    changed_catalog = httpx.get(f"{api_url}/api/map/layers", timeout=10).json()
+    assert changed_catalog["layers"][0] == ready["layers"][0]
+    changed_entry = next(
+        layer for layer in changed_catalog["layers"] if layer["id"] == first_layer["id"]
+    )
+    assert changed_entry["delivery_status"] == "processing"
+    assert changed_entry["coverage"]["scope_id"] == "revised-synthetic-scope"
+    assert changed_entry["title"] == changed_layer["name"]
+    assert changed_entry["category"] == changed_layer["category"]
+    assert changed_entry["source_name"] == changed_layer["attribution"]
+    assert changed_entry["source_url"] == changed_layer["source_url"]
+    assert changed_entry["attribution"] == changed_layer["attribution"]
+    assert changed_entry["caveat"] == changed_layer["caveat"]
+    checks.append("non-ready-reimport-refreshes-scope-and-source-provenance")
+
     snapshot_reports = verify_snapshot(snapshot) if snapshot else None
     return {
         "checks": checks,
