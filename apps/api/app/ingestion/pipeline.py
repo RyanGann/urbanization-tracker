@@ -10,6 +10,7 @@ from uuid import UUID
 from sqlalchemy import func, select
 
 from app.config import get_settings
+from app.ingestion.artifact_config import require_hosted_artifact_storage
 from app.ingestion.artifact_service import ArtifactService
 from app.ingestion.artifact_sink import ArtifactError
 from app.ingestion.artifacts import (
@@ -596,8 +597,7 @@ def _write_processed_state(
 
 def _require_postgres_identity_store() -> None:
     settings = get_settings()
-    if settings.hosted_ingestion_enabled and not settings.artifact_durability_required:
-        raise ArtifactError("artifact_configuration")
+    require_hosted_artifact_storage(settings)
     if settings.data_mode != "live" or settings.processed_store_backend != "postgres":
         raise ArtifactIdentityIngestionUnsupported(
             "Artifact ingestion cannot preserve C03 source identities; use PostgreSQL or a future "

@@ -76,6 +76,39 @@ def test_deployment_preflight_fails_when_processed_store_is_not_postgres() -> No
     assert "PROCESSED_STORE_BACKEND" in processed_store_check["summary"]
 
 
+def test_hosted_ingestion_rejects_local_artifact_sink() -> None:
+    result = run_deployment_preflight(
+        settings=production_settings(
+            hosted_ingestion_enabled=True,
+            artifact_durability_required=True,
+            artifact_sink="local",
+        ),
+        check_database=False,
+    )
+
+    assert _status_for(result, "artifact_storage") == "fail"
+
+
+def test_hosted_ingestion_requires_complete_s3_configuration() -> None:
+    settings = production_settings(
+        hosted_ingestion_enabled=True,
+        artifact_durability_required=True,
+        artifact_sink="s3",
+        artifact_s3_endpoint="https://objects.example.test",
+        artifact_s3_bucket="private-artifacts",
+        artifact_s3_access_key="synthetic-access",
+        artifact_s3_secret_key="synthetic-secret",
+    )
+    configured = run_deployment_preflight(settings=settings, check_database=False)
+    missing = run_deployment_preflight(
+        settings=settings.model_copy(update={"artifact_s3_bucket": None}),
+        check_database=False,
+    )
+
+    assert _status_for(configured, "artifact_storage") == "pass"
+    assert _status_for(missing, "artifact_storage") == "fail"
+
+
 def test_deployment_preflight_fails_without_postgis() -> None:
     result = run_deployment_preflight(
         settings=production_settings(),

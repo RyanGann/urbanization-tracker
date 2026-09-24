@@ -13,6 +13,7 @@ import certifi
 import httpx
 
 from app.config import get_settings
+from app.ingestion.artifact_config import require_hosted_artifact_storage
 from app.ingestion.agenda import (
     PLANNING_AGENCY,
     PLANNING_ARCHIVE_URL,
@@ -64,8 +65,7 @@ def ingest_huntsville_agendas(
     document_limit: int = 3,
     client: httpx.Client | None = None,
 ) -> dict[str, Any]:
-    if get_settings().hosted_ingestion_enabled and not get_settings().artifact_durability_required:
-        raise ArtifactError("artifact_configuration")
+    require_hosted_artifact_storage(get_settings())
     ensure_data_dirs(data_dir)
     checked_at = iso_now()
     owned_client = client is None
