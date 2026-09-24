@@ -514,8 +514,8 @@
       "id": "O04",
       "title": "Prepare code-license, data-use, and public disclosure decisions",
       "path": "O04-release-data-use-decisions.md",
-      "status": "complete",
-      "status_note": "The evidence inventory and owner decision sheet are prepared; source-use, code-license and provider choices and runtime rights gates remain unresolved. This is not deployment approval.",
+      "status": "in_progress",
+      "status_note": "The merged PR prepared the evidence inventory and owner decision sheet. Source-use, code-license and provider choices, privacy sign-off, and runtime rights gates remain unresolved; O04 is not a satisfied release prerequisite or deployment approval.",
       "track": "Operations",
       "gate": "G3",
       "depends_on": [
