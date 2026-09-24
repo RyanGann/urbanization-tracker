@@ -10,7 +10,9 @@ The participation form submits unknown location explicitly until U03 supplies an
 
 ## Clean committed real-stack acceptance
 
-Tested implementation commit: `551e4901928f99383ccfe8e8bad876c67af60513`. The branch at this point includes separately identified temporary reviewed C03 schema/helper dependency commits; final PR integration must drop those and rebase onto merged C03. The frozen S02 migration commit is `72f8db69fa36e7b35a045569289a6579f52119d8`.
+Tested implementation commit: `551e4901928f99383ccfe8e8bad876c67af60513`. That earlier branch included temporary C03 schema/helper dependency commits. The final local integration instead uses reviewed C03 commit `a212ee3a57e6e6eb4c271e79347a97d7e0e733c4` with only S02's schema, implementation and evidence commits on top. The S02 migration is revision `20260922_0005`; it is not applied to the user's saved snapshot.
+
+The dependency-integrated S02 head `b8b54df42456c865a1f206b6f9c2e5679133ba8b` passed a second clean `input-limits` run, `2026-09-22T14-42-23-853Z-1cc41a47`, with the same committed acceptance JSON SHA256 `ae65d5dd6a596c39687393d1b7e8b2aaf99040b33b03f48b596f04c3369c64d2`. The run manifest records a clean tree, `passed` outcome and removal of its isolated resources. At that same head, C03's `c03-source-identity` real-stack regression passed in run `2026-09-22T14-43-39-879Z-dd02dfe3`, with cleanup removed and result SHA256 `b9127000aae57559093b7d33ea647edc74af36bffbcd77371faad1f691106e70`. These local runs do not replace the final PR-head CI and review gates.
 
 ```text
 node scripts/run-integration.mjs --suite api --scenario input-limits
