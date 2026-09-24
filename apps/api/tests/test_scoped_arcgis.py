@@ -14,12 +14,13 @@ from app.ingestion.scoped_arcgis import (
     ReviewedScope,
     ScopeError,
     _digest,
+    _geometry_ok,
     scoped_attempt_health,
     source_batch_from_staging,
     stage_scoped_source,
 )
 from app.ingestion.source_merge import SourceRecord
-from app.ingestion.sources.huntsville import BUILDING_PERMITS
+from app.ingestion.sources.huntsville import BUILDING_PERMITS, NEW_SUBDIVISIONS
 
 POLYGON = {
     "rings": [[[-87.0, 34.0], [-86.0, 34.0], [-86.0, 35.0], [-87.0, 34.0]]],
@@ -166,6 +167,33 @@ def test_upstream_change_and_rejected_geometry(tmp_path: Path) -> None:
     invalid = _run(tmp_path, transport)
     assert invalid["coverage"] == "partial"
     assert invalid["rejected"] == 1
+
+
+@pytest.mark.parametrize("coordinates", [
+    [[[0, 0], [1, 0], [0, 0]]],  # Too few ring positions.
+    [[[0, 0], [1, 0], [0, 1], [1, 1]]],  # Open ring.
+    [[]],  # Empty ring inside an otherwise nonempty polygon.
+    [[[[0, 0], [1, 0], [0, 1], [0, 0]]]],  # MultiPolygon nesting in Polygon.
+    [[[0, 0], [1, 1], [0, 1], [1, 0], [0, 0]]],  # Self-intersection.
+    [
+        [[0, 0], [2, 0], [2, 2], [0, 2], [0, 0]],
+        [[3, 3], [4, 3], [4, 4], [3, 3]],  # Hole outside the shell.
+    ],
+])
+def test_malformed_polygon_is_rejected(coordinates: object) -> None:
+    feature = {"geometry": {"type": "Polygon", "coordinates": coordinates}}
+    assert not _geometry_ok(feature, NEW_SUBDIVISIONS)
+
+
+def test_valid_polygon_and_multipolygon_are_accepted() -> None:
+    polygon = [[[-87, 34], [-86, 34], [-86, 35], [-87, 34]]]
+    assert _geometry_ok(
+        {"geometry": {"type": "Polygon", "coordinates": polygon}}, NEW_SUBDIVISIONS
+    )
+    assert _geometry_ok(
+        {"geometry": {"type": "MultiPolygon", "coordinates": [polygon]}},
+        NEW_SUBDIVISIONS,
+    )
 
 
 def test_empty_scope_and_canary_are_distinct(tmp_path: Path) -> None:

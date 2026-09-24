@@ -18,6 +18,8 @@ from typing import Any
 from urllib.parse import urlencode
 
 import httpx
+from shapely.errors import ShapelyError
+from shapely.geometry import shape
 
 from app.ingestion.connectors.arcgis import ArcGISLayerConfig
 from app.ingestion.source_merge import SourceBatch, SourceRecord
@@ -329,6 +331,24 @@ def _out_fields(config: ArcGISLayerConfig, oid_field: str) -> str:
     return ",".join(sorted(set(config.out_fields) | {oid_field}))
 
 
+def _polygon_structure_ok(geometry: dict[str, Any]) -> bool:
+    coordinates = geometry.get("coordinates")
+    polygons = [coordinates] if geometry["type"] == "Polygon" else coordinates
+    if not isinstance(polygons, list) or not polygons:
+        return False
+    for polygon in polygons:
+        if not isinstance(polygon, list) or not polygon:
+            return False
+        for ring in polygon:
+            if not isinstance(ring, list) or len(ring) < 4:
+                return False
+            if any(not isinstance(point, list) or len(point) != 2 for point in ring):
+                return False
+            if ring[0] != ring[-1] or len({tuple(point) for point in ring[:-1]}) < 3:
+                return False
+    return True
+
+
 def _geometry_ok(feature: dict[str, Any], config: ArcGISLayerConfig) -> bool:
     geometry = feature.get("geometry")
     expected = {"Point"} if config.geometry_type == "point" else {"Polygon", "MultiPolygon"}
@@ -340,12 +360,19 @@ def _geometry_ok(feature: dict[str, Any], config: ArcGISLayerConfig) -> bool:
         return False
     try:
         positions = list(iter_positions(geometry))
-        return bool(positions) and all(
+        if not positions or not all(
             math.isfinite(lon) and math.isfinite(lat)
             and -180 <= lon <= 180 and -90 <= lat <= 90
             for lon, lat in positions
-        )
-    except (TypeError, ValueError, IndexError):
+        ):
+            return False
+        if config.geometry_type == "polygon":
+            if not _polygon_structure_ok(geometry):
+                return False
+            parsed = shape(geometry)
+            return not parsed.is_empty and parsed.is_valid
+        return True
+    except (TypeError, ValueError, IndexError, ShapelyError):
         return False
 
 
