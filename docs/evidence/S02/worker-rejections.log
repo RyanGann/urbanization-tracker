@@ -1,0 +1,45 @@
+api-1  | INFO:     Started server process [22]
+api-1  | INFO:     Started server process [21]
+api-1  | INFO:     public_write_rejected reason=body_too_large
+api-1  | INFO:     public_write_rejected reason=body_too_large
+api-1  | INFO:     public_write_rejected reason=invalid_request
+api-1  | INFO:     public_write_rejected reason=invalid_request
+api-1  | INFO:     public_write_rejected reason=invalid_request
+api-1  | INFO:     public_write_rejected reason=invalid_request
+api-1  | INFO:     public_write_rejected reason=invalid_request
+api-1  | INFO:     public_write_rejected reason=invalid_request
+api-1  | INFO:     public_write_rejected reason=invalid_request
+api-1  | INFO:     public_write_rejected reason=invalid_request
+api-1  | INFO:     public_write_rejected reason=invalid_request
+api-1  | INFO:     public_write_rejected reason=invalid_request
+api-1  | INFO:     public_write_rejected reason=invalid_request
+api-1  | INFO:     public_write_rejected reason=invalid_request
+api-1  | INFO:     public_write_rejected reason=invalid_request
+api-1  | INFO:     public_write_rejected reason=invalid_geometry
+api-1  | INFO:     public_write_rejected reason=invalid_geometry
+api-1  | INFO:     public_write_rejected reason=invalid_geometry
+api-1  | INFO:     public_write_rejected reason=invalid_geometry
+api-1  | INFO:     public_write_rejected reason=quota_reached
+api-1  | INFO:     public_write_rejected reason=quota_reached
+api-1  | INFO:     public_write_rejected reason=quota_reached
+api-1  | INFO:     public_write_rejected reason=quota_reached
+api-1  | INFO:     public_write_rejected reason=quota_reached
+api-1  | INFO:     public_write_rejected reason=quota_reached
+api-1  | INFO:     public_write_rejected reason=quota_reached
+api-1  | INFO:     public_write_rejected reason=quota_reached
+api-1  | INFO:     public_write_rejected reason=quota_reached
+api-1  | INFO:     public_write_rejected reason=quota_reached
+api-1  | INFO:     public_write_rejected reason=quota_reached
+api-1  | INFO:     public_write_rejected reason=quota_reached
+api-1  | INFO:     public_write_rejected reason=quota_reached
+api-1  | INFO:     public_write_rejected reason=quota_reached
+api-1  | INFO:     public_write_rejected reason=quota_reached
+api-1  | INFO:     public_write_rejected reason=quota_reached
+api-1  | INFO:     public_write_rejected reason=quota_reached
+api-1  | INFO:     public_write_rejected reason=quota_reached
+api-1  | INFO:     public_write_rejected reason=quota_reached
+api-1  | INFO:     public_write_rejected reason=quota_reached
+api-1  | INFO:     Started server process [21]
+api-1  | INFO:     Started server process [22]
+api-1  | INFO:     public_write_rejected reason=quota_reached
+api-1  | INFO:     public_write_rejected reason=quota_reached

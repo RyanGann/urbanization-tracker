@@ -1,6 +1,21 @@
 from typing import Any, Literal
 
-from pydantic import BaseModel, Field, field_validator
+from email_validator import EmailNotValidError, validate_email
+from pydantic import (
+    BaseModel,
+    ConfigDict,
+    Field,
+    HttpUrl,
+    TypeAdapter,
+    ValidationError,
+    field_serializer,
+    field_validator,
+)
+
+from app.data_availability import Availability, DataUnavailableError
+from app.filters import SUPPORTED_DEVELOPMENT_TYPES, SUPPORTED_STATUSES
+from app.public_fields import public_source_fields
+from app.public_geometry import validate_geometry_structure
 
 GeoJSONGeometry = dict[str, Any]
 
@@ -53,6 +68,14 @@ class DevelopmentRecord(BaseModel):
     source_fields: dict[str, Any] = Field(default_factory=dict)
     proximity_flags: list[ProximityFlag] = Field(default_factory=list)
 
+    @field_serializer("source_fields")
+    def safe_source_fields(self, value: dict[str, Any]) -> dict[str, Any]:
+        return public_source_fields(value)
+
+    @field_serializer("geometry")
+    def safe_geometry_members(self, value: GeoJSONGeometry) -> GeoJSONGeometry:
+        return {"type": value.get("type"), "coordinates": value.get("coordinates")}
+
 
 class DevelopmentRecordCollection(BaseModel):
     data_mode: Literal["live", "demo"]
@@ -81,7 +104,7 @@ class StagedDevelopmentRecord(BaseModel):
     record_confidence: ConfidenceLevel
     geometry_source: str
     geometry_confidence: ConfidenceLevel
-    geometry: GeoJSONGeometry
+    geometry: GeoJSONGeometry | None
     source_payload: dict[str, Any] = Field(default_factory=dict)
     normalization_notes: str
 
@@ -106,11 +129,32 @@ class SourceDocument(BaseModel):
 
 
 class UserSubmissionCreate(BaseModel):
+    model_config = ConfigDict(extra="forbid")
     title: str = Field(min_length=3, max_length=200)
     source_url: str | None = Field(default=None, max_length=1000)
     notes: str = Field(min_length=5, max_length=2000)
     submitter_contact: str | None = Field(default=None, max_length=255)
     geometry: GeoJSONGeometry | None = None
+
+    @field_validator("source_url")
+    @classmethod
+    def source_link_is_http(cls, value: str | None) -> str | None:
+        if value is None:
+            return None
+        parsed = TypeAdapter(HttpUrl).validate_python(value)
+        if parsed.username or parsed.password:
+            raise ValueError("Source links cannot contain credentials.")
+        return str(parsed)
+
+    @field_validator("geometry")
+    @classmethod
+    def geometry_is_supported(cls, value: GeoJSONGeometry | None) -> GeoJSONGeometry | None:
+        return None if value is None else validate_geometry_structure(value)
+
+    @field_validator("submitter_contact")
+    @classmethod
+    def contact_is_email(cls, value: str | None) -> str | None:
+        return None if value is None else normalized_email(value)
 
 
 class UserSubmission(BaseModel):
@@ -132,6 +176,7 @@ class UserSubmissionReceipt(BaseModel):
 
 
 class WatchAreaCreate(BaseModel):
+    model_config = ConfigDict(extra="forbid")
     name: str = Field(min_length=3, max_length=120)
     email: str = Field(min_length=3, max_length=255)
     geometry: GeoJSONGeometry
@@ -140,10 +185,39 @@ class WatchAreaCreate(BaseModel):
     @field_validator("email")
     @classmethod
     def email_must_be_deliverable_shape(cls, value: str) -> str:
-        normalized = value.strip().lower()
-        if "@" not in normalized or normalized.startswith("@") or normalized.endswith("@"):
-            raise ValueError("Email address is required for watch-area alerts.")
-        return normalized
+        return normalized_email(value)
+
+    @field_validator("geometry")
+    @classmethod
+    def geometry_is_supported(cls, value: GeoJSONGeometry) -> GeoJSONGeometry:
+        return validate_geometry_structure(value, watch=True)
+
+    @field_validator("filters")
+    @classmethod
+    def filters_are_supported(cls, value: dict[str, Any]) -> dict[str, Any]:
+        options = {"statuses": SUPPORTED_STATUSES, "development_types": SUPPORTED_DEVELOPMENT_TYPES}
+        if set(value) - set(options):
+            raise ValueError("Unsupported watch filter.")
+        for name, selected in value.items():
+            if (
+                not isinstance(selected, list)
+                or len(selected) > len(options[name])
+                or any(not isinstance(item, str) or item not in options[name] for item in selected)
+            ):
+                raise ValueError("Watch filters must be lists of supported values.")
+        return value
+
+
+def normalized_email(value: str) -> str:
+    try:
+        # Syntax only: no DNS/network. Reserved .test domains support isolated fixtures.
+        return str(
+            validate_email(
+                value.strip(), check_deliverability=False, test_environment=True
+            ).normalized
+        )
+    except EmailNotValidError as exc:
+        raise ValueError("Enter a valid email address.") from exc
 
 
 class WatchArea(BaseModel):
@@ -240,6 +314,17 @@ class RecordVersion(BaseModel):
     changed_by: str
     change_type: str
     snapshot: dict[str, Any]
+
+    @field_validator("snapshot")
+    @classmethod
+    def safe_public_snapshot(cls, value: dict[str, Any]) -> dict[str, Any]:
+        # Public history uses the same schema as current detail, including nested allowlists.
+        try:
+            return DevelopmentRecord.model_validate(value).model_dump()
+        except ValidationError:
+            raise DataUnavailableError(
+                collection="record_versions", availability=Availability.UNAVAILABLE
+            ) from None
 
 
 class ChangeLogEntry(BaseModel):

@@ -1,5 +1,25 @@
 import { expect, test, type Page } from "@playwright/test";
 
+test("public tip keeps unknown location and shows safe API limit errors", async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.route("**/api/change-log**", (route) => route.fulfill({ json: [] }));
+  let payload: Record<string, unknown> | undefined;
+  await page.route("**/api/public-submissions", async (route) => {
+    payload = route.request().postDataJSON();
+    await route.fulfill({ status: 429, headers: { "Retry-After": "60" }, json: {
+      detail: { code: "public_write_quota_reached", message: "Hourly request limit reached. Please try again later." }
+    }});
+  });
+  await page.goto("/participate");
+  await expect(page.getByText("Location is unknown. A reviewer must verify a location before publication.")).toBeVisible();
+  await page.getByLabel("Title", { exact: true }).fill("Public source tip");
+  await page.getByLabel("Notes", { exact: true }).fill("Please verify this public source.");
+  await page.getByRole("button", { name: "Submit", exact: true }).click();
+  await expect(page.getByRole("alert")).toHaveText("Hourly request limit reached. Please try again later.");
+  expect(payload?.geometry).toBeNull();
+  await page.screenshot({ path: "test-results/s02-participation-mobile.png", fullPage: true });
+});
+
 const seedRecord = {
   public_id: "hsv-test-record",
   title: "Seed Test Subdivision",

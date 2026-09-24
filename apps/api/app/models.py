@@ -5,6 +5,7 @@ from geoalchemy2 import Geometry
 from sqlalchemy import (
     JSON,
     Boolean,
+    CheckConstraint,
     DateTime,
     Float,
     ForeignKey,
@@ -411,3 +412,18 @@ class SourceObservation(Base):
     content_fingerprint: Mapped[str | None] = mapped_column(String(128))
     fingerprint_version: Mapped[str | None] = mapped_column(String(40))
     observed_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+
+
+class PublicWriteQuota(Base):
+    __tablename__ = "public_write_quotas"
+    __table_args__ = (
+        CheckConstraint("attempts BETWEEN 1 AND 1000", name="ck_public_quota_attempts"),
+    )
+
+    client_key: Mapped[str] = mapped_column(String(64), primary_key=True)
+    route: Mapped[str] = mapped_column(String(32), primary_key=True)
+    window_start: Mapped[datetime] = mapped_column(DateTime(timezone=True), primary_key=True)
+    attempts: Mapped[int] = mapped_column(Integer, nullable=False)
+    expires_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, index=True
+    )

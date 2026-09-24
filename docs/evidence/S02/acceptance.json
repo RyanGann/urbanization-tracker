@@ -1,0 +1,35 @@
+{
+  "assertions": [
+    "oversize_and_chunked_413_bounded_nested_and_encoded_json_422",
+    "finite_2d_coordinates_urls_emails_and_shared_filter_allowlists",
+    "postgis_topology_holes_multipart_area_and_local_backend_parity",
+    "unknown_location_null_staging_both_publication_paths_blocked",
+    "private_contact_notes_tokens_absent_from_receipt_detail_map_history",
+    "two_worker_concurrency_shared_budget_spoofed_forwarding_no_bypass"
+  ],
+  "quotas": {
+    "public-submissions": {
+      "accepted": 10,
+      "rejected": 10
+    },
+    "watch-areas": {
+      "accepted": 10,
+      "rejected": 10
+    }
+  },
+  "schema_revision": "20260922_0005",
+  "postgis": "POSTGIS=\"3.4.3 e365945\" [EXTENSION] PGSQL=\"160\" GEOS=\"3.9.0-CAPI-1.16.2\" PROJ=\"7.2.1 NETWORK_ENABLED=OFF URL_ENDPOINT=https://cdn.proj.org USER_WRITABLE_DIRECTORY=/var/lib/postgresql/.local/share/proj DATABASE_PATH=/usr/share/proj/proj.db\" LIBXML=\"2.9.10\" LIBJSON=\"0.15\" LIBPROTOBUF=\"1.3.3\" WAGYU=\"0.5.0 (Internal)\" TOPOLOGY",
+  "geodesic_boundary_areas": [
+    {
+      "target_sq_km": 2499.0,
+      "postgis_sq_m": 2498999999.9999695,
+      "local_sq_m": 2498999999.999939
+    },
+    {
+      "target_sq_km": 2501.0,
+      "postgis_sq_m": 2501000000.0000916,
+      "local_sq_m": 2501000000.000122
+    }
+  ],
+  "quota_survived_restart": true
+}

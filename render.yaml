@@ -20,6 +20,8 @@ services:
         value: https://urbanization-tracker-web.onrender.com
       - key: REVIEWER_API_TOKEN
         generateValue: true
+      - key: PUBLIC_WRITE_QUOTA_SECRET
+        generateValue: true
       - key: PHASE3_STORE_BACKEND
         value: postgres
       - key: PROCESSED_STORE_BACKEND

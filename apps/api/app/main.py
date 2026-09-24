@@ -1,6 +1,7 @@
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, FastAPI, HTTPException, Query, Request, Response
+from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
@@ -25,6 +26,10 @@ from app.phase3_store import (
     set_public_submission_status,
 )
 from app.processed_store import processed_store_status
+from app.public_body import PublicWriteBodyLimit
+from app.public_geometry import validate_public_geometry
+from app.public_quota import enforce_public_write_quota
+from app.public_rejections import record_public_rejection
 from app.schemas import (
     Alert,
     AlertDeliveryResult,
@@ -78,6 +83,7 @@ reviewer_router = APIRouter(
 )
 
 app = FastAPI(title=settings.app_name, version="0.1.0")
+app.add_middleware(PublicWriteBodyLimit)
 app.add_middleware(
     CORSMiddleware,
     allow_origins=settings.cors_origin_list,
@@ -86,6 +92,40 @@ app.add_middleware(
     allow_headers=["*"],
     expose_headers=["ETag"],
 )
+
+
+@app.exception_handler(RequestValidationError)
+def safe_validation_error(_request: Request, exc: RequestValidationError) -> JSONResponse:
+    record_public_rejection("invalid_request")
+    # Never echo pydantic input/context: those can contain contacts and complete bodies.
+    allowed_fields = {
+        "title",
+        "source_url",
+        "notes",
+        "submitter_contact",
+        "geometry",
+        "name",
+        "email",
+        "filters",
+    }
+    fields = sorted(
+        {
+            str(error["loc"][1])
+            for error in exc.errors()
+            if len(error.get("loc", ())) > 1 and error["loc"][1] in allowed_fields
+        }
+    )
+    return JSONResponse(
+        status_code=422,
+        content={
+            "detail": {
+                "code": "invalid_request",
+                "message": "Check the request fields and try again.",
+                "fields": fields,
+            }
+        },
+        headers={"Cache-Control": "no-store"},
+    )
 
 
 @app.exception_handler(DataUnavailableError)
@@ -97,8 +137,7 @@ def data_unavailable_error(_request: Request, _exc: DataUnavailableError) -> JSO
             "detail": {
                 "code": "data_unavailable",
                 "message": (
-                    "Canonical data is not available. Try again after "
-                    "initialization completes."
+                    "Canonical data is not available. Try again after initialization completes."
                 ),
             }
         },
@@ -248,8 +287,13 @@ def get_reviewer_public_submissions() -> list[UserSubmission]:
     return [UserSubmission.model_validate(submission) for submission in list_public_submissions()]
 
 
-@app.post("/api/public-submissions", response_model=UserSubmissionReceipt)
+@app.post(
+    "/api/public-submissions",
+    response_model=UserSubmissionReceipt,
+    dependencies=[Depends(enforce_public_write_quota)],
+)
 def post_public_submission(submission: UserSubmissionCreate) -> UserSubmissionReceipt:
+    validate_public_geometry(submission.geometry)
     try:
         created = create_public_submission(submission.model_dump())
     except MutationLockTimeout as exc:
@@ -270,8 +314,13 @@ def get_reviewer_watch_areas() -> list[WatchArea]:
     return [WatchArea.model_validate(watch_area) for watch_area in list_watch_areas()]
 
 
-@app.post("/api/watch-areas", response_model=WatchAreaReceipt)
+@app.post(
+    "/api/watch-areas",
+    response_model=WatchAreaReceipt,
+    dependencies=[Depends(enforce_public_write_quota)],
+)
 def post_watch_area(watch_area: WatchAreaCreate) -> WatchAreaReceipt:
+    validate_public_geometry(watch_area.geometry, watch=True)
     try:
         created = create_watch_area(watch_area.model_dump())
     except MutationLockTimeout as exc:

@@ -17,6 +17,8 @@ from sqlalchemy.exc import SQLAlchemyError
 from app.artifact_files import write_json_atomically
 from app.config import get_settings
 from app.data_availability import Availability, DataUnavailableError
+from app.public_fields import public_source_fields
+from app.public_geometry import require_publishable_geometry
 from app.schemas import DevelopmentRecord
 
 HUNTSVILLE_CENTER: tuple[float, float] = (-86.5861, 34.7304)
@@ -118,9 +120,12 @@ def publish_phase3_staged_record(
     if staged is None:
         return None
 
+    require_publishable_geometry(staged)
     staged["review_status"] = "approved"
     staged["review_notes"] = notes
     published = copy.deepcopy(staged.get("publish_record") or _publish_record_from_staged(staged))
+    require_publishable_geometry(published)
+    published["source_fields"] = public_source_fields(published.get("source_fields", {}))
     published["review_status"] = "published"
     published["date_last_checked"] = _today()
 
@@ -147,10 +152,7 @@ def create_public_submission(
     created_at = _now()
     submission_id = _stable_id("submission", payload["title"], created_at)
     staged_id = f"stage-{submission_id}"
-    geometry = payload.get("geometry") or {
-        "type": "Point",
-        "coordinates": [HUNTSVILLE_CENTER[0], HUNTSVILLE_CENTER[1]],
-    }
+    geometry = payload.get("geometry")
     public_id = _stable_id("hsv-public-submission", payload["title"], created_at)
     source_url = payload.get("source_url") or PUBLIC_SUBMISSION_SOURCE
 
@@ -176,7 +178,7 @@ def create_public_submission(
         "date_discovered": created_at[:10],
         "review_status": "pending",
         "record_confidence": "low",
-        "geometry_source": "Public-submitted geometry or default Huntsville review point",
+        "geometry_source": "Public-submitted geometry" if geometry else "Unknown location",
         "geometry_confidence": "low",
         "geometry": geometry,
         "source_payload": {
@@ -191,7 +193,7 @@ def create_public_submission(
         "publish_record": {
             "public_id": public_id,
             "title": payload["title"],
-            "description": payload["notes"],
+            "description": "Public source tip verified by a reviewer.",
             "development_type": "public_submission",
             "status": "proposed",
             "source_status": "submitted",
@@ -207,7 +209,7 @@ def create_public_submission(
             "geometry_source": "Reviewer-approved public submission geometry",
             "geometry_confidence": "low",
             "geometry": geometry,
-            "centroid": _geometry_centroid(geometry),
+            "centroid": _geometry_centroid(geometry) if geometry else None,
             "area_sq_m": None,
             "address": None,
             "parcel_ids": [],
@@ -636,7 +638,7 @@ def _publish_record_from_staged(staged: dict[str, Any]) -> dict[str, Any]:
         "area_sq_m": None,
         "address": None,
         "parcel_ids": [],
-        "source_fields": staged.get("source_payload", {}),
+        "source_fields": public_source_fields(staged.get("source_payload", {})),
         "proximity_flags": [],
     }
 
@@ -697,14 +699,19 @@ def _alerts_for_watch_area(
     if watch_bbox is None:
         return []
     filters = watch_area.get("filters") or {}
-    statuses = set(filters.get("statuses") or [])
-    development_types = set(filters.get("development_types") or [])
+    statuses = set(filters["statuses"]) if "statuses" in filters else None
+    development_types = (
+        set(filters["development_types"]) if "development_types" in filters else None
+    )
     alerts: list[dict[str, Any]] = []
     for record_value in published_records:
         record = _record_to_dict(record_value)
-        if statuses and record.get("status") not in statuses:
+        if statuses is not None and record.get("status") not in statuses:
             continue
-        if development_types and record.get("development_type") not in development_types:
+        if (
+            development_types is not None
+            and record.get("development_type") not in development_types
+        ):
             continue
         record_bbox = _geometry_bbox(record.get("geometry") or {})
         if record_bbox is None or not _bbox_intersects(watch_bbox, record_bbox):

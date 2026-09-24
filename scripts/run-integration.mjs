@@ -61,7 +61,10 @@ function parseArgs(argv) {
     if (!["desktop", "mobile"].includes(options.profile)) throw new Error("Performance profile must be desktop or mobile");
   } else {
     if (options.profile || options.smoke || options.snapshotDir) throw new Error("Performance options require --suite performance");
-    if (options.scenario && !["c01-data-modes", "u00-filters", "c03-source-identity"].includes(options.scenario)) throw new Error(`Scenario '${options.scenario}' is not implemented`);
+    if (options.scenario && !["c01-data-modes", "u00-filters", "c03-source-identity", "input-limits"].includes(options.scenario)) throw new Error(`Scenario '${options.scenario}' is not implemented`);
+    if (options.scenario === "input-limits" && (options.suite !== "api" || options.assertFailure || options.isolationCheck || options.child)) {
+      throw new Error("--scenario input-limits requires the top-level api suite without assertion or isolation flags");
+    }
     if (options.scenario === "c01-data-modes" && (options.suite !== "api" || options.assertFailure || options.isolationCheck || options.child)) {
       throw new Error("--scenario c01-data-modes requires the top-level api suite without assertion or isolation flags");
     }
@@ -327,6 +330,8 @@ async function runSuite(options) {
     `INTEGRATION_ARTIFACT_DIR=${artifactDir.replaceAll("\\", "/")}`,
     `INTEGRATION_REVIEWER_TOKEN=${reviewerToken}`,
     `INTEGRATION_FIXTURE_TITLE=${fixture.title}`,
+    `INTEGRATION_QUOTA_LIMIT=${options.scenario === "input-limits" ? 10 : 1000}`,
+    `INTEGRATION_API_WORKERS=${options.scenario === "input-limits" ? 2 : 1}`,
     `P01_PERFORMANCE_MARKS=${!!performance}`,
     `P01_PERFORMANCE_PROFILE=${options.profile ?? "desktop"}`,
     `P01_PERFORMANCE_SCENARIO=${options.scenario ?? "functional"}`,
@@ -573,6 +578,15 @@ async function runSuite(options) {
       .digest("hex");
   };
 
+  const runS02InputLimits = async (phase) => {
+    await run("docker", [...compose, "run", "--rm", "--no-deps",
+      "--volume", `${join(root, "apps", "api", "tests", "integration").replaceAll("\\", "/")}:/integration:ro`,
+      "--volume", `${artifactDir.replaceAll("\\", "/")}:/results`,
+      "api", "python", "/integration/s02_input_limits.py",
+      "--api-url", "http://api-gateway:8000", `--reviewer-token=${reviewerToken}`,
+      "--result", "/results/s02-input-limits.json", "--phase", phase], { log, timeoutMs: 180_000 });
+  };
+
   try {
     const requiresBrowser = options.suite === "live" || performance || options.scenario === "c01-data-modes";
     await run("docker", [...compose, "build", "api", ...(requiresBrowser ? ["web", "browser"] : [])], { log, timeoutMs: 300_000 });
@@ -608,11 +622,18 @@ async function runSuite(options) {
     } else {
       await assertApi(apiUrl, reviewerToken, fixture, options.assertFailure);
       if (options.suite === "concurrency") await runC02Transactions("create");
+      if (options.scenario === "input-limits") await runS02InputLimits("create");
       await run("docker", [...compose, "restart", "api"], { log });
       apiUrl = await publishedPort(compose, "api-gateway", 8000, log);
       await waitForHealth(apiUrl);
       await assertApi(apiUrl, reviewerToken, fixture, false);
       if (options.scenario === "c03-source-identity") await runC03SourceIdentity();
+
+      if (options.scenario === "input-limits") {
+        await runS02InputLimits("verify");
+        scenarioArtifacts.s02_results_sha256 = createHash("sha256")
+          .update(await readFile(join(artifactDir, "s02-input-limits.json"))).digest("hex");
+      }
       if (performance) {
         await captureDatabase({ compose, run, log, artifactDir });
         stopSampling = await startResourceSampling({ compose, run, log, artifactDir });
