@@ -296,3 +296,14 @@ three expected failed fixture requests; the failed attempt stayed unactivated
 and left last-good development records unchanged across restart (SHA-256
 `943593a541af4b1ed3b7abb222d5d1333fec8edc571e1bbfa4a3f594be82f5ed`).
 The disposable Compose project reports `cleanup_result: removed`.
+
+After rebasing D01 onto merged P03 main
+`96aaa5b9af9626063db88cfc7e5adacfd0ae7e6c`, the integration runner
+preserves both P03 `layer-import` and D01 `d01-scoped` scenarios. Locked full
+API Ruff/mypy and **211 backend tests** passed on the rebased code. The isolated
+D01 T01 run `2026-09-24T06-19-17-669Z-b385e8f6` passed: five complete and
+three expected failed synthetic requests, degraded unactivated health, the
+September 1 success time and nine published records retained, and unchanged
+development rows across restart (SHA-256
+`73384a89a07948a3fa81bb390226c3b46452a93a812bd0b7d1688e5a04b786d6`).
+The disposable Compose project reports `cleanup_result: removed`.
