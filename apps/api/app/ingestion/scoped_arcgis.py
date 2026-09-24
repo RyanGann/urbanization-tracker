@@ -47,6 +47,17 @@ def _digest(value: Any) -> str:
     return hashlib.sha256(_canonical(value)).hexdigest()
 
 
+def _reject_nonfinite_constant(_value: str) -> Any:
+    raise ScopeError("nonfinite_json_number")
+
+
+def _parse_finite_float(value: str) -> float:
+    parsed = float(value)
+    if not math.isfinite(parsed):
+        raise ScopeError("nonfinite_json_number")
+    return parsed
+
+
 def _valid_polygon(value: Any) -> bool:
     if not isinstance(value, dict) or not isinstance(value.get("rings"), list):
         return False
@@ -63,7 +74,6 @@ def _valid_polygon(value: Any) -> bool:
                 or any(
                     not isinstance(axis, (int, float))
                     or isinstance(axis, bool)
-                    or not math.isfinite(axis)
                     for axis in point
                 )
                 or not -180 <= point[0] <= 180
@@ -234,7 +244,12 @@ class _Session:
                 self.sleep(_retry_delay(None, attempt))
                 continue
             try:
-                payload = json.loads(body)
+                payload = json.loads(
+                    body, parse_constant=_reject_nonfinite_constant,
+                    parse_float=_parse_finite_float,
+                )
+            except ScopeError:
+                raise
             except (ValueError, UnicodeDecodeError) as exc:
                 raise ScopeError("invalid_json_response") from exc
             if not isinstance(payload, dict):
@@ -358,9 +373,9 @@ def _geometry_ok(feature: dict[str, Any], config: ArcGISLayerConfig) -> bool:
         return False
     from app.ingestion.geometry import iter_positions, validate_geometry
 
-    if validate_geometry(geometry, expected):
-        return False
     try:
+        if validate_geometry(geometry, expected):
+            return False
         positions = list(iter_positions(geometry))
         if not positions or not all(
             math.isfinite(lon) and math.isfinite(lat)
@@ -374,7 +389,7 @@ def _geometry_ok(feature: dict[str, Any], config: ArcGISLayerConfig) -> bool:
             parsed = shape(geometry)
             return not parsed.is_empty and parsed.is_valid
         return True
-    except (TypeError, ValueError, IndexError, ShapelyError):
+    except (TypeError, ValueError, IndexError, OverflowError, ShapelyError):
         return False
 
 
@@ -606,7 +621,11 @@ def source_batch_from_staging(
     """
     if report.get("canary"):
         raise ScopeError("canary_cannot_publish")
-    if report_sha256_assertion != hashlib.sha256(_canonical(report) + b"\n").hexdigest():
+    try:
+        report_digest = hashlib.sha256(_canonical(report) + b"\n").hexdigest()
+    except (TypeError, ValueError, OverflowError) as exc:
+        raise ScopeError("invalid_staged_report") from exc
+    if report_sha256_assertion != report_digest:
         raise ScopeError("report_digest_assertion_mismatch")
     key = report.get("source_key")
     if key not in SOURCE_CONFIGS or report.get("scope_id") != scope.scope_id_for(

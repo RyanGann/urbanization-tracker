@@ -19,6 +19,7 @@ from app.ingestion.scoped_arcgis import (
     source_batch_from_staging,
     stage_scoped_source,
 )
+from app.ingestion.pipeline import _aggregate_status
 from app.ingestion.source_merge import SourceRecord
 from app.ingestion.sources.huntsville import BUILDING_PERMITS, NEW_SUBDIVISIONS
 
@@ -67,7 +68,7 @@ def _feature(object_id: int, *, valid: bool = True) -> dict[str, object]:
 def _fixture(
     ids: list[int], *, second_ids: list[int] | None = None,
     count: object | None = None, batch_override: list[dict[str, object]] | None = None,
-    transient: bool = False,
+    transient: bool = False, raw_page: bytes | None = None,
 ) -> tuple[httpx.MockTransport, list[dict[str, str]]]:
     requests: list[dict[str, str]] = []
     id_queries = 0
@@ -100,6 +101,8 @@ def _fixture(
                 "objectIds": second_ids if id_queries > 1 and second_ids is not None else ids,
             })
         requested = [int(value) for value in params["objectIds"].split(",")]
+        if raw_page is not None:
+            return httpx.Response(200, content=raw_page)
         features = (
             batch_override
             if batch_override is not None
@@ -197,10 +200,10 @@ def test_valid_polygon_and_multipolygon_are_accepted() -> None:
 
 
 @pytest.mark.parametrize("bad_point", [
-    [-181.0, 34.0], [-87.0, 91.0], [1200000.0, 500000.0],
+    [-181.0, 34.0], [-87.0, 91.0], [1200000.0, 500000.0], [10**400, 34],
 ])
 def test_reviewed_scope_rejects_out_of_range_wgs84_coordinates(
-    tmp_path: Path, bad_point: list[float]
+    tmp_path: Path, bad_point: list[int | float]
 ) -> None:
     _scope(tmp_path)
     path = tmp_path / "reviewed-scope.json"
@@ -213,6 +216,31 @@ def test_reviewed_scope_rejects_out_of_range_wgs84_coordinates(
     path.write_text(json.dumps(payload), encoding="utf-8")
     with pytest.raises(ScopeError, match="invalid_scope_polygon"):
         ReviewedScope.load(path)
+
+
+@pytest.mark.parametrize("bad_number", [b"NaN", b"Infinity", b"1e1000"])
+def test_nonfinite_json_page_fails_closed_and_records_report(
+    tmp_path: Path, bad_number: bytes
+) -> None:
+    page = (
+        b'{"type":"FeatureCollection","features":[{"type":"Feature",'
+        b'"properties":{"OBJECTID":1,"PermitID":1},"geometry":'
+        b'{"type":"Point","coordinates":[' + bad_number + b',34.5]}}]}'
+    )
+    transport, _ = _fixture([1], raw_page=page)
+    report = _run(tmp_path, transport)
+    assert report["coverage"] == "failed"
+    assert report["error_code"] == "nonfinite_json_number"
+    assert (tmp_path / "stage" / "report.json").is_file()
+
+
+def test_huge_integer_feature_coordinate_is_rejected_without_aborting(tmp_path: Path) -> None:
+    feature = _feature(1)
+    feature["geometry"] = {"type": "Point", "coordinates": [10**400, 34.5]}
+    transport, _ = _fixture([1], batch_override=[feature])
+    report = _run(tmp_path, transport)
+    assert report["coverage"] == "partial"
+    assert report["rejected"] == 1
 
 
 def test_empty_scope_and_canary_are_distinct(tmp_path: Path) -> None:
@@ -379,6 +407,13 @@ def test_unsealed_or_incomplete_staging_cannot_mark_complete(tmp_path: Path) -> 
             report, (), scope=scope, page_sha256_assertions=page_shas,
             report_sha256_assertion=verified_sha(), run_id="run-1",
         )
+    report["canary"] = False
+    report["nonfinite"] = float("nan")
+    with pytest.raises(ScopeError, match="invalid_staged_report"):
+        source_batch_from_staging(
+            report, (), scope=scope, page_sha256_assertions=page_shas,
+            report_sha256_assertion=None, run_id="run-1",
+        )
 
 
 def test_offset_full_page_without_transfer_flag_and_repeated_page(tmp_path: Path) -> None:
@@ -445,3 +480,4 @@ def test_attempt_health_preserves_last_good_and_discloses_unactivated_scope(tmp_
     assert row["records_created"] == 9
     assert row["attempt_records_staged"] == 1
     assert updated["records"] == {"published": 9}
+    assert _aggregate_status([row, {"status": "healthy", "error_count": 0}]) == "degraded"
