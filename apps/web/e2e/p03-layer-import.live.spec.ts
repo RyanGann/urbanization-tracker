@@ -7,9 +7,10 @@ test("P03 import progress retains the development map", async ({ page }, testInf
     exact: false,
   })).toBeVisible();
   await expect(page.getByRole("checkbox", { name: "P03 environmental fixture" })).toBeDisabled();
-  await expect(page.getByRole("checkbox", { name: "New environmental fixture" })).toBeDisabled();
+  await expect(page.getByRole("checkbox", { name: "Revised environmental fixture" })).toBeDisabled();
+  await expect(page.getByText("Revised synthetic source", { exact: true })).toBeVisible();
   await expect(page.getByText(
-    "New environmental fixture: 2 source records checked, 1 need review. The update needs attention; this layer is unavailable.",
+    "Revised environmental fixture: 2 source records checked, 0 need review. Source data checked; map preparation is pending.",
     { exact: true },
   )).toBeVisible();
   if (process.env.P03_SNAPSHOT === "1") {
