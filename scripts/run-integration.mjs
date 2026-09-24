@@ -686,7 +686,7 @@ async function runSuite(options) {
       if (options.scenario === "u00-filters") {
         await runU00BrowserAssertions();
       } else if (options.scenario === "layer-import") {
-        await run("docker", [...compose, "run", "--rm", "--env", "P03_IMPORTS=1", "browser"], { log, timeoutMs: 300_000 });
+        await run("docker", [...compose, "run", "--rm", "--env", "P03_IMPORTS=1", ...(options.snapshotDir ? ["--env", "P03_SNAPSHOT=1"] : []), "browser"], { log, timeoutMs: 300_000 });
       } else {
         await run("docker", [...compose, "run", "--rm", ...(performance ? ["--entrypoint", "node"] : []), "browser", ...(performance ? [options.scenario === "catalog-development" ? "e2e/catalog-development.mjs" : "e2e/performance-baseline.mjs"] : [])], { log, timeoutMs: performance ? 14_400_000 : 300_000 });
       }

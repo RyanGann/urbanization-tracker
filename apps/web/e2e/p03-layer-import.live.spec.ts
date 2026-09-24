@@ -8,9 +8,16 @@ test("P03 import progress retains the development map", async ({ page }, testInf
   })).toBeVisible();
   await expect(page.getByRole("checkbox", { name: "P03 environmental fixture" })).toBeDisabled();
   await expect(page.getByRole("checkbox", { name: "New environmental fixture" })).toBeDisabled();
-  await expect(page.getByText("The update needs attention; this layer is unavailable.", {
-    exact: false,
-  })).toBeVisible();
+  await expect(page.getByText(
+    "New environmental fixture: 2 source records checked, 1 need review. The update needs attention; this layer is unavailable.",
+    { exact: true },
+  )).toBeVisible();
+  if (process.env.P03_SNAPSHOT === "1") {
+    await expect(page.getByText(
+      "Effective FEMA 1% Annual Chance Floodplain: 1883 source records checked, 5 need review. The update needs attention; this layer is unavailable.",
+      { exact: true },
+    )).toBeVisible();
+  }
   await expect(page.getByText("new-layer-private-key", { exact: false })).toHaveCount(0);
   await expect(page.getByRole("button", {
     name: new RegExp(process.env.INTEGRATION_FIXTURE_TITLE!),
