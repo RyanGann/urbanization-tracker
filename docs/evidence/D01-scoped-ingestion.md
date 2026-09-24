@@ -282,3 +282,17 @@ unactivated, retained the September 1 success time and nine published records,
 and left development records unchanged through restart (SHA-256
 `6118c305216f99a0126eb01dbd00297ae2601a2cea0eb1a3ee2411e36833ee69`).
 The disposable Compose project reports `cleanup_result: removed`.
+
+A final scope-validation review found that a closed reviewed ring could still
+be degenerate or self-intersecting. Code head `409ad09` requires at least three
+distinct vertices per ring and a valid assembled nested ArcGIS polygon. The
+ignored, lead-reviewed repaired city boundary and 510 m context both passed
+this checker with their previously recorded SHA-256 digests
+`2c4f6a2749c12f7b788c08f75f92c5c882bd5a0231e3881f1807ee7420f6d215`
+and `83540d80a62fc62a438753903ff81b6bda92fe95671c5f6c619d7936aab357a8`.
+Locked full API Ruff/mypy and **181 backend tests** passed. The isolated D01
+T01 run `2026-09-24T06-05-36-043Z-76c74ee0` passed with five complete and
+three expected failed fixture requests; the failed attempt stayed unactivated
+and left last-good development records unchanged across restart (SHA-256
+`943593a541af4b1ed3b7abb222d5d1333fec8edc571e1bbfa4a3f594be82f5ed`).
+The disposable Compose project reports `cleanup_result: removed`.
