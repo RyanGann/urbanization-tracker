@@ -669,7 +669,7 @@
       "id": "B01",
       "title": "Retain bounded original source-control response evidence",
       "path": "B01-control-response-evidence.md",
-      "status": "in_progress",
+      "status": "in_review",
       "track": "Data quality",
       "gate": "G1",
       "depends_on": [
@@ -677,8 +677,9 @@
       ],
       "review": "Lead review",
       "pr_boundary": "One bounded collector retention PR; staging only.",
-      "implementation_pr": null,
-      "evidence": null
+      "implementation_pr": "https://github.com/RyanGann/urbanization-tracker/pull/34",
+      "evidence": "../../evidence/B01-control-evidence.md",
+      "status_note": "Bounded original control retention and deterministic fixtures implemented; clean real API/PostGIS d01-scoped run passed. Awaiting exact-head review/CI. No durable seal, attestation or activation; B02 remains planned."
     },
     {
       "id": "B02",
