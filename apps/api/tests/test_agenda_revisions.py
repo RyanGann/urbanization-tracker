@@ -388,6 +388,22 @@ def test_limited_refresh_reports_all_retained_unresolved_identities() -> None:
     assert health["validation_errors"] == ["agenda_identity_unresolved"]
 
 
+def test_public_health_preserves_safe_identity_code_and_redacts_private_errors() -> None:
+    from app.schemas import PublicSourceHealthRow
+
+    health = PublicSourceHealthRow.model_validate(
+        {
+            "key": "huntsville_planning_agendas",
+            "status": "degraded",
+            "validation_errors": [
+                "agenda_identity_unresolved",
+                "private error: /objects/secret.pdf",
+            ],
+        }
+    )
+    assert health.validation_errors == ["agenda_identity_unresolved", "source_error"]
+
+
 def test_artifact_decision_round_trip_and_failed_validation(
     tmp_path: Any, monkeypatch: Any
 ) -> None:

@@ -303,6 +303,7 @@ class PublicSourceHealthRow(BaseModel):
             "artifact_integrity", "artifact_too_large", "artifact_path",
             "artifact_configuration", "artifact_checkpoint",
             "environmental_context_unverified",
+            "agenda_identity_unresolved", "agenda_archive_fallback", "agenda_no_documents",
         }
         return [
             error if isinstance(error, str) and error in allowed else "source_error"

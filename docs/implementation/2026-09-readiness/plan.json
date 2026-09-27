@@ -130,6 +130,19 @@
       "evidence": null
     },
     {
+      "id": "C10",
+      "title": "Backfill historical agenda identity and decisions with reviewed mappings",
+      "path": "C10-guarded-agenda-history-backfill.md",
+      "status": "planned",
+      "track": "Correctness",
+      "gate": "G1",
+      "depends_on": ["C04", "O01"],
+      "review": "Lead review",
+      "pr_boundary": "One guarded operator backfill command and copied-database verification PR.",
+      "implementation_pr": null,
+      "evidence": "../../evidence/C04-agenda-revisions.md"
+    },
+    {
       "id": "C05",
       "title": "Make review actions explicit, durable, and revision checked",
       "path": "C05-review-action-policy.md",
@@ -713,6 +726,7 @@
     "P03",
     "S02",
     "C04",
+    "C10",
     "D01",
     "B01",
     "B02",

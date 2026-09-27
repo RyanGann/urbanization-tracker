@@ -39,6 +39,8 @@ Use actual HTTP services and PostGIS for integration tests. Keep small live-sour
 
 A PR can merge before its broader gate is complete if its intermediate state is explicit and safe. P02's temporarily unavailable environmental controls do not satisfy G2. Green mocked tests, a hosting template, a liveness response or a fast empty canvas do not satisfy G3.
 
+C10's guarded historical agenda backfill is required for release only if C04's recorded inventory has gaps that exact verified replay cannot cover; retain a zero-gap inventory when no backfill is needed.
+
 ## Traceability to the review
 
 | Review finding/recommendation | Owning guides |
@@ -80,6 +82,7 @@ A PR can merge before its broader gate is complete if its intermediate state is 
 | [C03: Preserve source identity and merge ingestion batches safely](C03-stable-source-identity.md) | C02 | Lead review |
 | [D01: Fetch a declared pilot scope completely and report source coverage](D01-source-scope-pagination-canaries.md) | C03, T01 | Lead review |
 | [C04: Retain agenda documents and reviewer decisions across refreshes](C04-agenda-revision-retention.md) | C02, C03 | Lead review |
+| [C10: Backfill historical agenda identity and decisions with reviewed mappings](C10-guarded-agenda-history-backfill.md) | C04, O01 | Lead review |
 | [C05: Make review actions explicit, durable, and revision checked](C05-review-action-policy.md) | C02, C04 | Routine with lead review |
 | [C06: Publish canonical changes and durable history in one transaction](C06-publication-events-history.md) | C03, C04, C05, S02 | Lead review |
 | [S02: Validate geometry and limit public write abuse](S02-public-input-validation.md) | C02 | Lead review |
