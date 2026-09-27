@@ -691,6 +691,22 @@ async function runSuite(options) {
     ], { log, timeoutMs: 600_000 });
     try {
       await run("docker", [...compose, "exec", "-T", "db", "createdb", "-U", "integration", "p04a_replica"], { log, timeoutMs: 30_000 });
+      // Mirror the locked image's initialization, not the busy source DB.
+      // Its initial integration DB has optional topology/geocoder extensions
+      // which postgis_full_version includes in the immutable rendering recipe.
+      const extensionSql = "SELECT coalesce(json_agg(json_build_object('name',extname,'version',extversion) ORDER BY extname),'[]'::json)::text FROM pg_extension WHERE extname <> 'plpgsql'";
+      const extensions = async (database) => {
+        const response = await run("docker", [...compose, "exec", "-T", "db", "psql", "-U", "integration", "-d", database, "-Atqc", extensionSql], { log, timeoutMs: 30_000 });
+        if (Buffer.byteLength(response.output) > 4096) throw new Error("P04a extension diagnostic exceeded bound");
+        return JSON.parse(response.output.trim());
+      };
+      const originalExtensions = await extensions("integration");
+      const expectedNames = ["fuzzystrmatch", "postgis", "postgis_tiger_geocoder", "postgis_topology"];
+      if (JSON.stringify(originalExtensions.map((entry) => entry.name)) !== JSON.stringify(expectedNames)) throw new Error("P04a original extension set differs from locked image initialization");
+      await run("docker", [...compose, "exec", "-T", "db", "psql", "-v", "ON_ERROR_STOP=1", "-U", "integration", "-d", "p04a_replica", "-c", "CREATE EXTENSION IF NOT EXISTS postgis; CREATE EXTENSION IF NOT EXISTS postgis_topology; CREATE EXTENSION IF NOT EXISTS fuzzystrmatch; CREATE EXTENSION IF NOT EXISTS postgis_tiger_geocoder;"], { log, timeoutMs: 30_000 });
+      const replicaExtensions = await extensions("p04a_replica");
+      await writeFile(join(artifactDir, "p04a-extension-diagnostic.json"), `${JSON.stringify({ original: originalExtensions, replica: replicaExtensions }, null, 2)}\n`);
+      if (JSON.stringify(originalExtensions) !== JSON.stringify(replicaExtensions)) throw new Error("P04a replica extension identities differ");
       await invoke(["alembic", "upgrade", "head"], true);
       await invoke(["python", "/integration/p04a_display.py", "--replica-only", "--output", "/p04a-artifacts/p04a"], true);
       scenarioArtifacts.p04a_replica_sha256 = createHash("sha256")

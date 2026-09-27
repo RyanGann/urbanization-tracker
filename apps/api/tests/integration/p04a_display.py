@@ -903,6 +903,12 @@ def run(output: Path, replica_result: Path) -> dict:
     assert len(raw_replica) <= 65536
     replica = json.loads(raw_replica)
     assert isinstance(replica, dict) and len(replica) <= 16
+    (output / "replica-comparison.json").write_text(json.dumps({
+        "original_backend": first["postgis_execution_version"],
+        "replica_backend": replica.get("postgis_execution_version"),
+        "original_display_version": first["display_version"],
+        "replica_display_version": replica.get("display_version"),
+    }, indent=2, sort_keys=True) + "\n")
     assert replica["database"] == "p04a_replica" and replica["replayed"] is True
     assert replica["layer_key"] == LAYER and replica["data_version"] == VERSION
     assert replica["postgis_execution_version"] == first["postgis_execution_version"]
