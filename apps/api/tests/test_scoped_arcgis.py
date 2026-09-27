@@ -33,6 +33,43 @@ POLYGON = {
     "rings": [[[-87.0, 34.0], [-86.0, 34.0], [-86.0, 35.0], [-87.0, 34.0]]],
     "spatialReference": {"wkid": 4326},
 }
+
+
+@pytest.mark.parametrize("long_query", [False, True])
+def test_response_hook_cannot_launder_request_identity(long_query: bool) -> None:
+    observed: list[httpx.Request] = []
+
+    def change(request: httpx.Request) -> None:
+        request.headers["Host"] = "other.invalid"
+
+    def restore(response: httpx.Response) -> None:
+        response.request.headers["Host"] = "maps.huntsvilleal.gov"
+
+    def transport(request: httpx.Request) -> httpx.Response:
+        observed.append(request)
+        return httpx.Response(200, json={"count": 1})
+
+    with httpx.Client(transport=httpx.MockTransport(transport), event_hooks={
+        "request": [change], "response": [restore],
+    }) as client:
+        session = _Session(client, CollectionBudget(min_interval_seconds=0))
+        params = {"f": "json", "geometry": "x" * 9000} if long_query else {"f": "json"}
+        with pytest.raises(ScopeError, match="source_client_hooks_refused"):
+            session.get("https://maps.huntsvilleal.gov/query", params)
+    assert observed == []
+    assert session.requests == 0 and session.request_log == []
+
+
+@pytest.mark.parametrize("hook_kind", ["request", "response"])
+def test_hook_client_returns_truthful_failed_report(tmp_path: Path, hook_kind: str) -> None:
+    transport, requests = _fixture([1])
+    with httpx.Client(transport=transport, event_hooks={hook_kind: [lambda value: None]}) as client:
+        report = stage_scoped_source(CONFIG, _scope(tmp_path), tmp_path / "hooks", client=client)
+    assert report["coverage"] == "failed"
+    assert report["error_code"] == "source_client_hooks_refused"
+    assert report["requests"] == 0 and requests == []
+    assert report["control_artifacts"] == []
+    assert not list((tmp_path / "hooks").glob("control-*"))
 CONTEXT_POLYGON = {
     "rings": [[[-88.0, 33.0], [-85.0, 33.0], [-85.0, 36.0], [-88.0, 36.0], [-88.0, 33.0]]],
     "spatialReference": {"wkid": 4326},
@@ -432,9 +469,9 @@ def test_actual_request_refuses_duplicate_query_keys(
         report = stage_scoped_source(CONFIG, _scope(tmp_path), tmp_path / "duplicate-query",
                                      client=client, budget=CollectionBudget(max_attempts=1,
                                                                           min_interval_seconds=0))
-    assert report["error_code"] == "actual_request_query_mismatch"
-    assert report["control_artifacts"] == [] and report["requests"] == 1
-    assert len(requests) == 1
+    assert report["error_code"] == "source_client_hooks_refused"
+    assert report["control_artifacts"] == [] and report["requests"] == 0
+    assert len(requests) == 0
 
 
 @pytest.mark.parametrize("method", ["GET", "POST"])
@@ -461,9 +498,13 @@ def test_actual_request_refuses_changed_or_duplicate_authority(
         report = stage_scoped_source(CONFIG, _scope(tmp_path), tmp_path / "authority",
                                      client=client, budget=CollectionBudget(max_attempts=1,
                                                                           min_interval_seconds=0))
-    assert report["error_code"] == "actual_request_authority_mismatch"
+    assert report["error_code"] == (
+        "actual_request_authority_mismatch" if injection == "client"
+        else "source_client_hooks_refused"
+    )
     assert report["coverage"] == "failed" and report["control_artifacts"] == []
-    assert len(requests) == 1 and report["requests"] == 1
+    expected_requests = 1 if injection == "client" else 0
+    assert len(requests) == expected_requests and report["requests"] == expected_requests
 
 
 @pytest.mark.parametrize(("url", "host", "matches"), [

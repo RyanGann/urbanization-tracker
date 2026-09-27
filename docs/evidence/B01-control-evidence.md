@@ -118,3 +118,14 @@ Independent exact-label queries confirmed zero containers and volumes for
 `urbanization_t01_56595c296b2c`. The CI workflow now runs the owning `d01-scoped`
 scenario to exercise original controls and request binding on future changes.
 No official source requests were made.
+
+## Hook-free injected client contract
+
+A subsequent review identified that response hooks can rewrite `response.request`
+before identity validation, and request hooks can install such response hooks.
+Injected clients with either hook type are now refused before each send, returning
+`source_client_hooks_refused` with zero requests and no finalized controls. The
+production default client is unchanged. Test transport injection supplies fixture
+bytes; arbitrary Python transports are not a claim of server authenticity.
+The clean `90571c8` real run above predates this unsupported-client guard. The
+owning CI scenario checks the current default-client path.

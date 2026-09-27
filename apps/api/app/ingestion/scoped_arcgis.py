@@ -281,6 +281,10 @@ class _Session:
     ) -> dict[str, Any]:
         cap = byte_limit or self.budget.max_response_bytes
         for attempt in range(self.budget.max_attempts):
+            # Hooks can mutate identity or install laundering response hooks.
+            # Supported injected clients are hook-free; recheck every send.
+            if any(self.client.event_hooks.get(kind) for kind in ("request", "response")):
+                raise ScopeError("source_client_hooks_refused")
             if self.requests >= self.budget.max_requests:
                 raise BudgetExceeded("request_budget_exceeded")
             now = time.monotonic()
