@@ -318,7 +318,7 @@ def preproof_checks(service: ArtifactService, observation, root: Path) -> dict[s
         "accepted_count": "999",
         "import_checkpoint": "999",
         "bounds_json": "'[0,0,1,1]'::jsonb",
-        "diagnostics_json": "'{\"unexpected\":true}'::jsonb",
+        "diagnostics_json": "jsonb_build_object('unexpected',true)",
         "version": "'forged-version'",
     }
     for column, expression in parent_tampers.items():
