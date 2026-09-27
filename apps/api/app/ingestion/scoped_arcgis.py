@@ -338,6 +338,8 @@ class _Session:
                         if (len(pairs) != len(dict(pairs))
                             or _digest(dict(pairs)) != _digest(params)):
                             raise ScopeError("actual_request_query_mismatch")
+                    except ScopeError:
+                        raise
                     except (ValueError, UnicodeDecodeError) as exc:
                         raise ScopeError("actual_request_query_mismatch") from exc
                     if (
