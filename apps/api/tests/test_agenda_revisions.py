@@ -110,6 +110,92 @@ def test_duplicate_refresh_reads_processed_public_rows_and_preserves_audited_row
     assert uow.get_phase3("duplicate_candidates", "unrelated") == unrelated
 
 
+def test_dateless_moved_historical_checksum_requires_alias_without_state_changes() -> None:
+    from app.ingestion.agenda_store import _existing_document, _merge_agenda_batch
+
+    uow = MemoryUow()
+    first = {**_document("a" * 64), "document_date": None}
+    _merge_agenda_batch(uow, [first], _records(first), {"status": "healthy"}, "a")
+    candidate = uow.list_phase3("agenda_staged_records")[0]
+    candidate.update(review_status="rejected", review_notes="Retain historical decision")
+    uow.upsert_phase3("agenda_staged_records", candidate["id"], candidate)
+    changed = {**_document("b" * 64), "document_date": None}
+    _merge_agenda_batch(uow, [changed], [], {"status": "healthy"}, "b")
+    latest = uow.list_phase3("source_documents")
+    moved = {**first, "url": "https://example.test/moved.pdf"}
+    assert _existing_document(uow, moved) == (None, True)
+    _merge_agenda_batch(uow, [moved], _records(moved), {"status": "healthy"}, "moved")
+    assert uow.list_phase3("source_documents") == latest
+    assert uow.get_phase3("agenda_staged_records", candidate["id"]) == candidate
+    assert len(uow.list_phase3("agenda_unresolved_documents")) == 1
+    assert _existing_document(uow, {**moved, "sha256": ""}) == (None, False)
+    assert _existing_document(uow, {**moved, "sha256": None}) == (None, False)
+
+
+def test_partial_pending_artifact_persists_health_without_activating_content(
+    tmp_path: Any, monkeypatch: Any
+) -> None:
+    import httpx
+
+    from app.config import get_settings
+    from app.ingestion.agenda_pipeline import ingest_huntsville_agendas
+    from app.ingestion.agenda_store import SOURCE_KEY, merge_agenda_artifacts
+    from app.ingestion.artifact_sink import ArtifactError
+    from app.ingestion.connectors.agenda import AgendaLink
+    from app.phase3_store import _read_collection, reset_phase3_state
+
+    for name, value in {
+        "INGESTION_DATA_DIR": str(tmp_path),
+        "DATA_MODE": "live",
+        "PHASE3_STORE_BACKEND": "artifact",
+        "PROCESSED_STORE_BACKEND": "artifact",
+        "ARTIFACT_DURABILITY_REQUIRED": "false",
+        "HOSTED_INGESTION_ENABLED": "false",
+    }.items():
+        monkeypatch.setenv(name, value)
+    get_settings.cache_clear()
+    reset_phase3_state(force_memory=False)
+    try:
+        first = _document("a" * 64)
+        merge_agenda_artifacts(
+            source_documents=[first],
+            staged_records=_records(first),
+            health={"key": SOURCE_KEY, "status": "healthy", "checked_at": "2026-09-26T00:00:00Z"},
+        )
+        names = ("source_documents", "agenda_staged_records", "agenda_document_revisions")
+        before = {name: _read_collection(name) for name in names}
+        fresh = {**_document("b" * 64), "parsed_item_count": 1}
+
+        def parse(**kwargs: Any) -> tuple:
+            if kwargs["url"].endswith("pending.pdf"):
+                raise ArtifactError("artifact_unavailable")
+            return fresh, _records(fresh), []
+
+        monkeypatch.setattr(
+            "app.ingestion.agenda_pipeline._fetch_archive_html",
+            lambda client: ("<html>synthetic archive</html>", "httpx_archive"),
+        )
+        monkeypatch.setattr(
+            "app.ingestion.agenda_pipeline.discover_agenda_links",
+            lambda *a, **k: [
+                AgendaLink(title="Valid", url="https://example.test/valid.pdf"),
+                AgendaLink(title="Pending", url="https://example.test/pending.pdf"),
+            ],
+        )
+        monkeypatch.setattr("app.ingestion.agenda_pipeline._fetch_and_parse_document", parse)
+        monkeypatch.setattr("app.ingestion.agenda_pipeline.iso_now", lambda: "2026-09-27T00:00:00Z")
+        with httpx.Client() as client:
+            health = ingest_huntsville_agendas(data_dir=tmp_path, client=client)
+        assert health["documents_seen"] == 1 and health["status"] == "degraded"
+        assert health["last_attempt_at"] == "2026-09-27T00:00:00Z"
+        assert health["last_success_at"] == "2026-09-26T00:00:00Z"
+        assert _read_collection("agenda_health") == [health]
+        assert {name: _read_collection(name) for name in names} == before
+    finally:
+        reset_phase3_state(force_memory=False)
+        get_settings.cache_clear()
+
+
 def test_same_revision_replay_retains_rejection_and_never_fabricates_location() -> None:
     uow = MemoryUow()
     document = _document("a" * 64)

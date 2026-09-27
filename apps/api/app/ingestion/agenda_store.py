@@ -154,7 +154,18 @@ def _existing_document(uow: Any, incoming: dict[str, Any]) -> tuple[str | None, 
     same_url = [
         doc for doc in uow.list_phase3("source_documents") if doc.get("url") == incoming.get("url")
     ]
-    if same_date or same_url:
+    checksum = incoming.get("sha256")
+    dateless_checksum_match = (
+        incoming.get("document_date") is None
+        and isinstance(checksum, str)
+        and bool(checksum)
+        and any(
+            row.get("sha256") == checksum
+            for collection in ("source_documents", "agenda_document_revisions")
+            for row in uow.list_phase3(collection)
+        )
+    )
+    if same_date or same_url or dateless_checksum_match:
         return None, True
     return None, False
 
@@ -547,6 +558,7 @@ def _refresh_duplicate_suggestions(uow: Any, affected: set[str]) -> None:
     def system_suggestion(row: dict[str, Any]) -> bool:
         return (
             row.get("generated_by") in (None, "agenda_matcher")
+            and row.get("origin") in (None, "system")
             and row.get("id")
             == _stable_id("duplicate", row.get("staged_record_id"), row.get("candidate_public_id"))
             and not any(

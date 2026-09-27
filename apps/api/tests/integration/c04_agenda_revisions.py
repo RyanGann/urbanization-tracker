@@ -20,6 +20,7 @@ from app.ingestion.agenda_pipeline import ingest_huntsville_agendas
 from app.ingestion.agenda_store import merge_agenda_artifacts
 from app.ingestion.artifact_service import ArtifactService
 from app.ingestion.artifact_sink import ArtifactError, BlobIdentity
+from app.ingestion.connectors.agenda import AgendaLink
 from app.models import Phase3CollectionItem
 from app.phase3_store import _stable_id
 from app.transactional_store import CollectionUnitOfWork
@@ -49,7 +50,7 @@ def setup_document(
     text: str,
     pending_text: bool = False,
     url: str = URL,
-    date: str = "2026-04-28",
+    date: str | None = "2026-04-28",
 ) -> tuple[dict, list[dict], tuple]:
     digest = hashlib.sha256(pdf).hexdigest()
     text_bytes = text.encode()
@@ -607,6 +608,111 @@ def run(api_url: str, reviewer_token: str, result: Path) -> None:
                 assert public_health["status"] == "degraded"
                 assert "agenda_no_documents" in public_health["validation_errors"]
                 assert public_health["last_attempt_at"] == empty_health["checked_at"]
+                # Partial durability failure records latest health but activates no content.
+                valid_run = "c04-partial-valid-" + uuid4().hex
+                valid_doc, valid_records, valid_refs = setup_document(
+                    service,
+                    root,
+                    run_id=valid_run,
+                    pdf=b"synthetic partial valid document",
+                    text="1. PARTIAL RIDGE\nLayout (10 lots) Developer: Builder",
+                    url="https://example.test/c04/partial-valid.pdf",
+                    date="2026-06-23",
+                )
+
+                def partial_parse(**kwargs):
+                    if kwargs["url"].endswith("pending.pdf"):
+                        raise ArtifactError("artifact_unavailable")
+                    return valid_doc, valid_records, list(valid_refs)
+
+                with (
+                    patch("app.ingestion.agenda_pipeline.get_settings", return_value=settings),
+                    patch(
+                        "app.ingestion.agenda_pipeline._fetch_archive_html",
+                        return_value=("<html>synthetic mixed archive</html>", "httpx_archive"),
+                    ),
+                    patch(
+                        "app.ingestion.agenda_pipeline.discover_agenda_links",
+                        return_value=[
+                            AgendaLink(title="Valid", url="https://example.test/c04/valid.pdf"),
+                            AgendaLink(title="Pending", url="https://example.test/c04/pending.pdf"),
+                        ],
+                    ),
+                    patch("app.ingestion.agenda_pipeline._fetch_and_parse_document", partial_parse),
+                ):
+                    partial_health = ingest_huntsville_agendas(data_dir=root, client=api)
+                assert partial_health["documents_seen"] == 1
+                assert partial_health["status"] == "degraded"
+                assert "artifact_unavailable" in partial_health["validation_errors"]
+                with SessionLocal() as session:
+                    uow = CollectionUnitOfWork(session)
+                    for name, snapshot in retained.items():
+                        assert uow.list_phase3(name) == snapshot
+                    assert uow.get_phase3("agenda_health", SOURCE) == partial_health
+                    assert partial_health["last_success_at"] == empty_health["last_success_at"]
+                latest_public_health = next(
+                    row
+                    for row in api.get("/api/source-health").json()["sources"]
+                    if row["key"] == SOURCE
+                )
+                assert latest_public_health["last_attempt_at"] == partial_health["checked_at"]
+                assert latest_public_health["status"] == "degraded"
+
+                dateless_run = "c04-dateless-" + uuid4().hex
+                dateless, dateless_records, dateless_refs = setup_document(
+                    service,
+                    root,
+                    run_id=dateless_run,
+                    pdf=b"synthetic dateless historical packet",
+                    text="1. DATELESS RIDGE\nLayout (5 lots) Developer: Builder",
+                    url="https://example.test/c04/dateless.pdf",
+                    date=None,
+                )
+                merge(dateless, dateless_records, dateless_refs, dateless_run, service.sink_id)
+                dateless_candidate = next(
+                    row
+                    for row in api.get("/api/reviewer/staged-records").json()
+                    if row["title"] == "Dateless Ridge"
+                )
+                rejected_dateless = api.post(
+                    f"/api/reviewer/staged-records/{dateless_candidate['id']}/reject",
+                    json={"expected_revision": 1, "notes": "Dateless source remains unverified"},
+                )
+                assert rejected_dateless.status_code == 200
+                dateless_b_run = "c04-dateless-b-" + uuid4().hex
+                dateless_b, _, dateless_b_refs = setup_document(
+                    service,
+                    root,
+                    run_id=dateless_b_run,
+                    pdf=b"synthetic dateless current packet",
+                    text="No candidate item",
+                    url=dateless["url"],
+                    date=None,
+                )
+                merge(dateless_b, [], dateless_b_refs, dateless_b_run, service.sink_id)
+                dateless_before = api.get("/api/source-documents").json()
+                moved_run = "c04-dateless-moved-" + uuid4().hex
+                moved_dateless, moved_records, moved_refs = setup_document(
+                    service,
+                    root,
+                    run_id=moved_run,
+                    pdf=b"synthetic dateless historical packet",
+                    text="1. DATELESS RIDGE\nLayout (5 lots) Developer: Builder",
+                    url="https://example.test/c04/dateless-moved.pdf",
+                    date=None,
+                )
+                merge(moved_dateless, moved_records, moved_refs, moved_run, service.sink_id)
+                assert api.get("/api/source-documents").json() == dateless_before
+                after_dateless = next(
+                    row
+                    for row in api.get("/api/reviewer/staged-records").json()
+                    if row["id"] == dateless_candidate["id"]
+                )
+                assert after_dateless == rejected_dateless.json()
+                assert any(
+                    row["url"] == moved_dateless["url"]
+                    for row in api.get("/api/reviewer/agenda-documents/unresolved").json()
+                )
                 result.write_text(
                     json.dumps(
                         {
@@ -624,6 +730,8 @@ def run(api_url: str, reviewer_token: str, result: Path) -> None:
                             "processed_public_duplicate_detected": True,
                             "resolution_refreshes_system_duplicates_only": True,
                             "empty_discovery_health_persisted_content_retained": True,
+                            "partial_durability_failure_health_only": True,
+                            "dateless_moved_historical_packet_quarantined": True,
                             "first_document_id": first["id"],
                             "first_pdf_sha256": first["sha256"],
                             "second_pdf_sha256": changed["sha256"],

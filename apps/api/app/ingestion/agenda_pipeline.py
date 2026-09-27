@@ -193,7 +193,8 @@ def ingest_huntsville_agendas(
             health["error_count"] = len(health["validation_errors"])
             return persist_agenda_health(health)
         if artifact_pending:
-            return health
+            health["records_created"] = 0
+            return persist_agenda_health(health)
         return merge_agenda_artifacts(
             source_documents=source_documents,
             staged_records=staged_records,
