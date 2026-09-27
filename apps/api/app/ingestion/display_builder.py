@@ -500,6 +500,8 @@ def _validate_checkpoint(
         raise DisplayBuildError("checkpoint_failure_count_mismatch")
     joined = session.execute(text("""
         SELECT r.environmental_feature_id, r.status, r.part_count,
+               r.source_feature_id AS result_source_id,
+               p.source_feature_id AS part_source_id,
                r.simplified_geometry_sha256, r.output_sha256,
                p.part_number, p.geometry_sha256,
                ST_AsEWKB(p.geometry) AS ewkb, ST_SRID(p.geometry) AS srid,
@@ -545,6 +547,7 @@ def _validate_checkpoint(
             continue
         if (
             row["part_number"] != len(part_shas)
+            or row["part_source_id"] != row["result_source_id"]
             or row["srid"] != 3857 or not row["valid"]
             or row["vertices"] > MAX_VERTICES
             or sha256(_bytes(row["ewkb"])) != row["geometry_sha256"]

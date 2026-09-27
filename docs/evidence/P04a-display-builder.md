@@ -17,8 +17,9 @@ batch size, and replayed the validated result. It checked that original
 EPSG:4326 EWKB SHA-256 and exact spatial screening count did not change. A
 hole stayed one hole and a multipolygon stayed two components. The dense
 polygon produced four parts at z17–18; all emitted parts had at most 153
-vertices (limit 256). The selected viewport query used the projected GiST
-index. The part-set SHA-256 after replay was
+vertices (limit 256). The tiny fixture's default viewport plan was recorded;
+a separately forced diagnostic proved the projected GiST index is usable,
+without claiming the default planner selected it. The part-set SHA-256 after replay was
 `23af6abfd2951fe0779420cb2ffe7c41cd2de03d5dd4f75231ea1d065d2265cc`.
 
 The same run translated a stored part and updated its row digest; replay

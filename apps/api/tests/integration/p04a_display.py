@@ -8,6 +8,7 @@ import json
 import subprocess
 import sys
 import time
+from html import escape
 from pathlib import Path
 from unittest.mock import patch
 
@@ -146,6 +147,97 @@ def _build_id(layer_id: int) -> int:
         return int(result)
 
 
+def _visual_samples(build_id: int, output: Path) -> None:
+    """Retain fill-only geometry diagnostics; no tile service or public writes."""
+    with SessionLocal() as session:
+        rows = session.execute(text("""
+            SELECT band_key, source_feature_id, ST_AsGeoJSON(geometry, 9)
+            FROM environmental_display_parts WHERE build_id = :id
+            ORDER BY band_key, source_feature_id, part_number
+        """), {"id": build_id}).all()
+    shapes = [(band, source, json.loads(geometry)["coordinates"])
+              for band, source, geometry in rows]
+    points = [point for _, _, rings in shapes for ring in rings for point in ring]
+    west, east = min(p[0] for p in points), max(p[0] for p in points)
+    south, north = min(p[1] for p in points), max(p[1] for p in points)
+    scale = min(920 / (east - west), 230 / (north - south))
+    colors = dict(hole="#368d9a", multipart="#986cc2", channel="#d47934",
+                  adjacent="#82a951", dense="#486cbd")
+    svg = ['<svg xmlns="http://www.w3.org/2000/svg" width="1000" height="1580" '
+           'viewBox="0 0 1000 1580">', '<rect width="1000" height="1580" fill="#f5f6f8"/>',
+           '<g font-family="Arial,sans-serif" fill="#1b2634">',
+           '<text x="30" y="30" font-size="20">P04a shadow display: fill-only samples</text>',
+           '<text x="30" y="54" font-size="13">Projected display units; generalized geometry '
+           'is not property-decision precision. No per-part outlines.</text>']
+    for index, band in enumerate(display_builder.BANDS):
+        top = 80 + index * 290
+        svg.append(f'<text x="30" y="{top}" font-size="16">{escape(band.key)}: '
+                   f'{band.tolerance_m} projected metre tolerance</text>')
+        for key, source, rings in shapes:
+            if key != band.key:
+                continue
+            path = " ".join(
+                "M " + " L ".join(
+                    f"{40 + (x - west) * scale:.3f},{top + 25 + (north - y) * scale:.3f}"
+                    for x, y in ring
+                ) + " Z" for ring in rings
+            )
+            svg.append(f'<path d="{path}" fill="{colors[source]}" fill-rule="evenodd"/>')
+    for index, (source, color) in enumerate(colors.items()):
+        x = 30 + index * 185
+        svg.append(f'<rect x="{x}" y="1530" width="14" height="14" fill="{color}"/>')
+        svg.append(f'<text x="{x + 21}" y="1542" font-size="13">{source}</text>')
+    svg.append('<text x="30" y="1570" font-size="12">Hole rings use evenodd fill; '
+               'topology preservation is per source feature '
+               'and does not promise shared edges.</text>')
+    svg.append('</g></svg>')
+    (output / "fill-only-bands.svg").write_text("\n".join(svg) + "\n")
+
+
+def _selective_plan(build_id: int) -> object:
+    """Unvalidated background rows isolate default-planner spatial selectivity."""
+    background = "p04a_plan_background"
+    background_version = "e" * 64
+    layer_id = _seed_layer(background, background_version, _fixture()[:1])
+    with SessionLocal() as session:
+        layer = display_builder._canonical_layer(session, background, background_version)
+        snapshot = display_builder._source_snapshot(session, layer)
+        version = display_builder.display_version(background_version, snapshot)
+        build, _ = display_builder._ensure_build(session, layer, version, snapshot)
+        background_build_id = build.id
+        feature_id = session.scalar(text("""
+            SELECT id FROM environmental_features WHERE environmental_layer_id = :id
+        """), {"id": layer_id})
+        session.execute(text("""
+            INSERT INTO environmental_display_parts
+                (build_id, environmental_feature_id, band_key, source_feature_id,
+                 part_number, geometry_sha256, geometry)
+            SELECT :background_build_id, :feature_id, 'z17_18', 'hole', g,
+                   :placeholder, ST_Translate(p.geometry,
+                       (g % 100) * 100000 - 5000000, (g / 100) * 100000 - 3000000)
+            FROM generate_series(1, 6000) AS g
+            CROSS JOIN LATERAL (
+                SELECT geometry FROM environmental_display_parts
+                WHERE build_id = :template AND band_key = 'z17_18'
+                ORDER BY id LIMIT 1
+            ) AS p
+        """), {"background_build_id": background_build_id, "feature_id": feature_id,
+               "placeholder": "0" * 64, "template": build_id})
+        # These intentionally synthetic plan rows stay an incomplete shadow
+        # fixture, never a validated derivative and never an activation input.
+        session.execute(text("ANALYZE environmental_display_parts"))
+        plan = session.scalar(text("""
+            EXPLAIN (ANALYZE, BUFFERS, FORMAT JSON)
+            SELECT id FROM environmental_display_parts
+            WHERE build_id = :id AND band_key = 'z17_18'
+              AND geometry && ST_MakeEnvelope(-96e5, 40e5, -95e5, 41e5, 3857)
+        """), {"id": background_build_id})
+        assert "ix_environmental_display_parts_geometry" in json.dumps(plan)
+        assert build.status == "building"
+        session.commit()
+        return plan
+
+
 def _kill_after_first_checkpoint(output: Path) -> None:
     sentinel = output / "checkpoint-ready"
     code = """
@@ -239,6 +331,27 @@ def run(output: Path) -> dict:
                 WHERE id = :id
             """), {"id": part_id, "ewkb": bytes(original_ewkb), "sha": original_part_sha})
     assert build_environmental_display(LAYER, VERSION)["replayed"]
+    _visual_samples(build_id, output)
+    with SessionLocal.begin() as session:
+        part_source_id = session.scalar(text("""
+            UPDATE environmental_display_parts SET source_feature_id = 'wrong-source'
+            WHERE id = :id RETURNING source_feature_id
+        """), {"id": part_id})
+        assert part_source_id == "wrong-source"
+    try:
+        try:
+            build_environmental_display(LAYER, VERSION)
+        except DisplayBuildError as exc:
+            assert str(exc) == "checkpoint_part_digest_or_geometry_mismatch"
+        else:
+            raise AssertionError("changed part lineage passed replay validation")
+    finally:
+        with SessionLocal.begin() as session:
+            session.execute(text("""
+                UPDATE environmental_display_parts p SET source_feature_id = f.source_feature_id
+                FROM environmental_features f
+                WHERE p.id = :id AND f.id = p.environmental_feature_id
+            """), {"id": part_id})
     assert _canonical_hash(layer_id) == original_hash
     assert _screening(layer_id) == original_screening
     with SessionLocal() as session:
@@ -263,14 +376,14 @@ def run(output: Path) -> dict:
         assert hole == (1, 1) and multipart == (2, 2)
         assert dense_parts > 1 and maximum_vertices <= 256
         plan_query = """
-            EXPLAIN (FORMAT JSON) SELECT id FROM environmental_display_parts
+            EXPLAIN (ANALYZE, BUFFERS, FORMAT JSON) SELECT id FROM environmental_display_parts
             WHERE build_id = :id AND band_key = 'z17_18'
               AND geometry && ST_MakeEnvelope(-96e5, 40e5, -95e5, 41e5, 3857)
         """
         default_plan = session.execute(text(plan_query), {"id": build_id}).scalar()
         session.execute(text("SET LOCAL enable_seqscan = off"))
         forced_plan = session.execute(text("""
-            EXPLAIN (FORMAT JSON) SELECT id FROM environmental_display_parts
+            EXPLAIN (ANALYZE, BUFFERS, FORMAT JSON) SELECT id FROM environmental_display_parts
             WHERE geometry && ST_MakeEnvelope(-96e5, 40e5, -95e5, 41e5, 3857)
         """)).scalar()
         assert "ix_environmental_display_parts_geometry" in json.dumps(forced_plan)
@@ -378,6 +491,7 @@ def run(output: Path) -> dict:
         band["invalid"] == 1 for band in bad["bands"]
     )
     assert _canonical_hash(bad_id) == bad_hash
+    selective_plan = _selective_plan(build_id)
     # Simulate a database copy that allocates feature IDs in the reverse order.
     # Rename the first fixture layer only after all of its replay checks; its
     # retained display bytes are untouched and no production writer is involved.
@@ -406,6 +520,9 @@ def run(output: Path) -> dict:
         "hole_counts": list(hole), "multipart_components": list(multipart),
         "dense_parts": dense_parts, "maximum_part_vertices": maximum_vertices,
         "default_plan": default_plan, "forced_plan": forced_plan,
+        "selective_default_plan": selective_plan,
+        "plan_background_parts": 6000,
+        "visual_sample": "fill-only-bands.svg",
         "savepoint_statuses": statuses,
         "partial_import_display_status": partial["display_status"],
         "resumed_display_version": resumed["display_version"],
