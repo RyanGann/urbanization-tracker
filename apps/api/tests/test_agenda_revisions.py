@@ -18,6 +18,16 @@ from app.ingestion.agenda_store import (
 )
 
 
+@pytest.fixture(autouse=True)
+def processed_memory_backend(monkeypatch: Any) -> Any:
+    from app.config import get_settings
+
+    monkeypatch.setenv("PROCESSED_STORE_BACKEND", "postgres")
+    get_settings.cache_clear()
+    yield
+    get_settings.cache_clear()
+
+
 class MemoryUow:
     def __init__(self) -> None:
         self.rows: dict[str, dict[str, dict[str, Any]]] = defaultdict(dict)
@@ -43,8 +53,11 @@ class MemoryUow:
         return copy.deepcopy(value) if value is not None else None
 
 
+@pytest.mark.parametrize("backend", ["postgres", "artifact"])
 @pytest.mark.parametrize("ownership", ["processed", "changed", "ambiguous"])
-def test_approval_preserves_processed_public_ownership(ownership: str, monkeypatch: Any) -> None:
+def test_approval_preserves_processed_public_ownership(
+    ownership: str, backend: str, monkeypatch: Any, tmp_path: Any
+) -> None:
     from contextlib import contextmanager
 
     from app.ingestion.agenda_store import (
@@ -80,6 +93,14 @@ def test_approval_preserves_processed_public_ownership(ownership: str, monkeypat
         candidate["publish_record"]["title"] = "Changed Ridge"
     uow.upsert_phase3("agenda_staged_records", "candidate", candidate)
     uow.rows["processed:development_records"]["existing-public"] = copy.deepcopy(public)
+    if backend == "artifact":
+        from app.config import get_settings
+        from app.processed_store import write_processed_list
+
+        monkeypatch.setenv("PROCESSED_STORE_BACKEND", "artifact")
+        monkeypatch.setenv("INGESTION_DATA_DIR", str(tmp_path))
+        get_settings.cache_clear()
+        write_processed_list("development_records", [public])
     if ownership == "ambiguous":
         uow.upsert_phase3("development_records", "existing-public", public)
     before = copy.deepcopy(uow.rows)
@@ -151,7 +172,10 @@ def _records(document: dict[str, Any], *, status: str = "Layout") -> list[dict[s
     )
 
 
-def test_duplicate_refresh_reads_processed_public_rows_and_preserves_audited_rows() -> None:
+@pytest.mark.parametrize("backend", ["postgres", "artifact"])
+def test_duplicate_refresh_reads_processed_public_rows_and_preserves_audited_rows(
+    backend: str, monkeypatch: Any, tmp_path: Any
+) -> None:
     from app.ingestion.agenda_store import _refresh_duplicate_suggestions
     from app.phase3_store import _stable_id
 
@@ -161,6 +185,14 @@ def test_duplicate_refresh_reads_processed_public_rows_and_preserves_audited_row
         "title": "Sample Ridge",
         "status": "layout",
     }
+    if backend == "artifact":
+        from app.config import get_settings
+        from app.processed_store import write_processed_list
+
+        monkeypatch.setenv("PROCESSED_STORE_BACKEND", "artifact")
+        monkeypatch.setenv("INGESTION_DATA_DIR", str(tmp_path))
+        get_settings.cache_clear()
+        write_processed_list("development_records", uow.list_processed("development_records"))
     uow.upsert_phase3(
         "agenda_staged_records",
         "candidate",
@@ -197,6 +229,32 @@ def test_duplicate_refresh_reads_processed_public_rows_and_preserves_audited_row
     assert uow.get_phase3("duplicate_candidates", suggestion_id) is None
     assert uow.get_phase3("duplicate_candidates", audited_id) == audited
     assert uow.get_phase3("duplicate_candidates", "unrelated") == unrelated
+
+
+@pytest.mark.parametrize("unavailable", ["missing", "corrupt"])
+def test_mixed_processed_artifact_refuses_unavailable_without_mutation(
+    unavailable: str, monkeypatch: Any, tmp_path: Any
+) -> None:
+    from app.config import get_settings
+    from app.data_availability import DataUnavailableError
+    from app.ingestion.agenda_store import _processed_public_record, _refresh_duplicate_suggestions
+    from app.processed_store import write_processed_list
+
+    monkeypatch.setenv("PROCESSED_STORE_BACKEND", "artifact")
+    monkeypatch.setenv("INGESTION_DATA_DIR", str(tmp_path))
+    get_settings.cache_clear()
+    if unavailable == "corrupt":
+        write_processed_list("development_records", [])
+        path = next(tmp_path.rglob("development_records.json"))
+        path.write_text("broken JSON", encoding="utf-8")
+    uow = MemoryUow()
+    before = copy.deepcopy(uow.rows)
+    with pytest.raises(DataUnavailableError):
+        _processed_public_record(uow, "existing-public")
+    with pytest.raises(DataUnavailableError):
+        _refresh_duplicate_suggestions(uow, {"candidate"})
+    assert all(uow.rows[key] == value for key, value in before.items())
+    assert not uow.rows["duplicate_candidates"]
 
 
 def test_dateless_moved_historical_checksum_requires_alias_without_state_changes() -> None:
@@ -244,6 +302,9 @@ def test_partial_pending_artifact_persists_health_without_activating_content(
         monkeypatch.setenv(name, value)
     get_settings.cache_clear()
     reset_phase3_state(force_memory=False)
+    from app.processed_store import write_processed_list
+
+    write_processed_list("development_records", [])
     try:
         first = _document("a" * 64)
         merge_agenda_artifacts(
@@ -654,11 +715,15 @@ def test_artifact_decision_round_trip_and_failed_validation(
 
     monkeypatch.setenv("INGESTION_DATA_DIR", str(tmp_path))
     monkeypatch.setenv("PHASE3_STORE_BACKEND", "artifact")
+    monkeypatch.setenv("PROCESSED_STORE_BACKEND", "artifact")
     monkeypatch.setenv("DATA_MODE", "live")
     monkeypatch.setenv("ARTIFACT_DURABILITY_REQUIRED", "false")
     monkeypatch.setenv("HOSTED_INGESTION_ENABLED", "false")
     get_settings.cache_clear()
     reset_phase3_state(force_memory=False)
+    from app.processed_store import write_processed_list
+
+    write_processed_list("development_records", [])
     try:
         old = _document("a" * 64)
         merge_agenda_artifacts(

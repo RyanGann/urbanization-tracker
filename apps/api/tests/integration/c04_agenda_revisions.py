@@ -15,15 +15,23 @@ import httpx
 from sqlalchemy import func, select
 
 from app.config import get_settings
+from app.data_availability import DataUnavailableError
 from app.db import SessionLocal
 from app.ingestion.agenda import parse_agenda_items
 from app.ingestion.agenda_pipeline import ingest_huntsville_agendas
-from app.ingestion.agenda_store import merge_agenda_artifacts
+from app.ingestion.agenda_store import (
+    AgendaIdentityConflict,
+    AgendaPublicationPending,
+    _refresh_duplicate_suggestions,
+    merge_agenda_artifacts,
+    review_agenda_candidate,
+)
 from app.ingestion.artifact_service import ArtifactService
 from app.ingestion.artifact_sink import ArtifactError, BlobIdentity
 from app.ingestion.connectors.agenda import AgendaLink
 from app.models import Phase3CollectionItem
 from app.phase3_store import _stable_id
+from app.processed_store import write_processed_list
 from app.transactional_store import CollectionUnitOfWork
 
 SOURCE = "huntsville_planning_agendas"
@@ -771,6 +779,83 @@ def run(api_url: str, reviewer_token: str, result: Path) -> None:
                     )
                     assert count("record_versions") == versions_before
                     assert count("change_log") == changes_before
+                mixed_settings = settings.model_copy(update={"processed_store_backend": "artifact"})
+                with (
+                    patch("app.ingestion.agenda_store.get_settings", return_value=mixed_settings),
+                    patch("app.processed_store.get_settings", return_value=mixed_settings),
+                ):
+                    for ownership in ("identical", "changed", "ambiguous", "unavailable"):
+                        owned_id = f"c04-mixed-{ownership}"
+                        staged_id = f"stage-agenda-{owned_id}"
+                        snapshot = copy.deepcopy(persisted_public)
+                        snapshot["public_id"] = owned_id
+                        write_processed_list("development_records", [snapshot])
+                        with SessionLocal.begin() as session:
+                            with CollectionUnitOfWork(session).canonical_mutation() as uow:
+                                fixture = copy.deepcopy(
+                                    uow.get_phase3("agenda_staged_records", candidate_id)
+                                )
+                                assert fixture is not None
+                                fixture.update(
+                                    id=staged_id, state_revision=1, review_status="pending"
+                                )
+                                fixture["publish_record"] = copy.deepcopy(snapshot)
+                                for key in (
+                                    "geometry",
+                                    "centroid",
+                                    "geometry_source",
+                                    "geometry_confidence",
+                                ):
+                                    fixture[key] = copy.deepcopy(snapshot[key])
+                                if ownership == "changed":
+                                    fixture["publish_record"]["title"] = "Changed mixed content"
+                                if ownership == "ambiguous":
+                                    uow.upsert_phase3("development_records", owned_id, snapshot)
+                                uow.upsert_phase3("agenda_staged_records", staged_id, fixture)
+                                _refresh_duplicate_suggestions(uow, {staged_id})
+                                assert any(
+                                    row["candidate_public_id"] == owned_id
+                                    for row in uow.list_phase3("duplicate_candidates")
+                                    if row["staged_record_id"] == staged_id
+                                )
+                        events_before = count("agenda_decision_events")
+                        if ownership == "unavailable":
+                            artifact = next(root.rglob("development_records.json"))
+                            artifact.write_text("corrupt synthetic JSON", encoding="utf-8")
+                        expected_error = {
+                            "changed": AgendaPublicationPending,
+                            "ambiguous": AgendaIdentityConflict,
+                            "unavailable": DataUnavailableError,
+                        }.get(ownership)
+                        try:
+                            reviewed = review_agenda_candidate(
+                                staged_id,
+                                action="approved",
+                                notes="Mixed ownership fixture",
+                                expected_revision=1,
+                            )
+                        except (
+                            AgendaPublicationPending,
+                            AgendaIdentityConflict,
+                            DataUnavailableError,
+                        ) as exc:
+                            assert expected_error is not None and isinstance(exc, expected_error)
+                        else:
+                            assert expected_error is None and reviewed is not None
+                            assert reviewed[1] == snapshot
+                        with SessionLocal() as session:
+                            uow = CollectionUnitOfWork(session)
+                            assert uow.get_phase3("development_records", owned_id) == (
+                                snapshot if ownership == "ambiguous" else None
+                            )
+                            retained = uow.get_phase3("agenda_staged_records", staged_id)
+                            assert retained is not None
+                            assert retained["state_revision"] == (
+                                2 if ownership == "identical" else 1
+                            )
+                        assert count("agenda_decision_events") == events_before + (
+                            ownership == "identical"
+                        )
                 result.write_text(
                     json.dumps(
                         {
@@ -793,6 +878,9 @@ def run(api_url: str, reviewer_token: str, result: Path) -> None:
                             "processed_public_ownership_retained_on_identical_approval": True,
                             "changed_processed_publication_defers_to_c06": True,
                             "ambiguous_public_store_ownership_refused": True,
+                            "mixed_artifact_public_ownership_and_duplicates_preserved": True,
+                            "mixed_changed_or_ambiguous_publication_refused": True,
+                            "mixed_unavailable_processed_artifact_refused_without_decision": True,
                             "first_document_id": first["id"],
                             "first_pdf_sha256": first["sha256"],
                             "second_pdf_sha256": changed["sha256"],

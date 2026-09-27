@@ -58,9 +58,9 @@ class ArtifactAgendaUnitOfWork:
         self.dirty.add(name)
 
     def list_processed(self, name: str) -> list[dict[str, Any]]:
-        from app.processed_store import read_processed_list
+        from app.processed_store import read_processed_list_result
 
-        return read_processed_list(name) or []
+        return read_processed_list_result(name).require_ready(collection=name)
 
     def get_processed(self, name: str, key: str) -> dict[str, Any] | None:
         return next(
@@ -100,6 +100,26 @@ def _agenda_mutation() -> Iterator[Any]:
 
 class AgendaIdentityConflict(RuntimeError):
     """An ambiguous observation needs an audited operator decision."""
+
+
+def _processed_public_records(uow: Any) -> list[dict[str, Any]]:
+    """Read the configured source under the operational mutation boundary."""
+    if get_settings().processed_store_backend == "postgres":
+        return cast(list[dict[str, Any]], uow.list_processed("development_records"))
+    from app.processed_store import read_processed_list_result
+
+    return read_processed_list_result("development_records").require_ready(
+        collection="development_records"
+    )
+
+
+def _processed_public_record(uow: Any, public_id: str) -> dict[str, Any] | None:
+    if get_settings().processed_store_backend == "postgres":
+        return cast(dict[str, Any] | None, uow.get_processed("development_records", public_id))
+    return next(
+        (row for row in _processed_public_records(uow) if str(row.get("public_id")) == public_id),
+        None,
+    )
 
 
 def _digest(value: Any) -> str:
@@ -589,9 +609,7 @@ def _refresh_duplicate_suggestions(uow: Any, affected: set[str]) -> None:
     for row in existing:
         if str(row.get("staged_record_id")) in affected and system_suggestion(row):
             uow.delete_phase3("duplicate_candidates", str(row["id"]))
-    published_by_id = {
-        str(row["public_id"]): row for row in uow.list_processed("development_records")
-    }
+    published_by_id = {str(row["public_id"]): row for row in _processed_public_records(uow)}
     published_by_id.update(
         {str(row["public_id"]): row for row in uow.list_phase3("development_records")}
     )
@@ -861,7 +879,7 @@ def review_agenda_candidate(
             published["date_last_checked"] = datetime.now(UTC).date().isoformat()
             public_id = str(published["public_id"])
             operational_public = uow.get_phase3("development_records", public_id)
-            processed_public = uow.get_processed("development_records", public_id)
+            processed_public = _processed_public_record(uow, public_id)
             if operational_public is not None and processed_public is not None:
                 raise AgendaIdentityConflict("public record has ambiguous store ownership")
             existing_public = operational_public or processed_public
