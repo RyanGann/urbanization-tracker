@@ -1,6 +1,35 @@
 # P04a shadow display builder — real PostGIS evidence
 
-## Final review-fix proof
+## Final authenticated-topology proof
+
+Clean code head `06a0eb2c47910159390193b86ed444932fe42b9d` passed run
+`2026-09-27T07-39-50-585Z-d4de6233` with `working_tree_dirty=false`.
+The v4 recipe authenticates each result's source/display hole and component
+counts, status, collapse flag and error code in its output digest, including
+failed outcomes. Failed topology fields remain zero placeholders rather than
+measured topology evidence. Successful replay independently recomputes source
+counts and counts from a union of the saved display parts. Before union work,
+replay verifies each part and caps each feature at 8,192 parts and 64 MiB.
+All four metadata-only count edits were refused; restoring each field permitted
+replay. This extends the earlier geometry, source lineage and checkpoint checks.
+
+Final display version is
+`de6a61f7c2f058d1146a6da77cb9d5c7a443016f09d2800ac329d938a1edc1d9`;
+configuration SHA-256 is
+`574da6e8c44af4c91897999fbcf364fdb16679377ed277215aa580a083dd94a7`.
+Result SHA-256 is
+`47f7aa440e244489fb5ddc558160ad696c9cfbb6211c46001c469f18b64123ec`.
+The exact backend version is unchanged from the proof below. Actual statement
+timeout, SQLSTATE 58030 rollback, unprocessed geometry mutation and reversed
+insertion-order identity tests all passed again. The source-based geometry part
+set, original EWKB and SVG bytes remain unchanged; accepted synthetic visual
+QA still applies. This fixture provides correctness evidence, not a P09 replay
+performance budget measurement. Ruff, mypy and all 331 API tests passed.
+Exact project `urbanization_t01_059b15b22d7a` was removed; independent label
+queries found zero containers and volumes. Artifacts remain under
+`tmp/agents/p04a/tmp/integration/2026-09-27T07-39-50-585Z-d4de6233/`.
+
+## Earlier geometry/runtime review-fix proof
 
 Clean code head `b6a2a08dff731c73f9b1a0a6ca17ac04875189d7` passed run
 `2026-09-27T07-29-17-065Z-370e8377` with `working_tree_dirty=false`.
