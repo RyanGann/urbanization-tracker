@@ -65,3 +65,12 @@ Validation for this evidence-only change: `node scripts/validate-readiness-plan.
 and `git diff --check`. Existing synthetic real API/PostGIS evidence remains in
 [D01-scoped-ingestion.md](D01-scoped-ingestion.md); no new real-stack or unit-test
 claims are made here. No schema, migration, or runtime behavior changed.
+
+CI run `36300298851` reproduced a pre-existing U00 browser selector race at
+`apps/web/e2e/u00-filters.live.spec.ts:37`: both the asynchronous environmental
+catalog loading message and the empty development list had `role=status`.
+The generic locator failed strict mode although the intended empty-list text
+was present. This PR filters the status locator by that exact expected text;
+it preserves the assertion and changes no production behavior. The fresh CI
+run checks the affected real U00 scenario; a local stack was not started because
+O01 owned the exclusive Docker integration slot.

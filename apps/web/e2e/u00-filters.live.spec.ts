@@ -34,7 +34,9 @@ test("U00 filters keep real list, map query, and selection state aligned", async
   for (const type of ["Subdivisions", "Building permits", "Public submissions"]) {
     await page.getByRole("checkbox", { name: type, exact: true }).uncheck();
   }
-  await expect(page.getByRole("status")).toContainText(
+  await expect(page.getByRole("status").filter({
+    hasText: "No development records are available for these filters."
+  })).toContainText(
     "No development records are available for these filters."
   );
   await page.getByRole("button", { name: "Reset filters" }).click();
@@ -65,7 +67,9 @@ test("U00 filters keep real list, map query, and selection state aligned", async
   for (const status of statuses) {
     await page.getByRole("checkbox", { name: status, exact: true }).uncheck();
   }
-  await expect(page.getByRole("status")).toContainText(
+  await expect(page.getByRole("status").filter({
+    hasText: "No development records are available for these filters."
+  })).toContainText(
     "No development records are available for these filters."
   );
 });
