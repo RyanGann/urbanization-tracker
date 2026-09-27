@@ -358,6 +358,31 @@ def run(output: Path) -> dict:
     replay = build_environmental_display(LAYER, VERSION, batch_size=7)
     assert replay["replayed"] and replay["display_version"] == first["display_version"]
     assert _part_hash(build_id) == first_part_hash
+    with SessionLocal() as session:
+        topology_result_id = session.scalar(text("""
+            SELECT id FROM environmental_display_feature_results
+            WHERE build_id = :id AND band_key = 'z08_10' AND source_feature_id = 'hole'
+        """), {"id": build_id})
+    for field in ("source_holes", "display_holes", "source_components", "display_components"):
+        with SessionLocal.begin() as session:
+            session.execute(text(f"""
+                UPDATE environmental_display_feature_results SET {field} = {field} + 1
+                WHERE id = :id
+            """), {"id": topology_result_id})
+        try:
+            try:
+                build_environmental_display(LAYER, VERSION)
+            except DisplayBuildError as exc:
+                assert str(exc) == "checkpoint_output_digest_mismatch"
+            else:
+                raise AssertionError("topology metadata tamper passed replay")
+        finally:
+            with SessionLocal.begin() as session:
+                session.execute(text(f"""
+                    UPDATE environmental_display_feature_results SET {field} = {field} - 1
+                    WHERE id = :id
+                """), {"id": topology_result_id})
+    assert build_environmental_display(LAYER, VERSION)["replayed"]
     # A coherent edit to geometry and its row SHA must still be detected by
     # the independently stored per-feature output digest on replay.
     with SessionLocal.begin() as session:
@@ -656,6 +681,7 @@ def run(output: Path) -> dict:
         "enlarged_canonical_replay_refused": True,
         "statement_timeout_preserves_committed_checkpoint": True,
         "system_failure_preserves_committed_checkpoint": True,
+        "topology_metadata_tamper_refused": True,
         "unprocessed_geometry_mutation_changes_identity": True,
         "postgis_execution_version": first["postgis_execution_version"],
         "bands": first["bands"],

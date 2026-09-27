@@ -7,7 +7,7 @@ import json
 from dataclasses import dataclass
 from typing import Any
 
-ALGORITHM_VERSION = "p04a-transform-simplify-subdivide-validate-v3"
+ALGORITHM_VERSION = "p04a-transform-simplify-subdivide-validate-v4"
 MAX_VERTICES = 256
 MAX_INPUT_BYTES = 32 * 1024 * 1024
 MAX_INPUT_VERTICES = 1_000_000
@@ -66,7 +66,7 @@ def recipe(backend_version: str) -> dict[str, Any]:
              "tolerance_projected_m": band.tolerance_m}
             for band in BANDS
         ],
-        "validation": "per_feature_topology_holes_components_finite_extent_v1",
+        "validation": "per_feature_authenticated_topology_reconstructed_union_v2",
         "band_checksum": "source_id_c_order_output_sha256_v1",
     }
 

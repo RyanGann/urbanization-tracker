@@ -1,7 +1,7 @@
 import pytest
 from sqlalchemy.exc import DBAPIError
 
-from app.ingestion.display_builder import _retryable_database_error
+from app.ingestion.display_builder import _output_digest, _retryable_database_error
 
 
 class DriverError(RuntimeError):
@@ -38,3 +38,19 @@ def test_legacy_driver_pgcode_is_recognized() -> None:
 
 def test_application_error_is_not_a_retryable_database_failure() -> None:
     assert not _retryable_database_error(RuntimeError("application failure"))
+
+
+@pytest.mark.parametrize("field,value", [
+    ("source_holes", 2), ("display_holes", 2), ("source_components", 2),
+    ("display_components", 2), ("status", "collapsed"), ("collapsed", True),
+])
+def test_output_digest_authenticates_topology_and_status(field: str, value: object) -> None:
+    result = {
+        "status": "built", "collapsed": False, "error_code": None,
+        "source_holes": 1, "display_holes": 1,
+        "source_components": 1, "display_components": 1,
+        "simplified_geometry_sha256": "a" * 64,
+    }
+    assert _output_digest(result, ["b" * 64]) != _output_digest(
+        {**result, field: value}, ["b" * 64],
+    )

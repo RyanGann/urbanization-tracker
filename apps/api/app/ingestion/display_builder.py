@@ -67,6 +67,20 @@ def _next_checksum(prior: str | None, output_sha: str) -> str:
     return sha256(((prior or "") + output_sha).encode())
 
 
+def _output_digest(
+    result: EnvironmentalDisplayFeatureResult | dict[str, Any], part_shas: list[str],
+) -> str:
+    fields = (
+        "status", "collapsed", "error_code", "source_holes", "display_holes",
+        "source_components", "display_components", "simplified_geometry_sha256",
+    )
+    identity = {
+        key: result[key] if isinstance(result, dict) else getattr(result, key)
+        for key in fields
+    }
+    return sha256(canonical_bytes({"result": identity, "parts": part_shas}))
+
+
 def _report(
     build: EnvironmentalDisplayBuild, bands: list[EnvironmentalDisplayBand],
     layer: EnvironmentalLayer,
@@ -323,7 +337,7 @@ def _failure_result(
     build: EnvironmentalDisplayBuild, band: DisplayBand,
     feature: dict[str, Any], error_code: str,
 ) -> EnvironmentalDisplayFeatureResult:
-    return EnvironmentalDisplayFeatureResult(
+    result = EnvironmentalDisplayFeatureResult(
         build_id=build.id, environmental_feature_id=feature["id"],
         band_key=band.key, source_feature_id=str(feature["source_feature_id"]),
         input_fingerprint=str(feature["import_fingerprint"] or EMPTY_SHA),
@@ -338,6 +352,8 @@ def _failure_result(
         part_count=0, source_holes=0, display_holes=0,
         source_components=0, display_components=0, collapsed=False,
     )
+    result.output_sha256 = _output_digest(result, [])
+    return result
 
 
 def _build_feature(
@@ -431,22 +447,20 @@ def _build_feature(
     part_bytes.sort()
     part_shas = [sha256(value) for value in part_bytes]
     simplified_sha = sha256(simplified_ewkb)
-    output_sha = sha256(canonical_bytes({
-        "simplified": simplified_sha, "parts": part_shas,
-    }))
     result = EnvironmentalDisplayFeatureResult(
         build_id=build.id, environmental_feature_id=feature["id"],
         band_key=band.key, source_feature_id=str(feature["source_feature_id"]),
         input_fingerprint=str(feature["import_fingerprint"]),
         input_geometry_sha256=sha256(input_ewkb),
         simplified_geometry_sha256=simplified_sha,
-        output_sha256=output_sha,
+        output_sha256=EMPTY_SHA,
         status="collapsed" if simplified["empty"] else "built",
         error_code=None,
         part_count=len(part_bytes), source_holes=source_holes,
         display_holes=display_holes, source_components=source_components,
         display_components=display_components, collapsed=bool(simplified["empty"]),
     )
+    result.output_sha256 = _output_digest(result, part_shas)
     return result, part_bytes
 
 
@@ -539,6 +553,8 @@ def _validate_checkpoint(
         raise DisplayBuildError("checkpoint_failure_count_mismatch")
     joined = session.execute(text("""
         SELECT r.environmental_feature_id, r.status, r.part_count,
+               r.collapsed, r.error_code, r.source_holes, r.display_holes,
+               r.source_components, r.display_components,
                r.source_feature_id AS result_source_id,
                p.source_feature_id AS part_source_id,
                r.simplified_geometry_sha256, r.output_sha256,
@@ -557,6 +573,7 @@ def _validate_checkpoint(
     total_parts = 0
     current: dict[str, Any] | None = None
     part_shas: list[str] = []
+    part_byte_count = 0
 
     def finish_feature() -> None:
         if current is None:
@@ -566,13 +583,41 @@ def _validate_checkpoint(
         if current["status"] == "failed":
             if (
                 current["simplified_geometry_sha256"] != EMPTY_SHA
-                or current["output_sha256"] != EMPTY_SHA
+                or current["collapsed"] or not current["error_code"]
+                or any(current[key] != 0 for key in (
+                    "source_holes", "display_holes", "source_components", "display_components",
+                ))
             ):
                 raise DisplayBuildError("checkpoint_failed_result_mismatch")
-        elif sha256(canonical_bytes({
-            "simplified": current["simplified_geometry_sha256"], "parts": part_shas,
-        })) != current["output_sha256"]:
+        if _output_digest(current, part_shas) != current["output_sha256"]:
             raise DisplayBuildError("checkpoint_output_digest_mismatch")
+        if current["status"] != "failed":
+            if current["status"] not in {"built", "collapsed"} or (
+                current["collapsed"] != (current["status"] == "collapsed")
+                or current["error_code"] is not None
+                or current["collapsed"] != (not part_shas)
+            ):
+                raise DisplayBuildError("checkpoint_result_status_mismatch")
+            topology = session.execute(text("""
+                WITH output AS (
+                    SELECT ST_UnaryUnion(ST_Collect(geometry)) AS geometry
+                    FROM environmental_display_parts
+                    WHERE build_id = :build_id AND band_key = :band_key
+                      AND environmental_feature_id = :feature_id
+                )
+                SELECT ST_NumGeometries(f.geometry) AS source_components,
+                       (SELECT coalesce(sum(ST_NumInteriorRings(d.geom)), 0)
+                        FROM ST_Dump(f.geometry) d) AS source_holes,
+                       coalesce(ST_NumGeometries(o.geometry), 0) AS display_components,
+                       (SELECT coalesce(sum(ST_NumInteriorRings(d.geom)), 0)
+                        FROM ST_Dump(o.geometry) d) AS display_holes
+                FROM environmental_features f CROSS JOIN output o WHERE f.id = :feature_id
+            """), {"build_id": build.id, "band_key": band.band_key,
+                   "feature_id": current["environmental_feature_id"]}).mappings().one()
+            if any(current[key] != topology[key] for key in (
+                "source_holes", "display_holes", "source_components", "display_components",
+            )):
+                raise DisplayBuildError("checkpoint_topology_mismatch")
 
     for row in joined:
         if (
@@ -582,6 +627,7 @@ def _validate_checkpoint(
             finish_feature()
             current = dict(row)
             part_shas = []
+            part_byte_count = 0
         if row["part_number"] is None:
             continue
         if (
@@ -593,6 +639,9 @@ def _validate_checkpoint(
         ):
             raise DisplayBuildError("checkpoint_part_digest_or_geometry_mismatch")
         part_shas.append(row["geometry_sha256"])
+        part_byte_count += len(row["ewkb"])
+        if len(part_shas) > MAX_PARTS_PER_FEATURE or part_byte_count > MAX_PART_BYTES:
+            raise DisplayBuildError("checkpoint_part_budget_exceeded")
         total_parts += 1
     finish_feature()
     actual_parts = session.scalar(text("""
