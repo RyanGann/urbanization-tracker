@@ -81,7 +81,7 @@ C10's guarded historical agenda backfill is required for release only if C04's r
 | [C02: Introduce shared transactions and safe item mutations](C02-transactional-store-foundation.md) | T01, C01 | Lead review |
 | [C03: Preserve source identity and merge ingestion batches safely](C03-stable-source-identity.md) | C02 | Lead review |
 | [D01: Fetch a declared pilot scope completely and report source coverage](D01-source-scope-pagination-canaries.md) | C03, T01 | Lead review |
-| [C04: Retain agenda documents and reviewer decisions across refreshes](C04-agenda-revision-retention.md) | C02, C03 | Lead review |
+| [C04: Retain agenda documents and reviewer decisions across refreshes](C04-agenda-revision-retention.md) | C02, C03, O01 | Lead review |
 | [C10: Backfill historical agenda identity and decisions with reviewed mappings](C10-guarded-agenda-history-backfill.md) | C04, O01 | Lead review |
 | [C05: Make review actions explicit, durable, and revision checked](C05-review-action-policy.md) | C02, C04 | Routine with lead review |
 | [C06: Publish canonical changes and durable history in one transaction](C06-publication-events-history.md) | C03, C04, C05, S02 | Lead review |

@@ -5,7 +5,7 @@ Execution status: [plan.json](plan.json), entry `C04`. Guide baseline: `dbdaf099
 | Field | Assignment |
 | --- | --- |
 | Track / gate | Correctness / G1 |
-| Depends on | [C02](C02-transactional-store-foundation.md), [C03](C03-stable-source-identity.md) |
+| Depends on | [C02](C02-transactional-store-foundation.md), [C03](C03-stable-source-identity.md), [O01](O01-durable-artifact-uploads.md) |
 | Review | Lead review |
 | PR boundary | One agenda identity/merge PR. |
 

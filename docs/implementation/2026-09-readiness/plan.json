@@ -117,17 +117,18 @@
       "id": "C04",
       "title": "Retain agenda documents and reviewer decisions across refreshes",
       "path": "C04-agenda-revision-retention.md",
-      "status": "in_progress",
+      "status": "in_review",
       "track": "Correctness",
       "gate": "G1",
       "depends_on": [
         "C02",
-        "C03"
+        "C03",
+        "O01"
       ],
       "review": "Lead review",
       "pr_boundary": "One agenda identity/merge PR.",
       "implementation_pr": null,
-      "evidence": null
+      "evidence": "../../evidence/C04-agenda-revisions.md"
     },
     {
       "id": "C10",
@@ -495,7 +496,7 @@
       "id": "O01",
       "title": "Upload and verify ingestion artifacts before activating data",
       "path": "O01-durable-artifact-uploads.md",
-      "status": "in_progress",
+      "status": "complete",
       "track": "Operations",
       "gate": "G1",
       "depends_on": [
@@ -504,7 +505,7 @@
       "review": "Lead review",
       "pr_boundary": "One artifact-storage adapter/manifest PR.",
       "implementation_pr": "https://github.com/RyanGann/urbanization-tracker/pull/30",
-      "evidence": null
+      "evidence": "../../evidence/O01-durable-artifacts.md"
     },
     {
       "id": "O02",
