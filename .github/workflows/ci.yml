@@ -94,6 +94,9 @@ jobs:
       - name: Check durable artifact manifests and publication gates
         run: node scripts/run-integration.mjs --suite api --scenario o01-artifacts
 
+      - name: Check scoped original controls and last-good health
+        run: node scripts/run-integration.mjs --suite api --scenario d01-scoped
+
       - name: Check public input limits and shared two-worker quotas
         run: node scripts/run-integration.mjs --suite api --scenario input-limits
 

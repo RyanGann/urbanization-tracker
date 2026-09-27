@@ -46,6 +46,42 @@ class BudgetExceeded(ScopeError):
     """A hard safety budget stopped collection."""
 
 
+def _authority_matches(request: httpx.Request) -> bool:
+    values = request.headers.get_list("host")
+    if len(values) != 1 or request.url.scheme not in {"http", "https"}:
+        return False
+    try:
+        authority = httpx.URL(f"{request.url.scheme}://{values[0]}")
+    except httpx.InvalidURL:
+        return False
+    if (authority.username or authority.password or authority.path != "/"
+        or authority.query or authority.fragment):
+        return False
+    default_port = 443 if request.url.scheme == "https" else 80
+    expected_port = request.url.port if request.url.port is not None else default_port
+    host_port = authority.port if authority.port is not None else default_port
+    return (authority.raw_host.lower() == request.url.raw_host.lower()
+            and host_port == expected_port)
+
+
+def _form_encoding_matches(request: httpx.Request) -> bool:
+    types = request.headers.get_list("content-type")
+    encodings = request.headers.get_list("content-encoding")
+    if len(types) != 1 or len(encodings) > 1:
+        return False
+    if encodings and encodings[0].strip().lower() != "identity":
+        return False
+    parts = [part.strip() for part in types[0].split(";")]
+    if parts[0].lower() != "application/x-www-form-urlencoded" or len(parts) > 2:
+        return False
+    if len(parts) == 2:
+        key, separator, value = parts[1].partition("=")
+        if (not separator or key.strip().lower() != "charset"
+            or value.strip().lower() not in {"utf-8", '"utf-8"'}):
+            return False
+    return True
+
+
 def _canonical(value: Any) -> bytes:
     return json.dumps(value, sort_keys=True, separators=(",", ":"), allow_nan=False).encode()
 
@@ -286,12 +322,12 @@ class _Session:
                         actual.url.copy_with(query=None, fragment=None)
                     ) != url:
                         raise ScopeError("actual_request_identity_mismatch")
-                    authority = actual.headers.get_list("host")
-                    if (len(authority) != 1
-                        or authority[0].lower() != actual.url.netloc.decode("ascii").lower()):
+                    if not _authority_matches(actual):
                         raise ScopeError("actual_request_authority_mismatch")
                     try:
                         if long_query:
+                            if not _form_encoding_matches(actual):
+                                raise ScopeError("actual_request_form_encoding_mismatch")
                             # Client-level URL params are not part of this form query.
                             if actual.url.query:
                                 raise ScopeError("actual_request_query_mismatch")

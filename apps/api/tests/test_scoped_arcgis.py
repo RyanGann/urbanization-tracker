@@ -18,6 +18,7 @@ from app.ingestion.scoped_arcgis import (
     CollectionBudget,
     ReviewedScope,
     ScopeError,
+    _authority_matches,
     _digest,
     _geometry_ok,
     _Session,
@@ -463,6 +464,60 @@ def test_actual_request_refuses_changed_or_duplicate_authority(
     assert report["error_code"] == "actual_request_authority_mismatch"
     assert report["coverage"] == "failed" and report["control_artifacts"] == []
     assert len(requests) == 1 and report["requests"] == 1
+
+
+@pytest.mark.parametrize(("url", "host", "matches"), [
+    ("https://example.invalid/0", "EXAMPLE.INVALID:443", True),
+    ("http://example.invalid/0", "example.invalid:80", True),
+    ("http://127.0.0.1:3456/0", "127.0.0.1:3456", True),
+    ("http://[::1]:3456/0", "[::1]:3456", True),
+    ("https://example.invalid/0", "example.invalid:80", False),
+    ("http://127.0.0.1:3456/0", "127.0.0.1", False),
+    ("https://example.invalid/0", "other.invalid", False),
+    ("https://example.invalid/0", "user@example.invalid", False),
+    ("https://example.invalid/0", "example.invalid/other", False),
+    ("https://example.invalid/0", "example.invalid?time=hidden", False),
+])
+def test_authority_normalizes_host_case_and_effective_port(
+    url: str, host: str, matches: bool,
+) -> None:
+    request = httpx.Request("GET", url, headers={"Host": host})
+    assert _authority_matches(request) is matches
+
+
+@pytest.mark.parametrize("headers", [
+    {"Content-Type": "application/json"},
+    {"Content-Type": "application/x-www-form-urlencoded; charset=latin-1"},
+    [("Content-Type", "application/x-www-form-urlencoded"), ("Content-Type", "text/plain")],
+    {"Content-Encoding": "gzip"},
+    [("Content-Encoding", "identity"), ("Content-Encoding", "identity")],
+])
+def test_post_form_media_type_or_encoding_cannot_change_query_interpretation(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, headers: Any,
+) -> None:
+    monkeypatch.setattr("app.ingestion.scoped_arcgis.MAX_GET_URL_BYTES", 0)
+    transport, requests = _fixture([1])
+    with httpx.Client(transport=transport, headers=headers) as client:
+        report = stage_scoped_source(CONFIG, _scope(tmp_path), tmp_path / "form-encoding",
+                                     client=client, budget=CollectionBudget(max_attempts=1,
+                                                                          min_interval_seconds=0))
+    assert report["error_code"] == "actual_request_form_encoding_mismatch"
+    assert report["control_artifacts"] == [] and report["requests"] == 1
+    assert len(requests) == 1
+
+
+def test_post_form_accepts_case_insensitive_media_and_safe_utf8_charset(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr("app.ingestion.scoped_arcgis.MAX_GET_URL_BYTES", 0)
+    transport, _ = _fixture([1])
+    with httpx.Client(transport=transport, headers={
+        "Content-Type": 'Application/X-Www-Form-Urlencoded; charset="UTF-8"',
+        "Content-Encoding": "identity",
+    }) as client:
+        report = stage_scoped_source(CONFIG, _scope(tmp_path), tmp_path / "safe-form",
+                                     client=client, budget=CollectionBudget(min_interval_seconds=0))
+    assert report["coverage"] == "complete" and len(report["control_artifacts"]) == 4
 
 
 def test_page_cap_refuses_additional_geometry_artifacts(
