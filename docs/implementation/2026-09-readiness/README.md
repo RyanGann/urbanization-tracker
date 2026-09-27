@@ -2,9 +2,9 @@
 
 Prepared September 19, 2026 from the [project review](../../reviews/2026-09-19-project-review.md) and code at `dbdaf099f31bc0444fe202aaf2ee65b3c9268d34`.
 
-**Recommendation: finish a dependable Huntsville pilot on the current stack, with real API/PostGIS tests and bounded map delivery.** This package contains **38 PR-sized guides**, including **nine performance PRs**, shared contracts, an execution order and acceptance gates. Current implementation status, PRs and evidence are recorded only in [plan.json](plan.json). The guides describe scope and acceptance criteria; their presence does not establish completed implementation.
+**Recommendation: finish a dependable Huntsville pilot on the current stack, with real API/PostGIS tests and bounded map delivery.** This package contains **39 PR-sized guides**, including **nine performance PRs**, shared contracts, an execution order and acceptance gates. Current implementation status, PRs and evidence are recorded only in [plan.json](plan.json). The guides describe scope and acceptance criteria; their presence does not establish completed implementation.
 
-The full roadmap includes later environmental goals and an optional 3D experiment. It is not a requirement to finish all 38 PRs before seeing improvement: U00 fixes filter visibility early, and P02 removes the startup geometry download early. The user has the existing site open in the side browser; this planning task has not revalidated browser automation or changed that running preview.
+The full roadmap includes later environmental goals and an optional 3D experiment. It is not a requirement to finish all 39 PRs before seeing improvement: U00 fixes filter visibility early, and P02 removes the startup geometry download early. The user has the existing site open in the side browser; this planning task has not revalidated browser automation or changed that running preview.
 
 ## Read and dispatch
 
@@ -66,6 +66,7 @@ A PR can merge before its broader gate is complete if its intermediate state is 
 | --- | --- | --- |
 | [T01: Run integration tests against the real API and PostGIS](T01-real-api-postgis-harness.md) | Ready to start | Lead review |
 | [S01: Patch frontend dependencies and verify map compatibility](S01-frontend-dependency-update.md) | Ready to start | Routine with visual review |
+| [S04: Patch frontend development tools and retain application compatibility](S04-development-toolchain-security.md) | S01, T01 | Lead review with existing browser smoke |
 | [C01: Distinguish live data, demo fixtures, empty collections, and unavailable stores](C01-explicit-data-modes.md) | T01 | Routine coding agent |
 | [P01: Establish a reproducible map performance baseline](P01-performance-baseline.md) | T01 | Routine coding agent |
 | [U00: Make current map filters show the intended records](U00-immediate-filter-correctness.md) | C01 | Routine coding agent |
