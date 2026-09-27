@@ -134,6 +134,8 @@ Static Authorization/Proxy-Authorization/Cookie headers and nonempty cookie jars
 are also refused before each send, with defensive actual-header validation before
 capture. Thus retained observations describe the supported unauthenticated public
 request context. These checks do not provide an upstream cryptographic signature.
+The same case-insensitive refusal includes `X-Esri-Authorization`, documented
+as an ArcGIS bearer-token header in the [official authorization header reference](https://developers.arcgis.com/documentation/security-and-authentication/reference/http-authorization-headers/).
 The clean `90571c8` real run above predates this unsupported-client guard. The
 owning CI scenario checks the current default-client path.
 

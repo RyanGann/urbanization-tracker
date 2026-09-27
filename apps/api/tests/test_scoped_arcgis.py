@@ -95,7 +95,9 @@ def test_auth_cannot_launder_request_identity(
     assert not list((tmp_path / "auth").glob("control-*"))
 
 
-@pytest.mark.parametrize("credentials", ["Authorization", "Proxy-Authorization", "Cookie", "jar"])
+@pytest.mark.parametrize("credentials", [
+    "Authorization", "Proxy-Authorization", "Cookie", "x-EsRi-AuThOrIzAtIoN", "jar",
+])
 @pytest.mark.parametrize("method", ["GET", "POST"])
 def test_static_credentials_refuse_public_source_capture(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch, credentials: str, method: str,

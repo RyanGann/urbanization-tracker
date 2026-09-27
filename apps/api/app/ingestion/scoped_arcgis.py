@@ -287,7 +287,9 @@ class _Session:
                 raise ScopeError("source_client_hooks_refused")
             if self.client.auth is not None:
                 raise ScopeError("source_client_auth_refused")
-            credential_headers = ("authorization", "proxy-authorization", "cookie")
+            credential_headers = (
+                "authorization", "proxy-authorization", "cookie", "x-esri-authorization",
+            )
             if self.client.cookies or any(
                 name in self.client.headers for name in credential_headers
             ):
