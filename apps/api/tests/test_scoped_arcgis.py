@@ -389,6 +389,53 @@ def test_builtin_client_does_not_follow_redirects(
     assert report["control_artifacts"] == []
 
 
+@pytest.mark.parametrize("method", ["GET", "POST"])
+@pytest.mark.parametrize("extra_params", [
+    {"gdbVersion": "hidden"}, {"timeExtent": "0,1"},
+])
+def test_actual_request_refuses_hidden_client_query_params(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, method: str, extra_params: Any,
+) -> None:
+    if method == "POST":
+        monkeypatch.setattr("app.ingestion.scoped_arcgis.MAX_GET_URL_BYTES", 0)
+    transport, requests = _fixture([1])
+    with httpx.Client(transport=transport, params=extra_params) as client:
+        report = stage_scoped_source(CONFIG, _scope(tmp_path), tmp_path / "extra-query",
+                                     client=client, budget=CollectionBudget(max_attempts=1,
+                                                                          min_interval_seconds=0))
+    assert report["coverage"] == "failed"
+    assert report["error_code"] == "actual_request_query_mismatch"
+    assert report["control_artifacts"] == [] and report["requests"] == 1
+    assert len(requests) == 1
+
+
+@pytest.mark.parametrize("method", ["GET", "POST"])
+def test_actual_request_refuses_duplicate_query_keys(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, method: str,
+) -> None:
+    if method == "POST":
+        monkeypatch.setattr("app.ingestion.scoped_arcgis.MAX_GET_URL_BYTES", 0)
+
+    def duplicate(request: httpx.Request) -> None:
+        if request.method == "GET":
+            request.url = request.url.copy_add_param("f", "json")
+        else:
+            body = request.read() + b"&f=json"
+            request.stream = httpx.ByteStream(body)
+            request.__dict__.pop("_content", None)
+            request.read()
+            request.headers["Content-Length"] = str(len(body))
+
+    transport, requests = _fixture([1])
+    with httpx.Client(transport=transport, event_hooks={"request": [duplicate]}) as client:
+        report = stage_scoped_source(CONFIG, _scope(tmp_path), tmp_path / "duplicate-query",
+                                     client=client, budget=CollectionBudget(max_attempts=1,
+                                                                          min_interval_seconds=0))
+    assert report["error_code"] == "actual_request_query_mismatch"
+    assert report["control_artifacts"] == [] and report["requests"] == 1
+    assert len(requests) == 1
+
+
 def test_page_cap_refuses_additional_geometry_artifacts(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
 ) -> None:

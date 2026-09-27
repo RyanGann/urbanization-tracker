@@ -16,7 +16,7 @@ from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
-from urllib.parse import urlencode
+from urllib.parse import parse_qsl, urlencode
 from uuid import uuid4
 
 import httpx
@@ -281,6 +281,25 @@ class _Session:
                     # including when a caller supplied a redirect-following client.
                     if response.is_redirect or response.history:
                         raise ScopeError("source_redirect_refused")
+                    actual = response.request
+                    if actual.method != event["method"] or str(
+                        actual.url.copy_with(query=None, fragment=None)
+                    ) != url:
+                        raise ScopeError("actual_request_identity_mismatch")
+                    try:
+                        if long_query:
+                            # Client-level URL params are not part of this form query.
+                            if actual.url.query:
+                                raise ScopeError("actual_request_query_mismatch")
+                            pairs = parse_qsl(actual.content.decode(), keep_blank_values=True,
+                                              strict_parsing=True)
+                        else:
+                            pairs = list(actual.url.params.multi_items())
+                        if (len(pairs) != len(dict(pairs))
+                            or _digest(dict(pairs)) != _digest(params)):
+                            raise ScopeError("actual_request_query_mismatch")
+                    except (ValueError, UnicodeDecodeError) as exc:
+                        raise ScopeError("actual_request_query_mismatch") from exc
                     if (
                         response.status_code in TRANSIENT_STATUS
                         and attempt + 1 < self.budget.max_attempts
