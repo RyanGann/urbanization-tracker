@@ -96,3 +96,15 @@ runtime patch: 458 API tests, mypy across 60 app files, Ruff, five harness Node 
 runner syntax and readiness-plan validation passed. Fixture-only corrections were
 linted and then exercised by the final clean owning run. Review/CI status belongs to
 the current PR head; this local proof does not substitute for those checks.
+# Additive guard-index review correction
+
+The retained clean `9329881` local owning proof predates two additive indexes:
+`environmental_attestations(source_key, run_id)` and
+`environmental_attestation_references(reference_id)`. They support the exact
+SQL guard predicates without changing guard semantics. Migration0009 and ORM
+metadata both declare them. Fresh exact-head CI exercises actual migration and
+normal-role PostgreSQL EXPLAIN assertions, recording eligible index names in the
+owning results. On this small fixture, disabling sequential scans demonstrates
+index eligibility only; it does not establish production planner choice or cost.
+The old local artifacts are unchanged and do not claim post-index acceptance.
+

@@ -230,6 +230,16 @@ def upgrade() -> None:
             "attestation_id", "role", "sequence", name="uq_environmental_proof_role"
         ),
     )
+    op.create_index(
+        "ix_environmental_proof_observation",
+        "environmental_attestations",
+        ["source_key", "run_id"],
+    )
+    op.create_index(
+        "ix_environmental_proof_reference",
+        "environmental_attestation_references",
+        ["reference_id"],
+    )
     op.execute(PROVENANCE_GUARDS_SQL)
 
 

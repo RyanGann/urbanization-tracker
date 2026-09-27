@@ -729,6 +729,7 @@ class ArtifactRunSeal(Base):
 class EnvironmentalAttestation(Base):
     __tablename__ = "environmental_attestations"
     __table_args__ = (
+        Index("ix_environmental_proof_observation", "source_key", "run_id"),
         ForeignKeyConstraint(
             ["source_key", "run_id"],
             ["artifact_run_seals.source_key", "artifact_run_seals.run_id"],
@@ -758,6 +759,7 @@ class EnvironmentalAttestation(Base):
 class EnvironmentalAttestationReference(Base):
     __tablename__ = "environmental_attestation_references"
     __table_args__ = (
+        Index("ix_environmental_proof_reference", "reference_id"),
         UniqueConstraint("attestation_id", "role", "sequence", name="uq_environmental_proof_role"),
     )
     attestation_id: Mapped[UUID] = mapped_column(

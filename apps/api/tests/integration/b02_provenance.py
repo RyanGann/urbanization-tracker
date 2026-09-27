@@ -531,6 +531,27 @@ def frozen_checks(service: ArtifactService, result: dict[str, Any]) -> dict[str,
         )
         assert row is not None
         ref, blob = row.id, row.blob_id
+        normal(session)
+        # Establish access-path eligibility, not production planner/timing claims:
+        # this small synthetic database may legitimately prefer sequential scans.
+        session.execute(text("SET LOCAL enable_seqscan = off"))
+        guard_plans = (
+            (
+                "EXPLAIN (FORMAT JSON) SELECT 1 FROM environmental_attestations "
+                "WHERE source_key=:source AND run_id=:run",
+                {"source": SOURCE, "run": result["run_id"]},
+                "ix_environmental_proof_observation",
+            ),
+            (
+                "EXPLAIN (FORMAT JSON) SELECT 1 FROM environmental_attestation_references "
+                "WHERE reference_id=:ref",
+                {"ref": ref},
+                "ix_environmental_proof_reference",
+            ),
+        )
+        for statement, parameters, index_name in guard_plans:
+            plan = session.scalar(text(statement), parameters)
+            assert index_name in json.dumps(plan), index_name
     statements = [
         (
             "UPDATE environmental_features SET geometry=ST_Translate(geometry,0.001,0) "
@@ -650,6 +671,10 @@ def frozen_checks(service: ArtifactService, result: dict[str, Any]) -> dict[str,
         "ordinary_copy_audit_allowed": True,
         "oversized_binding_insert_refused": True,
         "wrong_expected_provider_refused": True,
+        "guard_lookup_indexes_eligible": [
+            "ix_environmental_proof_observation",
+            "ix_environmental_proof_reference",
+        ],
         "truncate_restrict_sqlstate": restrict_state,
         "truncate_cascade_sqlstate": cascade_state,
     }
