@@ -5,12 +5,14 @@ import json
 import sys
 from dataclasses import replace
 from pathlib import Path
+from typing import Any
 from urllib.parse import parse_qs
 
 import httpx
 import pytest
 
 from app.ingestion import cli
+from app.ingestion.control_artifacts import ControlArtifactError, ControlArtifacts
 from app.ingestion.pipeline import _aggregate_status
 from app.ingestion.scoped_arcgis import (
     CollectionBudget,
@@ -18,6 +20,7 @@ from app.ingestion.scoped_arcgis import (
     ScopeError,
     _digest,
     _geometry_ok,
+    _Session,
     scoped_attempt_health,
     source_batch_from_staging,
     stage_scoped_source,
@@ -146,6 +149,203 @@ def test_scoped_ids_stream_pages_and_reconcile(tmp_path: Path) -> None:
     scope_params = {(r["where"], r["geometry"], r["spatialRel"]) for r in scoped}
     assert len(scope_params) == 1
     assert all("resultOffset" not in request for request in scoped)
+
+
+def test_control_bodies_preserve_original_bytes_and_query_identity(tmp_path: Path) -> None:
+    base, _ = _fixture([1])
+    bodies: list[bytes] = []
+    queries: list[dict[str, str]] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        response = base.handle_request(request)
+        params = dict(request.url.params)
+        if "objectIds" in params:
+            return response
+        # Whitespace, key order and Unicode must survive without reserialization.
+        raw = b" \n" + response.content[:-1] + b', "private_note":"caf\xc3\xa9"}\n '
+        bodies.append(raw)
+        queries.append(params)
+        return httpx.Response(200, content=raw)
+
+    report = _run(tmp_path, httpx.MockTransport(handler))
+    assert report["coverage"] == "complete"
+    controls = report["control_artifacts"]
+    assert [item["role"] for item in controls] == [
+        "initial_metadata", "initial_count", "initial_ids", "final_ids"
+    ]
+    for index, item in enumerate(controls):
+        retained = (tmp_path / "stage" / item["path"]).read_bytes()
+        assert retained == bodies[index]
+        assert item["sha256"] == hashlib.sha256(retained).hexdigest()
+        assert item["bytes"] == len(retained)
+        assert item["query_sha256"] == _digest(queries[index])
+        assert item["source_key"] == CONFIG.key and item["run_id"] == report["run_id"]
+        assert item["scope_id"] == report["scope_id"] and item["sequence"] == index
+        assert item["status"] == 200
+    assert "private_note" not in json.dumps(report)
+    assert not list((tmp_path / "stage").glob("*.part"))
+
+
+def test_control_evidence_is_observation_specific_and_canary_stays_bounded(tmp_path: Path) -> None:
+    transport, requests = _fixture([1])
+    first = _run(tmp_path, transport)
+    original = {
+        item["path"]: (tmp_path / "stage" / item["path"]).read_bytes()
+        for item in first["control_artifacts"]
+    }
+    second = _run(tmp_path, transport, canary=True)
+    assert first["run_id"] != second["run_id"]
+    assert second["coverage"] == "unknown" and second["requests"] == 4
+    assert len(requests) == 9
+    assert [item["role"] for item in second["control_artifacts"]] == [
+        "initial_metadata", "initial_count", "initial_ids"
+    ]
+    assert all((tmp_path / "stage" / name).read_bytes() == body
+               for name, body in original.items())
+
+
+def test_changed_ids_retain_both_original_controls_without_complete_claim(tmp_path: Path) -> None:
+    transport, _ = _fixture([1], second_ids=[2])
+    report = _run(tmp_path, transport)
+    assert report["error_code"] == "upstream_ids_changed"
+    controls = {item["role"]: item for item in report["control_artifacts"]}
+    for role, expected_ids in (("initial_ids", [1]), ("final_ids", [2])):
+        body = (tmp_path / "stage" / controls[role]["path"]).read_bytes()
+        assert json.loads(body)["objectIds"] == expected_ids
+
+
+@pytest.mark.parametrize("failure", ["timeout", "oversized", "deadline"])
+def test_partial_control_body_is_never_finalized(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, failure: str,
+) -> None:
+    clock = [0.0]
+    monkeypatch.setattr("app.ingestion.scoped_arcgis.time.monotonic", lambda: clock[0])
+
+    class Interrupted(httpx.SyncByteStream):
+        def __iter__(self):  # type: ignore[no-untyped-def]
+            yield b'{"count":'
+            if failure == "timeout":
+                raise httpx.ReadTimeout("private fixture diagnostic")
+            if failure == "deadline":
+                clock[0] = 100.0
+            yield b" " * 100
+
+    with httpx.Client(transport=httpx.MockTransport(
+        lambda _: httpx.Response(200, stream=Interrupted())
+    )) as client:
+        report = stage_scoped_source(
+            CONFIG, _scope(tmp_path), tmp_path / "interrupted", client=client,
+            budget=CollectionBudget(max_attempts=1,
+                                    max_response_bytes=1000 if failure == "deadline" else 50,
+                                    max_seconds=10, min_interval_seconds=0),
+        )
+    assert report["coverage"] != "complete"
+    assert report["error_code"] == {
+        "timeout": "transport_failure", "oversized": "response_byte_budget_exceeded",
+        "deadline": "time_budget_exceeded",
+    }[failure]
+    assert report["control_artifacts"] == []
+    assert not list((tmp_path / "interrupted").glob("control-*"))
+    assert not list((tmp_path / "interrupted").glob("*.part"))
+    assert "private fixture diagnostic" not in json.dumps(report)
+
+
+def test_invalid_control_json_keeps_completed_original_diagnostic(tmp_path: Path) -> None:
+    raw = b"<upstream-error>private detail</upstream-error>"
+    report = _run(tmp_path, httpx.MockTransport(lambda _: httpx.Response(200, content=raw)))
+    assert report["error_code"] == "invalid_json_response"
+    assert report["coverage"] == "failed"
+    assert len(report["control_artifacts"]) == 1
+    item = report["control_artifacts"][0]
+    assert (tmp_path / "stage" / item["path"]).read_bytes() == raw
+    assert "private detail" not in json.dumps(report)
+
+
+@pytest.mark.parametrize(("constant", "error"), [
+    ("MAX_CONTROL_BYTES", "control_byte_budget_exceeded"),
+    ("MAX_CONTROL_DESCRIPTOR_BYTES", "control_descriptor_budget_exceeded"),
+    ("MAX_CONTROL_ARTIFACTS", "control_artifact_budget_exceeded"),
+])
+def test_control_caps_refuse_incomplete_proof(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, constant: str, error: str,
+) -> None:
+    monkeypatch.setattr(f"app.ingestion.control_artifacts.{constant}", 0)
+    transport, _ = _fixture([1])
+    report = _run(tmp_path, transport)
+    assert report["error_code"] == error
+    assert report["coverage"] != "complete" and report["control_artifacts"] == []
+    assert not list((tmp_path / "stage").glob("*.part"))
+
+
+def test_control_roles_and_source_binding_reject_substitution(tmp_path: Path) -> None:
+    recorder = ControlArtifacts(tmp_path, {
+        "run_id": "00000000-0000-0000-0000-000000000001", "source_key": CONFIG.key,
+    }, metadata_url=CONFIG.layer_url, query_url=CONFIG.query_url,
+        expected_queries={"initial_metadata": "0" * 64})
+    event = {"url": CONFIG.layer_url, "operation": "metadata", "method": "GET",
+             "query_sha256": "0" * 64, "status": 200}
+    for role, changed in (("../../unsafe", event), ("initial_count", event),
+                          ("initial_metadata", {**event, "url": "https://other.invalid"}),
+                          ("initial_metadata", {**event, "query_sha256": "1" * 64})):
+        with pytest.raises(ControlArtifactError):
+            with recorder.capture(role, changed):
+                pytest.fail("invalid identity opened a file")
+    with recorder.capture("initial_metadata", event) as body:
+        body.write(b"{}")
+    with pytest.raises(ControlArtifactError, match="control_role_repeated"):
+        with recorder.capture("initial_metadata", event):
+            pytest.fail("duplicate role opened a file")
+    with pytest.raises(ControlArtifactError, match="control_run_invalid"):
+        ControlArtifacts(tmp_path, {"run_id": "../unsafe"},
+                         metadata_url=CONFIG.layer_url, query_url=CONFIG.query_url,
+                         expected_queries={})
+
+
+def test_control_writer_enforces_own_byte_cap(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr("app.ingestion.control_artifacts.MAX_CONTROL_BYTES", 3)
+    recorder = ControlArtifacts(tmp_path, {
+        "run_id": "00000000-0000-0000-0000-000000000001", "source_key": CONFIG.key,
+    }, metadata_url=CONFIG.layer_url, query_url=CONFIG.query_url,
+        expected_queries={"initial_metadata": "0" * 64})
+    event = {"url": CONFIG.layer_url, "operation": "metadata", "method": "GET",
+             "query_sha256": "0" * 64, "status": 200}
+    with pytest.raises(ControlArtifactError, match="control_byte_budget_exceeded"):
+        with recorder.capture("initial_metadata", event) as body:
+            body.write(b"{}")
+            body.write(b"{}")
+    assert recorder.descriptors == [] and list(tmp_path.iterdir()) == []
+
+
+@pytest.mark.parametrize("substitution", [{"geometry": "{}"}, {"time": "0,1"}])
+def test_same_endpoint_operation_wrong_scope_query_refuses_control(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, substitution: dict[str, str],
+) -> None:
+    original = _Session.get
+
+    def changed(self: _Session, url: str, params: dict[str, str],
+                **kwargs: Any) -> dict[str, Any]:
+        if kwargs.get("control_role") == "initial_count":
+            params = {**params, **substitution}
+        return original(self, url, params, **kwargs)
+
+    monkeypatch.setattr(_Session, "get", changed)
+    transport, _ = _fixture([1])
+    report = _run(tmp_path, transport)
+    assert report["coverage"] == "failed"
+    assert report["error_code"] == "control_role_query_mismatch"
+    assert [item["role"] for item in report["control_artifacts"]] == ["initial_metadata"]
+
+
+def test_page_cap_refuses_additional_geometry_artifacts(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr("app.ingestion.scoped_arcgis.MAX_PAGE_ARTIFACTS", 1)
+    transport, _ = _fixture(list(range(501)))
+    report = _run(tmp_path, transport)
+    assert report["error_code"] == "page_artifact_budget_exceeded"
+    assert report["coverage"] == "partial" and len(report["pages"]) == 1
 
 
 @pytest.mark.parametrize(
@@ -632,6 +832,15 @@ def test_offset_full_page_without_transfer_flag_and_repeated_page(tmp_path: Path
             budget=CollectionBudget(min_interval_seconds=0),
         )
     assert complete["coverage"] == "complete" and complete["fetched"] == 251
+    controls = complete["control_artifacts"]
+    assert [item["role"] for item in controls] == [
+        "initial_metadata", "initial_count", "final_count", "final_metadata"
+    ]
+    for role in ("initial_metadata", "final_metadata"):
+        item = next(item for item in controls if item["role"] == role)
+        assert json.loads((tmp_path / "offset-ok" / item["path"]).read_bytes())[
+            "editingInfo"
+        ]["lastEditDate"] == 1234
     assert [r["resultOffset"] for r in requests if "resultOffset" in r] == ["0", "250"]
     replay = True
     with httpx.Client(transport=transport) as client:

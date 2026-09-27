@@ -11,17 +11,24 @@ import json
 import math
 import random
 import time
+from contextlib import nullcontext
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 from urllib.parse import urlencode
+from uuid import uuid4
 
 import httpx
 from shapely.errors import ShapelyError
 from shapely.geometry import MultiPolygon, Polygon, shape
 
 from app.ingestion.connectors.arcgis import ArcGISLayerConfig
+from app.ingestion.control_artifacts import (
+    MAX_PAGE_ARTIFACTS,
+    ControlArtifactError,
+    ControlArtifacts,
+)
 from app.ingestion.source_merge import SourceBatch, SourceRecord
 from app.ingestion.sources.huntsville import ALL_SOURCES as HUNTSVILLE_SOURCES
 from app.ingestion.sources.madison_county import DEVELOPMENT_SOURCES as COUNTY_SOURCES
@@ -218,7 +225,8 @@ class CollectionBudget:
 
 class _Session:
     def __init__(
-        self, client: httpx.Client, budget: CollectionBudget, *, sleep: Any = time.sleep
+        self, client: httpx.Client, budget: CollectionBudget, *, sleep: Any = time.sleep,
+        controls: ControlArtifacts | None = None,
     ) -> None:
         self.client = client
         self.budget = budget
@@ -229,9 +237,11 @@ class _Session:
         self.staged_bytes = 0
         self.retries = 0
         self.request_log: list[dict[str, Any]] = []
+        self.controls = controls
 
     def get(
-        self, url: str, params: dict[str, str], *, byte_limit: int | None = None
+        self, url: str, params: dict[str, str], *, byte_limit: int | None = None,
+        control_role: str | None = None,
     ) -> dict[str, Any]:
         cap = byte_limit or self.budget.max_response_bytes
         for attempt in range(self.budget.max_attempts):
@@ -274,14 +284,24 @@ class _Session:
                         self.sleep(delay)
                         continue
                     body = bytearray()
-                    for chunk in response.iter_bytes():
-                        body.extend(chunk)
-                        event["response_bytes"] += len(chunk)
-                        self.staged_bytes += len(chunk)
-                        if len(body) > cap:
-                            raise BudgetExceeded("response_byte_budget_exceeded")
-                        if self.staged_bytes > self.budget.max_staged_bytes:
-                            raise BudgetExceeded("staged_byte_budget_exceeded")
+                    retained = (
+                        self.controls.capture(control_role, event)
+                        if control_role is not None and self.controls is not None
+                        else nullcontext(None)
+                    )
+                    with retained as control_body:
+                        for chunk in response.iter_bytes():
+                            body.extend(chunk)
+                            event["response_bytes"] += len(chunk)
+                            self.staged_bytes += len(chunk)
+                            if len(body) > cap:
+                                raise BudgetExceeded("response_byte_budget_exceeded")
+                            if self.staged_bytes > self.budget.max_staged_bytes:
+                                raise BudgetExceeded("staged_byte_budget_exceeded")
+                            if time.monotonic() - self.started >= self.budget.max_seconds:
+                                raise BudgetExceeded("time_budget_exceeded")
+                            if control_body is not None:
+                                control_body.write(chunk)
                     response.raise_for_status()
             except (httpx.TimeoutException, httpx.TransportError):
                 if attempt + 1 >= self.budget.max_attempts:
@@ -488,6 +508,8 @@ def _stage_page(
     if requested is not None and set(returned) != set(requested):
         raise ScopeError("batch_id_reconciliation_failed")
     page_number = len(report["pages"])
+    if page_number >= MAX_PAGE_ARTIFACTS:
+        raise BudgetExceeded("page_artifact_budget_exceeded")
     page_path = destination / f"page-{page_number:05}.geojson"
     page_bytes = _canonical(payload)
     page_path.write_bytes(page_bytes)
@@ -548,14 +570,16 @@ def _offset_pages(
     if len(seen) != expected:
         raise ScopeError("offset_count_reconciliation_failed")
     final_count = _count(session.get(
-        config.query_url, {**base, "f": "json", "returnCountOnly": "true"}
+        config.query_url, {**base, "f": "json", "returnCountOnly": "true"},
+        control_role="final_count",
     ))
     if final_count != expected:
         raise ScopeError("upstream_count_changed")
     start_edit = metadata.get("editingInfo", {}).get("lastEditDate") if isinstance(
         metadata.get("editingInfo"), dict
     ) else None
-    final_metadata = session.get(config.layer_url, {"f": "json"})
+    final_metadata = session.get(config.layer_url, {"f": "json"},
+                                 control_role="final_metadata")
     end_edit = final_metadata.get("editingInfo", {}).get("lastEditDate") if isinstance(
         final_metadata.get("editingInfo"), dict
     ) else None
@@ -587,9 +611,24 @@ def stage_scoped_source(
     )
     owned_client = client is None
     client = client or httpx.Client(timeout=httpx.Timeout(20.0, connect=5.0), follow_redirects=True)
-    session = _Session(client, budget)
     destination.mkdir(parents=True, exist_ok=True)
+    run_id = str(uuid4())
+    base = _base_query(config, scope)
+    controls = ControlArtifacts(destination, {
+        "source_key": config.key, "run_id": run_id,
+        "scope_id": scope.scope_id_for(config), "scope_version": scope.version,
+        "scope_query_sha256": _digest(base),
+    }, metadata_url=config.layer_url, query_url=config.query_url, expected_queries={
+        **{role: _digest({"f": "json"})
+           for role in ("initial_metadata", "final_metadata")},
+        **{role: _digest({**base, "f": "json", "returnCountOnly": "true"})
+           for role in ("initial_count", "final_count")},
+        **{role: _digest({**base, "f": "json", "returnIdsOnly": "true"})
+           for role in ("initial_ids", "final_ids")},
+    })
+    session = _Session(client, budget, controls=controls)
     report: dict[str, Any] = {
+        "run_id": run_id,
         "source_key": config.key,
         "source_url": config.layer_url,
         "scope_id": scope.scope_id_for(config),
@@ -609,10 +648,11 @@ def stage_scoped_source(
         "rejected": 0,
         "pages": [],
         "canary": canary,
+        "control_artifacts": controls.descriptors,
     }
-    base = _base_query(config, scope)
     try:
-        metadata = session.get(config.layer_url, {"f": "json"})
+        metadata = session.get(config.layer_url, {"f": "json"},
+                               control_role="initial_metadata")
         fields = metadata.get("fields")
         extent = metadata.get("extent")
         reference = extent.get("spatialReference") if isinstance(extent, dict) else None
@@ -627,7 +667,8 @@ def stage_scoped_source(
         oid_field = _oid_field(metadata, config)
         report["object_id_field"] = oid_field
         count = _count(session.get(
-            config.query_url, {**base, "f": "json", "returnCountOnly": "true"}
+            config.query_url, {**base, "f": "json", "returnCountOnly": "true"},
+            control_role="initial_count",
         ))
         report["expected"] = count
         if count > budget.max_ids:
@@ -639,6 +680,7 @@ def stage_scoped_source(
             initial_payload = session.get(
                 config.query_url, {**base, "f": "json", "returnIdsOnly": "true"},
                 byte_limit=budget.max_ids_bytes,
+                control_role="initial_ids",
             )
             initial_ids = _ids(initial_payload, oid_field, budget.max_ids)
             if len(initial_ids) != count:
@@ -657,6 +699,7 @@ def stage_scoped_source(
                 final_payload = session.get(
                     config.query_url, {**base, "f": "json", "returnIdsOnly": "true"},
                     byte_limit=budget.max_ids_bytes,
+                    control_role="final_ids",
                 )
                 final_ids = _ids(final_payload, oid_field, budget.max_ids)
                 if final_ids != initial_ids:
@@ -676,9 +719,10 @@ def stage_scoped_source(
             report["coverage"] = "partial"
         elif report["fetched"] == count:
             report["coverage"] = "complete"
-    except (ScopeError, httpx.HTTPError, OSError) as exc:
+    except (ScopeError, ControlArtifactError, httpx.HTTPError, OSError) as exc:
         report["error_code"] = (
-            str(exc) if isinstance(exc, ScopeError) else "transport_or_stage_failure"
+            str(exc) if isinstance(exc, (ScopeError, ControlArtifactError))
+            else "transport_or_stage_failure"
         )
         report["coverage"] = (
             "partial" if isinstance(exc, BudgetExceeded) or report["fetched"] else "failed"

@@ -100,7 +100,7 @@ A PR can merge before its broader gate is complete if its intermediate state is 
 | Guide | Depends on | Review |
 | --- | --- | --- |
 | [P03: Import versioned environmental geometry into indexed PostGIS storage](P03-canonical-environmental-storage.md) | T01, C02, P02 | Lead review |
-| [P04: Prepare display geometry and activate complete layer versions atomically](P04-environmental-display-derivatives.md) | P03, D01, O01 | Lead review |
+| [P04: Prepare display geometry and activate complete layer versions atomically](P04-environmental-display-derivatives.md) | P03, D01, O01, B02, O04 | Lead review |
 | [P05: Serve bounded, cached environmental vector tiles](P05-versioned-vector-tile-api.md) | P04 | Lead review |
 | [P06: Render catalog-driven vector overlays without bulk GeoJSON](P06-vector-overlay-client.md) | P02, P05, S01 | Routine coding agent |
 | [P07: Add an indexed viewport query for development summaries](P07-bounded-development-map-api.md) | C06, U00 | Lead review |
@@ -156,3 +156,8 @@ Run `node scripts/validate-readiness-plan.mjs` from the repository root after ch
 The initial baseline contained 38 guides, including nine performance guides. S04 adds the development toolchain security follow-up. Whitespace checks passed.
 
 Application CI runs independently of plan validation. Live API, performance-budget and launch-acceptance results belong in each implementation PR's evidence report; the original project-review checks are historical evidence.
+
+## Scoped provenance bridge
+
+| [B01: Retain bounded original source-control response evidence](B01-control-response-evidence.md) | D01 | Lead review |
+| [B02: Bind durable complete scoped evidence to the exact environmental import](B02-environmental-provenance-attestation.md) | B01, P03, O01 | Lead review |
