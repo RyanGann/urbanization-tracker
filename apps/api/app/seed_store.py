@@ -281,7 +281,9 @@ def get_staged_record(staged_id: str) -> dict[str, Any] | None:
 
 
 def approve_staged_record(
-    staged_id: str, notes: str | None = None, expected_revision: int | None = None,
+    staged_id: str,
+    notes: str | None = None,
+    expected_revision: int | None = None,
 ) -> DevelopmentRecord | None:
     if get_settings().data_mode == "live":
         # Processed ingestion rows are read-only until the durable C05 review path.
@@ -289,7 +291,9 @@ def approve_staged_record(
         from app.phase3_store import publish_phase3_staged_record
 
         published = publish_phase3_staged_record(
-            staged_id, notes=notes, expected_revision=expected_revision,
+            staged_id,
+            notes=notes,
+            expected_revision=expected_revision,
         )
         if published is None:
             return None
@@ -299,7 +303,9 @@ def approve_staged_record(
         from app.phase3_store import publish_phase3_staged_record
 
         published = publish_phase3_staged_record(
-            staged_id, notes=notes, expected_revision=expected_revision,
+            staged_id,
+            notes=notes,
+            expected_revision=expected_revision,
         )
         if published is None:
             return None
@@ -373,7 +379,11 @@ def export_reviewer_decisions() -> list[dict[str, Any]]:
 
 
 def import_reviewer_decisions(decisions: list[dict[str, Any]]) -> dict[str, Any]:
-    from app.ingestion.agenda_store import AgendaPublicationPending, AgendaRevisionConflict
+    from app.ingestion.agenda_store import (
+        AgendaIdentityConflict,
+        AgendaPublicationPending,
+        AgendaRevisionConflict,
+    )
 
     applied = 0
     missing: list[str] = []
@@ -404,14 +414,18 @@ def import_reviewer_decisions(decisions: list[dict[str, Any]]) -> dict[str, Any]
         try:
             if review_status in {"approved", "published"}:
                 result = approve_staged_record(
-                    staged_id, notes=notes, expected_revision=expected_revision,
+                    staged_id,
+                    notes=notes,
+                    expected_revision=expected_revision,
                 )
             else:
                 result = set_staged_review_status(
-                    staged_id, review_status, notes=notes,
+                    staged_id,
+                    review_status,
+                    notes=notes,
                     expected_revision=expected_revision,
                 )
-        except (AgendaRevisionConflict, AgendaPublicationPending):
+        except (AgendaIdentityConflict, AgendaRevisionConflict, AgendaPublicationPending):
             conflicts.append(staged_id)
             continue
         if result is None:

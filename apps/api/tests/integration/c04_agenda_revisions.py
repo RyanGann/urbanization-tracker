@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import argparse
+import copy
 import hashlib
 import json
 import tempfile
@@ -713,6 +714,63 @@ def run(api_url: str, reviewer_token: str, result: Path) -> None:
                     row["url"] == moved_dateless["url"]
                     for row in api.get("/api/reviewer/agenda-documents/unresolved").json()
                 )
+                # Existing processed ownership must survive agenda approval.
+                for ownership in ("processed", "changed", "ambiguous"):
+                    owned_id = f"c04-owned-{ownership}"
+                    staged_id = f"agenda-{owned_id}"
+                    with SessionLocal.begin() as session:
+                        with CollectionUnitOfWork(session).canonical_mutation() as uow:
+                            fixture = copy.deepcopy(
+                                uow.get_phase3("agenda_staged_records", candidate_id)
+                            )
+                            assert fixture is not None
+                            snapshot = copy.deepcopy(persisted_public)
+                            snapshot["public_id"] = owned_id
+                            fixture.update(id=staged_id, state_revision=1, review_status="pending")
+                            fixture["publish_record"] = copy.deepcopy(snapshot)
+                            fixture["geometry"] = copy.deepcopy(snapshot["geometry"])
+                            fixture["centroid"] = snapshot["centroid"]
+                            fixture["geometry_source"] = snapshot["geometry_source"]
+                            fixture["geometry_confidence"] = snapshot["geometry_confidence"]
+                            if ownership == "changed":
+                                fixture["publish_record"]["title"] = "Changed owned publication"
+                            uow.upsert_processed("development_records", owned_id, snapshot)
+                            if ownership == "ambiguous":
+                                uow.upsert_phase3("development_records", owned_id, snapshot)
+                            uow.upsert_phase3("agenda_staged_records", staged_id, fixture)
+                    events_before = count("agenda_decision_events")
+                    versions_before = count("record_versions")
+                    changes_before = count("change_log")
+                    decision = api.post(
+                        f"/api/reviewer/staged-records/{staged_id}/approve",
+                        json={"expected_revision": 1, "notes": "Ownership fixture"},
+                    )
+                    assert decision.status_code == (200 if ownership == "processed" else 409), (
+                        decision.text
+                    )
+                    if ownership != "processed":
+                        expected_code = (
+                            "agenda_identity_conflict"
+                            if ownership == "ambiguous"
+                            else "agenda_publication_update_pending"
+                        )
+                        assert decision.json()["detail"]["code"] == expected_code
+                    with SessionLocal() as session:
+                        uow = CollectionUnitOfWork(session)
+                        assert uow.get_processed("development_records", owned_id) == snapshot
+                        assert uow.get_phase3("development_records", owned_id) == (
+                            snapshot if ownership == "ambiguous" else None
+                        )
+                        retained_candidate = uow.get_phase3("agenda_staged_records", staged_id)
+                        assert retained_candidate is not None
+                        assert retained_candidate["state_revision"] == (
+                            2 if ownership == "processed" else 1
+                        )
+                    assert count("agenda_decision_events") == events_before + (
+                        ownership == "processed"
+                    )
+                    assert count("record_versions") == versions_before
+                    assert count("change_log") == changes_before
                 result.write_text(
                     json.dumps(
                         {
@@ -732,6 +790,9 @@ def run(api_url: str, reviewer_token: str, result: Path) -> None:
                             "empty_discovery_health_persisted_content_retained": True,
                             "partial_durability_failure_health_only": True,
                             "dateless_moved_historical_packet_quarantined": True,
+                            "processed_public_ownership_retained_on_identical_approval": True,
+                            "changed_processed_publication_defers_to_c06": True,
+                            "ambiguous_public_store_ownership_refused": True,
                             "first_document_id": first["id"],
                             "first_pdf_sha256": first["sha256"],
                             "second_pdf_sha256": changed["sha256"],

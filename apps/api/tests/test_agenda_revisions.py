@@ -38,6 +38,95 @@ class MemoryUow:
     def list_processed(self, collection: str) -> list[dict[str, Any]]:
         return copy.deepcopy(list(self.rows[f"processed:{collection}"].values()))
 
+    def get_processed(self, collection: str, key: str) -> dict[str, Any] | None:
+        value = self.rows[f"processed:{collection}"].get(key)
+        return copy.deepcopy(value) if value is not None else None
+
+
+@pytest.mark.parametrize("ownership", ["processed", "changed", "ambiguous"])
+def test_approval_preserves_processed_public_ownership(ownership: str, monkeypatch: Any) -> None:
+    from contextlib import contextmanager
+
+    from app.ingestion.agenda_store import (
+        AgendaIdentityConflict,
+        AgendaPublicationPending,
+        review_agenda_candidate,
+    )
+
+    uow = MemoryUow()
+    public = {
+        "public_id": "existing-public",
+        "title": "Sample Ridge",
+        "geometry": {"type": "Point", "coordinates": [-86.6, 34.7]},
+        "centroid": [-86.6, 34.7],
+        "geometry_source": "reviewer",
+        "geometry_confidence": "high",
+        "source_fields": {},
+        "review_status": "published",
+        "date_last_checked": "2026-01-01",
+    }
+    candidate = {
+        "id": "candidate",
+        "state_revision": 1,
+        "content_revision": 1,
+        "review_status": "pending",
+        "publish_record": copy.deepcopy(public),
+        **{
+            key: public[key]
+            for key in ("geometry", "centroid", "geometry_source", "geometry_confidence")
+        },
+    }
+    if ownership == "changed":
+        candidate["publish_record"]["title"] = "Changed Ridge"
+    uow.upsert_phase3("agenda_staged_records", "candidate", candidate)
+    uow.rows["processed:development_records"]["existing-public"] = copy.deepcopy(public)
+    if ownership == "ambiguous":
+        uow.upsert_phase3("development_records", "existing-public", public)
+    before = copy.deepcopy(uow.rows)
+
+    @contextmanager
+    def mutation() -> Any:
+        yield uow
+
+    monkeypatch.setattr("app.ingestion.agenda_store._agenda_mutation", mutation)
+    monkeypatch.setattr("app.public_geometry.require_publishable_geometry", lambda record: None)
+    if ownership == "processed":
+        result = review_agenda_candidate(
+            "candidate", action="approved", notes="Reviewed", expected_revision=1
+        )
+        assert result is not None and result[1] == public
+        assert not uow.rows["development_records"]
+        assert not uow.rows["record_versions"]
+        assert not uow.rows["change_log"]
+        assert len(uow.rows["agenda_decision_events"]) == 1
+    else:
+        error = AgendaIdentityConflict if ownership == "ambiguous" else AgendaPublicationPending
+        with pytest.raises(error):
+            review_agenda_candidate(
+                "candidate", action="approved", notes="Reviewed", expected_revision=1
+            )
+        assert all(uow.rows[key] == value for key, value in before.items())
+        assert not uow.rows["agenda_decision_events"]
+    assert uow.rows["processed:development_records"]["existing-public"] == public
+
+
+def test_import_classifies_ambiguous_public_ownership_as_conflict(monkeypatch: Any) -> None:
+    from app.ingestion.agenda_store import AgendaIdentityConflict
+    from app.seed_store import import_reviewer_decisions
+
+    monkeypatch.setattr(
+        "app.phase3_store.get_phase3_staged_record",
+        lambda staged_id: {"state_revision": 1, "review_status": "pending"},
+    )
+
+    def approve(*args: Any, **kwargs: Any) -> None:
+        raise AgendaIdentityConflict("public record has ambiguous store ownership")
+
+    monkeypatch.setattr("app.seed_store.approve_staged_record", approve)
+    assert import_reviewer_decisions(
+        [{"staged_id": "stage-agenda-owned", "review_status": "approved", "expected_revision": 1}]
+    ) == {"applied": 0, "missing": [], "conflicts": ["stage-agenda-owned"]}
+
 
 def _document(sha: str, *, url: str = "https://example.test/agenda.pdf") -> dict[str, Any]:
     return {

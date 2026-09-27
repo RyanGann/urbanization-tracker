@@ -62,6 +62,12 @@ class ArtifactAgendaUnitOfWork:
 
         return read_processed_list(name) or []
 
+    def get_processed(self, name: str, key: str) -> dict[str, Any] | None:
+        return next(
+            (row for row in self.list_processed(name) if str(row.get("public_id")) == key),
+            None,
+        )
+
     def commit(self) -> None:
         from app.phase3_store import _write_collection
 
@@ -854,7 +860,11 @@ def review_agenda_candidate(
             published["review_status"] = "published"
             published["date_last_checked"] = datetime.now(UTC).date().isoformat()
             public_id = str(published["public_id"])
-            existing_public = uow.get_phase3("development_records", public_id)
+            operational_public = uow.get_phase3("development_records", public_id)
+            processed_public = uow.get_processed("development_records", public_id)
+            if operational_public is not None and processed_public is not None:
+                raise AgendaIdentityConflict("public record has ambiguous store ownership")
+            existing_public = operational_public or processed_public
             if existing_public is not None:
                 if public_fingerprint(existing_public) != public_fingerprint(published):
                     raise AgendaPublicationPending(
