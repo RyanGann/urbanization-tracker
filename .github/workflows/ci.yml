@@ -73,6 +73,9 @@ jobs:
       - name: Test performance measurement counters
         run: node --test apps/web/e2e/performance/metrics.test.mjs scripts/performance/integration.test.mjs
 
+      - name: Test bounded database readiness process
+        run: node --test scripts/database-readiness.test.mjs
+
       - name: Run P02 intermediate catalog/development precheck
         run: node scripts/run-integration.mjs --suite performance --scenario catalog-development --profile desktop --smoke
 
