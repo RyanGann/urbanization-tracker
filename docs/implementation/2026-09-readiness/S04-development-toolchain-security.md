@@ -27,7 +27,7 @@ The existing audit reports ten affected package entries, all marked development 
 2. Update Vite to the patched 6.4 line and Vitest to at least 4.1.11. Refresh affected build-tool transitive packages and deduplicate compatible Vite installations. Keep direct runtime dependency declarations and their locked versions unchanged. Explain the required major upgrades.
 3. Regenerate the workspace lockfile with a working npm release in an isolated directory, without carrying old node_modules into resolution. Keep manifest and lockfile together; require reproducible `npm ci` under Node 22.
 4. Run existing type checks, web unit tests, production build, development and production browser smoke, and CI's real API scenarios. Make compatibility edits only when failures require them.
-5. Record advisory disposition and limitations. A comparison against known advisory ranges is not a new registry audit. Do not claim zero remaining vulnerabilities without that evidence.
+5. Record advisory disposition and limitations. A comparison against known advisory ranges is not a new registry audit. Audit only authorized dependency metadata and report the dated result for the exact lockfile; do not claim universal exploit safety.
 
 ## Acceptance and verification
 

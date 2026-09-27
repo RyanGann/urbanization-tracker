@@ -120,7 +120,7 @@ A PR can merge before its broader gate is complete if its intermediate state is 
 | Guide | Depends on | Review |
 | --- | --- | --- |
 | [O01: Upload and verify ingestion artifacts before activating data](O01-durable-artifact-uploads.md) | C02 | Lead review |
-| [O02: Update hosted configuration and readiness checks for the new contracts](O02-deployment-guardrails.md) | S01, C01, P05, P07, O01, S03 | Lead review |
+| [O02: Update hosted configuration and readiness checks for the new contracts](O02-deployment-guardrails.md) | S01, C01, P05, P07, O01, S03, S04 | Lead review |
 | [O04: Prepare code-license, data-use, and public disclosure decisions](O04-release-data-use-decisions.md) | D01, P02 | Owner decision after prepared evidence |
 | [O03: Rehearse migration, recovery, and resident/reviewer workflows](O03-restricted-alpha-rehearsal.md) | C08, C09, U03, D02, P09, O02, O04, D01 | Lead review |
 
@@ -153,6 +153,6 @@ Waterways, watersheds, broader protected-land/habitat sources, additional jurisd
 
 Run `node scripts/validate-readiness-plan.mjs` from the repository root after changing this package. The [tracked validator](../../../scripts/validate-readiness-plan.mjs) checks guide files, dependency cycles and ordering, index/manifest agreement, required sections, status/evidence consistency and local links across the package and updated entry documents. Evidence paths in plan.json are relative to this directory. A complete guide requires a PR URL, an existing evidence file and complete prerequisites; a blocked guide requires a blocked_reason. This validates the plan, not application behavior or GitHub merge status.
 
-Validation passed for the baseline of 38 guides, including nine performance guides. Whitespace checks passed.
+The initial baseline contained 38 guides, including nine performance guides. S04 adds the development toolchain security follow-up. Whitespace checks passed.
 
 Application CI runs independently of plan validation. Live API, performance-budget and launch-acceptance results belong in each implementation PR's evidence report; the original project-review checks are historical evidence.

@@ -504,7 +504,8 @@
         "P05",
         "P07",
         "O01",
-        "S03"
+        "S03",
+        "S04"
       ],
       "review": "Lead review",
       "pr_boundary": "One configuration/preflight PR; no deployment action.",
@@ -659,7 +660,7 @@
       ],
       "review": "Lead review with existing browser smoke",
       "pr_boundary": "One development dependency and lockfile PR; no application redesign.",
-      "implementation_pr": null,
+      "implementation_pr": "https://github.com/RyanGann/urbanization-tracker/pull/35",
       "evidence": "../../evidence/2026-09-27-s04-development-toolchain.md"
     }
   ],

@@ -27,8 +27,10 @@ The isolated lockfile update used official npm 11.6.2 through npm exec: install/
 
 Node 22 clean-directory validation passed: `npm ci --no-audit --no-fund`, `npm run typecheck:web`, `npm run test:web` (six tests), and `npm run build:web`. A base/new lockfile comparison found zero production version or integrity changes. The build retains the existing large MapLibre route chunk warning; this security follow-up does not satisfy the performance budget.
 
-Existing development/production and real API browser smoke are required CI checks; their results will be linked after completion. No local live-browser validation is claimed here.
+Existing development/production and real API browser smoke are required CI checks; their results will be linked after completion. No local live-browser validation is claimed here. Implementation: [PR #35](https://github.com/RyanGann/urbanization-tracker/pull/35).
 
-## Audit limitation
+## Registry audit and permission handling
 
-The post-change versions were compared with the already captured audit and maintainer advisories. A fresh registry audit was not run: automatic approval review rejected transmitting the lockfile metadata to the registry. Installs and resolution used `--no-audit`. This report does not claim a zero-vulnerability audit or prove every dependency free of newly published issues.
+Automatic approval review initially rejected transmitting potentially private lockfile metadata to the registry. Installs and resolution therefore used `--no-audit`. After PR #35 published the change, the lead verified that the GitHub repository is public and its remote lockfile blob exactly matches the local file: `28f5ead548ed8a98fc8544cc65fe8f2df648ee2d`. An isolated audit directory contained only those already published package manifests and lockfile; no application source, secrets, or private snapshots were included. With that evidence, automatic approval allowed the audit.
+
+`npm audit --package-lock-only --json` under Node 22/npm 10.9.8 exited zero and reported zero low, moderate, high, critical, or total vulnerabilities on September 27, 2026. This is a dated registry result for that exact lockfile, not proof of universal exploit safety or absence of future advisories. The raw JSON remains ignored locally at `tmp/s04-public-lock-audit.json`; only sanitized counts and the public lockfile identity are committed.
