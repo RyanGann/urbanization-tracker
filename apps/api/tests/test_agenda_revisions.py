@@ -584,6 +584,62 @@ def test_changed_url_is_quarantined_until_explicit_alias_mapping() -> None:
     assert _merge_document(uow, moved, "run-retry")[0] == old_id
 
 
+def test_pipeline_same_bytes_keep_distinct_fetched_contexts(
+    monkeypatch: Any, tmp_path: Any
+) -> None:
+    import httpx
+
+    from app.ingestion.agenda_pipeline import _fetch_and_parse_document
+    from app.ingestion.agenda_store import AgendaIdentityConflict, _merge_agenda_batch
+
+    monkeypatch.setattr(
+        "app.ingestion.agenda_pipeline.extract_pdf_text",
+        lambda _: ("1. SAMPLE RIDGE\nLayout (24 lots) Developer: Builder", "extracted"),
+    )
+    documents, records = [], []
+    with httpx.Client(
+        transport=httpx.MockTransport(lambda _: httpx.Response(200, content=b"same PDF"))
+    ) as client:
+        for month, day in (("May", 26), ("June", 23)):
+            document, parsed, _ = _fetch_and_parse_document(
+                client=client,
+                data_dir=tmp_path,
+                title=f"Planning agenda {month} {day}, 2026",
+                url=f"https://example.test/{month}.pdf",
+                checked_at="2026-09-27T00:00:00Z",
+            )
+            documents.append(document)
+            records.extend(parsed)
+    assert documents[0]["id"] == documents[1]["id"]
+    assert documents[0]["fetch_occurrence_id"] != documents[1]["fetch_occurrence_id"]
+    assert documents[0]["storage_uri"] != documents[1]["storage_uri"]
+    uow = MemoryUow()
+    _merge_agenda_batch(uow, documents, records, {}, None)
+    candidates = uow.list_phase3("agenda_staged_records")
+    assert len(candidates) == 2
+    assert {
+        (row["source_url"], row["publish_record"]["application_date"]) for row in candidates
+    } == {(document["url"], document["document_date"]) for document in documents}
+    legacy_documents, legacy_records = copy.deepcopy(documents), copy.deepcopy(records)
+    for document in legacy_documents:
+        document.pop("fetch_occurrence_id")
+    for record in legacy_records:
+        record["source_payload"].pop("fetch_occurrence_id")
+    untouched = MemoryUow()
+    with pytest.raises(AgendaIdentityConflict, match="Ambiguous legacy"):
+        _merge_agenda_batch(untouched, legacy_documents, legacy_records, {}, None)
+    assert not any(untouched.rows.values())
+    duplicate = MemoryUow()
+    _merge_agenda_batch(duplicate, [documents[0], documents[0]], [records[0], records[0]], {}, None)
+    assert len(duplicate.list_phase3("source_documents")) == 1
+    assert len(duplicate.list_phase3("agenda_staged_records")) == 1
+    mismatched = copy.deepcopy(records)
+    mismatched[0]["source_payload"]["source_document_id"] = "wrong-document"
+    with pytest.raises(AgendaIdentityConflict, match="context mismatch"):
+        _merge_agenda_batch(untouched, documents, mismatched, {}, None)
+    assert not any(untouched.rows.values())
+
+
 def test_changed_date_observations_with_same_pdf_remain_distinct() -> None:
     uow = MemoryUow()
     original = _document("a" * 64)

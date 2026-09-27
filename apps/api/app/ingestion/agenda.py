@@ -137,6 +137,8 @@ def _staged_record(
         "location": item.location,
         "parse_confidence": item.parse_confidence,
     }
+    if source_document.get("fetch_occurrence_id"):
+        source_payload["fetch_occurrence_id"] = source_document["fetch_occurrence_id"]
     return {
         "id": staged_id,
         "title": item.title,

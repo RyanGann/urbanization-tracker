@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import hashlib
+import json
 import re
 import ssl
 import subprocess
@@ -220,8 +221,13 @@ def _fetch_and_parse_document(
     pdf_bytes, content_type = _fetch_pdf_bytes(client, url)
     digest = hashlib.sha256(pdf_bytes).hexdigest()
     document_id = f"agenda-{digest[:12]}"
+    document_date = document_date_from_title(title, url)
+    occurrence_id = hashlib.sha256(
+        json.dumps([url, document_date, digest], separators=(",", ":")).encode("utf-8")
+    ).hexdigest()
+    artifact_key = f"agenda-fetch-{occurrence_id}"
     run_id = checked_at.replace(":", "").replace("+", "Z")
-    raw_path = data_dir / "raw" / "planning_agendas" / f"{document_id}.pdf"
+    raw_path = data_dir / "raw" / "planning_agendas" / f"{artifact_key}.pdf"
     raw_path.parent.mkdir(parents=True, exist_ok=True)
     write_staged_bytes(data_dir, raw_path, pdf_bytes)
     raw_artifact = record_artifact(
@@ -239,7 +245,7 @@ def _fetch_and_parse_document(
             source_key="huntsville_planning_agendas",
             run_id=run_id,
             artifact_type="source_pdf",
-            logical_key=document_id,
+            logical_key=artifact_key,
             required=True,
             content_type=content_type,
             source_url=url,
@@ -249,7 +255,7 @@ def _fetch_and_parse_document(
     )
 
     extracted_text, extraction_status = extract_pdf_text(pdf_bytes)
-    text_path = data_dir / "processed" / "source_documents" / f"{document_id}.txt"
+    text_path = data_dir / "processed" / "source_documents" / f"{artifact_key}.txt"
     text_path.parent.mkdir(parents=True, exist_ok=True)
     write_staged_bytes(data_dir, text_path, extracted_text.encode("utf-8"))
     text_artifact = record_artifact(
@@ -260,7 +266,7 @@ def _fetch_and_parse_document(
         run_id=run_id,
         source_url=url,
         content_type="text/plain; charset=utf-8",
-        metadata={"source_document_id": document_id},
+        metadata={"source_document_id": document_id, "fetch_occurrence_id": occurrence_id},
     )
     text_reference = (
         artifact_service.upload_file(
@@ -268,7 +274,7 @@ def _fetch_and_parse_document(
             source_key="huntsville_planning_agendas",
             run_id=run_id,
             artifact_type="extracted_text",
-            logical_key=f"{document_id}:extract-v1",
+            logical_key=f"{artifact_key}:extract-v1",
             required=True,
             content_type="text/plain; charset=utf-8",
             source_url=url,
@@ -283,9 +289,10 @@ def _fetch_and_parse_document(
 
     source_document = {
         "id": document_id,
+        "fetch_occurrence_id": occurrence_id,
         "title": title or "Planning Commission agenda",
         "url": public_source_url(url) or "",
-        "document_date": document_date_from_title(title, url),
+        "document_date": document_date,
         "fetched_at": checked_at,
         "sha256": digest,
         "text_sha256": hashlib.sha256(extracted_text.encode("utf-8")).hexdigest(),

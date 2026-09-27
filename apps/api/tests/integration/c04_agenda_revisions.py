@@ -857,10 +857,76 @@ def run(api_url: str, reviewer_token: str, result: Path) -> None:
                         assert count("agenda_decision_events") == events_before + (
                             ownership == "identical"
                         )
+                # Real O01 local upload/seal plus C02 merge for two fetches of
+                # identical PDF bytes in one run, with different meeting context.
+                from app.ingestion.agenda_pipeline import _fetch_and_parse_document
+
+                occurrence_documents, occurrence_records, occurrence_refs = [], [], []
+                same_bytes = b"C04 identical fetched PDF fixture"
+                fetched_at = "2026-09-27T09:00:00Z"
+                occurrence_run = fetched_at.replace(":", "").replace("+", "Z")
+                with (
+                    patch(
+                        "app.ingestion.agenda_pipeline.extract_pdf_text",
+                        return_value=(
+                            "1. OCCURRENCE RIDGE\nLayout (12 lots) Developer: Builder",
+                            "extracted",
+                        ),
+                    ),
+                    httpx.Client(
+                        transport=httpx.MockTransport(
+                            lambda _: httpx.Response(200, content=same_bytes)
+                        )
+                    ) as fetch_client,
+                ):
+                    for month, day in (("July", 28), ("August", 25)):
+                        document, records, refs = _fetch_and_parse_document(
+                            client=fetch_client,
+                            data_dir=root,
+                            title=f"Planning agenda {month} {day}, 2026",
+                            url=f"https://example.test/occurrence-{month}.pdf",
+                            checked_at=fetched_at,
+                            artifact_service=service,
+                        )
+                        occurrence_documents.append(document)
+                        occurrence_records.extend(records)
+                        occurrence_refs.extend(refs)
+                assert len(set(occurrence_refs)) == 4
+                from uuid import UUID
+
+                from app.models import ArtifactReference
+
+                with SessionLocal() as session:
+                    for doc in occurrence_documents:
+                        text_ref = session.get(ArtifactReference, UUID(doc["text_reference_id"]))
+                        assert text_ref is not None
+                        assert text_ref.parent_reference_id == UUID(doc["pdf_reference_id"])
+                assert len({doc["sha256"] for doc in occurrence_documents}) == 1
+                merge_agenda_artifacts(
+                    source_documents=occurrence_documents,
+                    staged_records=occurrence_records,
+                    health={"key": SOURCE, "status": "healthy", "checked_at": fetched_at},
+                    run_id=occurrence_run,
+                    artifact_sink_id=service.sink_id,
+                    required_reference_ids=tuple(occurrence_refs),
+                )
+                with SessionLocal() as session:
+                    uow = CollectionUnitOfWork(session)
+                    occurrences = [
+                        row
+                        for row in uow.list_phase3("agenda_staged_records")
+                        if row["title"] == "Occurrence Ridge"
+                    ]
+                    assert len(occurrences) == 2
+                    assert {
+                        (row["source_url"], row["publish_record"]["application_date"])
+                        for row in occurrences
+                    } == {(doc["url"], doc["document_date"]) for doc in occurrence_documents}
                 result.write_text(
                     json.dumps(
                         {
                             "pending_text_rollback": True,
+                            "same_bytes_same_run_durable_pairs_keep_fetched_context": True,
                             "same_revision_decision_retained": True,
                             "changed_unanchored_quarantined": True,
                             "stale_decision_and_resolution_409": True,

@@ -553,13 +553,38 @@ def _merge_agenda_batch(
     health: dict[str, Any],
     run_id: str | None,
 ) -> dict[str, Any]:
-    by_legacy_document: dict[str, list[dict[str, Any]]] = {}
+    by_occurrence: dict[str, list[dict[str, Any]]] = {}
+    legacy_documents: dict[str, list[dict[str, Any]]] = {}
+    for document in source_documents:
+        legacy_documents.setdefault(str(document["id"]), []).append(document)
+    occurrence_keys = {
+        str(document.get("fetch_occurrence_id") or document["id"]) for document in source_documents
+    }
     health_out = copy.deepcopy(health)
     legacy_counts: dict[str, int] = {}
     for record in staged_records:
-        by_legacy_document.setdefault(
-            str((record.get("source_payload") or {}).get("source_document_id")), []
-        ).append(record)
+        payload = record.get("source_payload") or {}
+        occurrence = payload.get("fetch_occurrence_id")
+        if not occurrence:
+            matches = legacy_documents.get(str(payload.get("source_document_id")), [])
+            if len(matches) != 1:
+                raise AgendaIdentityConflict("Ambiguous legacy fetched document occurrence")
+            occurrence = matches[0].get("fetch_occurrence_id") or matches[0]["id"]
+        if str(occurrence) not in occurrence_keys:
+            raise AgendaIdentityConflict("Unknown fetched document occurrence")
+        matching_documents = [
+            document
+            for document in source_documents
+            if str(document.get("fetch_occurrence_id") or document["id"]) == str(occurrence)
+        ]
+        if any(
+            str(document["id"]) != str(payload.get("source_document_id"))
+            or document.get("url") != record.get("source_url")
+            or document.get("document_date") != payload.get("document_date")
+            for document in matching_documents
+        ):
+            raise AgendaIdentityConflict("Fetched document occurrence context mismatch")
+        by_occurrence.setdefault(str(occurrence), []).append(record)
         legacy_id = str(record["id"])
         legacy_counts[legacy_id] = legacy_counts.get(legacy_id, 0) + 1
     affected: set[str] = set()
@@ -567,7 +592,8 @@ def _merge_agenda_batch(
         document_id, revision_id = _merge_document(uow, document, run_id)
         if document_id is None or revision_id is None:
             continue
-        for record in by_legacy_document.get(str(document["id"]), []):
+        occurrence = str(document.get("fetch_occurrence_id") or document["id"])
+        for record in by_occurrence.get(occurrence, []):
             candidate_id = _merge_candidate(
                 uow,
                 record,
