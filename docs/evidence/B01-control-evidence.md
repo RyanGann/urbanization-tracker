@@ -75,3 +75,27 @@ The approved roadmap records D01 implementation acceptance from merged PR28+33,
 keeps wetlands/county reconciliation, unknown canary coverage and O04 rights as
 activation gates, adds B01/B02, and splits P04 into shadow P04a and gated P04b.
 B02 remains planned and P04's aggregate completion status remains unchanged.
+
+## Reviewed request-binding correction
+
+Codex found that redirect-following could mislabel bytes with the original
+endpoint/query. Every scoped GET/POST now explicitly disables redirects, including
+injected clients configured to follow them; redirect status/history fails before
+control capture. The actual response request's method/endpoint and decoded GET
+query or POST form must match the trusted intended request exactly. Extra/default
+URL parameters, changed selectors and duplicate keys refuse proof. POST URL query
+parameters are refused, since the scoped query belongs to the form body.
+
+The final runtime head `8243fab46ab145646161c39aadda532cdff6b2db` passed backend
+lint, strict types (47 files) and 252 tests, including GET/POST foreign-host redirects
+with both client redirect settings (one actual request, zero controls), built-in
+client policy, hidden default time/version params and duplicate actual query keys.
+
+The same clean head passed real run `2026-09-27T07-10-03-821Z-cade0e29` with the
+same exact command above. [Final run metadata](B01-control-evidence-final-run.json)
+and [final synthetic results](B01-control-evidence-final-results.json) record the
+successful byte/hash/source/run checks, health/restart/canonical preservation and
+teardown. Final result bytes SHA-256:
+`b65f827e1b09e45ab5465dccd77d5b6591b9e3a0c85b610254575a7bd3c25333`.
+Project `urbanization_t01_8eeb877286dc` left zero labelled containers/volumes.
+No official source requests were made during either fixture run.

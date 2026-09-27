@@ -37,6 +37,8 @@ Old runs remain ineligible for B02 attestation without those original controls.
    metadata/count and final count/metadata. Canary retains only actually queried
    controls and never adds a final-ID request. Roles bind source/run/scope version,
    query digest, fixed endpoint, method, operation, sequence, status, bytes and hash.
+   Check the actual GET URL/POST form against trusted expected query values before
+   capture; refuse extras/duplicate keys and redirects, even on injected clients.
 3. Enforce four controls, 80 MiB total control bytes, 64 KiB descriptor budget and
    1,000 pages, alongside existing response/ID/request/time caps. At O01's 1,024
    reference cap, scope/report/canonical input plus four controls leave 1,017 page
