@@ -104,6 +104,10 @@ class AgendaIdentityConflict(RuntimeError):
 
 def _processed_public_records(uow: Any) -> list[dict[str, Any]]:
     """Read the configured source under the operational mutation boundary."""
+    if get_settings().data_mode == "demo":
+        from app.seed_store import demo_seed_development_records
+
+        return demo_seed_development_records()
     if get_settings().processed_store_backend == "postgres":
         return cast(list[dict[str, Any]], uow.list_processed("development_records"))
     from app.processed_store import read_processed_list_result
@@ -114,7 +118,7 @@ def _processed_public_records(uow: Any) -> list[dict[str, Any]]:
 
 
 def _processed_public_record(uow: Any, public_id: str) -> dict[str, Any] | None:
-    if get_settings().processed_store_backend == "postgres":
+    if get_settings().data_mode != "demo" and get_settings().processed_store_backend == "postgres":
         return cast(dict[str, Any] | None, uow.get_processed("development_records", public_id))
     return next(
         (row for row in _processed_public_records(uow) if str(row.get("public_id")) == public_id),

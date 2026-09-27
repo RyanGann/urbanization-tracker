@@ -23,6 +23,7 @@ def processed_memory_backend(monkeypatch: Any) -> Any:
     from app.config import get_settings
 
     monkeypatch.setenv("PROCESSED_STORE_BACKEND", "postgres")
+    monkeypatch.setenv("DATA_MODE", "live")
     get_settings.cache_clear()
     yield
     get_settings.cache_clear()
@@ -129,6 +130,65 @@ def test_approval_preserves_processed_public_ownership(
         assert all(uow.rows[key] == value for key, value in before.items())
         assert not uow.rows["agenda_decision_events"]
     assert uow.rows["processed:development_records"]["existing-public"] == public
+
+
+@pytest.mark.parametrize("seeded_owner", [False, True])
+def test_revisioned_demo_ingestion_and_approval_use_seed_owner_without_artifact(
+    seeded_owner: bool, monkeypatch: Any, tmp_path: Any
+) -> None:
+    from app.config import get_settings
+    from app.ingestion.agenda_store import merge_agenda_artifacts, review_agenda_candidate
+    from app.phase3_store import _read_collection, _write_collection, reset_phase3_state
+    from app.seed_store import demo_seed_development_records, reset_seed_state
+
+    for name, value in {
+        "DATA_MODE": "demo",
+        "PROCESSED_STORE_BACKEND": "artifact",
+        "PHASE3_STORE_BACKEND": "artifact",
+        "ARTIFACT_DURABILITY_REQUIRED": "false",
+        "HOSTED_INGESTION_ENABLED": "false",
+        "INGESTION_DATA_DIR": str(tmp_path),
+    }.items():
+        monkeypatch.setenv(name, value)
+    get_settings.cache_clear()
+    reset_seed_state()
+    try:
+        document = _document("a" * 64)
+        merge_agenda_artifacts(
+            source_documents=[document],
+            staged_records=_records(document),
+            health={"status": "healthy"},
+        )
+        candidate = _read_collection("agenda_staged_records")[0]
+        seed = demo_seed_development_records()[0]
+        if seeded_owner:
+            candidate["publish_record"] = copy.deepcopy(seed)
+        candidate.update(
+            geometry=copy.deepcopy(seed["geometry"]),
+            centroid=seed["centroid"],
+            geometry_source=seed["geometry_source"],
+            geometry_confidence=seed["geometry_confidence"],
+            location_required=False,
+        )
+        _write_collection("agenda_staged_records", [candidate])
+        result = review_agenda_candidate(
+            candidate["id"], action="approved", notes="Demo verified", expected_revision=1
+        )
+        assert result is not None and result[0]["state_revision"] == 2
+        assert len(_read_collection("agenda_decision_events")) == 1
+        if seeded_owner:
+            assert result[1] == seed
+            assert _read_collection("development_records") == []
+            assert _read_collection("record_versions") == []
+        else:
+            assert len(_read_collection("development_records")) == 1
+        assert not list(tmp_path.rglob("development_records.json"))
+        detached = demo_seed_development_records()
+        detached[0]["title"] = "Must not change demo owner"
+        assert demo_seed_development_records()[0] == seed
+    finally:
+        reset_phase3_state()
+        get_settings.cache_clear()
 
 
 def test_import_classifies_ambiguous_public_ownership_as_conflict(monkeypatch: Any) -> None:

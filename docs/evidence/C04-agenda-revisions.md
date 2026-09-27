@@ -1,6 +1,12 @@
 # C04 agenda identity and decision retention
 
-## Latest merged-main and mixed-backend verification
+## Final explicit-demo compatibility guard
+
+After the `de44f4e` local proof below, the shared lookup gained an explicit `DATA_MODE=demo` branch. Its seed-only accessor uses the existing loader and returns a defensive copy; it never combines operational records into the seed owner. This restores revisioned demo agenda ingestion and approval without a live processed artifact, while still detecting separately owned operational rows. Live and mixed-mode missing/corrupt-artifact refusal and keyed full-PG lookup remain unchanged.
+
+All 401 locked API tests, Ruff and mypy (57 files) pass for this guard. The focused agenda suite passes 27 tests, including actual revisioned demo ingest/approve with no processed artifact and identical seeded ownership with no competing row/version. The defensive-copy assertion also passes. No additional local stack ran solely for this pure mode guard; the `de44f4e` proof is explicitly pre-guard, and the final owning CI scenario remains required on the pushed head.
+
+## Earlier merged-main and mixed-backend verification
 
 The C04 commit set was backed up at `codex/c04-before-b01-main` and explicitly rebased onto actual merged main `84a71b10124045ddfb88cdfa7888525181f026d8`. Range-diff preserves every runtime patch; the only changed patch contexts retain the merged B01/B02 graph and D01 CI scenario alongside C04. B01 is marked complete from verified merged PR34; D01, O01 and S04 completion, all 42 guides and the conditional C10→O03 gate remain intact. Readiness validation passes 42 guides, nine performance guides and 595 local links. Full locked API tests, Ruff and mypy (57 files) pass after rebase; the focused agenda suite passes 25 tests.
 

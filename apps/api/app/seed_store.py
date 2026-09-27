@@ -53,6 +53,14 @@ def _ensure_loaded() -> None:
         _initialize_demo_records(force_seed=True)
 
 
+def demo_seed_development_records() -> list[dict[str, Any]]:
+    """Read the explicit demo owner without combining operational records."""
+    if get_settings().data_mode != "demo":
+        raise ValueError("Demo records require explicit demo mode")
+    _ensure_loaded()
+    return copy.deepcopy(_development_records)
+
+
 def _load_processed_records() -> list[dict[str, Any]] | None:
     result = read_processed_list_result("development_records")
     if result.availability is Availability.UNINITIALIZED:
