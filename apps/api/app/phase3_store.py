@@ -110,7 +110,10 @@ def set_phase3_staged_review_status(
     notes: str | None = None,
     expected_revision: int | None = None,
 ) -> dict[str, Any] | None:
-    if staged_id.startswith("stage-agenda-") and _use_transactional_postgres():
+    if staged_id.startswith("stage-agenda-") and (
+        _use_transactional_postgres()
+        or (get_phase3_staged_record(staged_id) or {}).get("content_revision") is not None
+    ):
         from app.ingestion.agenda_store import review_agenda_candidate
 
         reviewed = review_agenda_candidate(
@@ -135,7 +138,10 @@ def publish_phase3_staged_record(
     notes: str | None,
     expected_revision: int | None = None,
 ) -> dict[str, Any] | None:
-    if staged_id.startswith("stage-agenda-") and _use_transactional_postgres():
+    if staged_id.startswith("stage-agenda-") and (
+        _use_transactional_postgres()
+        or (get_phase3_staged_record(staged_id) or {}).get("content_revision") is not None
+    ):
         from app.ingestion.agenda_store import review_agenda_candidate
 
         reviewed = review_agenda_candidate(

@@ -6,9 +6,16 @@ import copy
 from collections import defaultdict
 from typing import Any
 
+import pytest
+
 from app.ingestion.agenda import parse_agenda_items
 from app.ingestion.agenda_inventory import build_inventory
-from app.ingestion.agenda_store import _digest, _merge_candidate, _merge_document
+from app.ingestion.agenda_store import (
+    _digest,
+    _merge_agenda_batch,
+    _merge_candidate,
+    _merge_document,
+)
 
 
 class MemoryUow:
@@ -28,17 +35,24 @@ class MemoryUow:
 
 def _document(sha: str, *, url: str = "https://example.test/agenda.pdf") -> dict[str, Any]:
     return {
-        "id": f"agenda-{sha[:12]}", "title": "Planning agenda April 28, 2026",
-        "url": url, "document_date": "2026-04-28", "fetched_at": "2026-04-29T00:00:00Z",
-        "sha256": sha, "text_sha256": sha, "extraction_status": "extracted",
-        "pdf_reference_id": None, "text_reference_id": None,
+        "id": f"agenda-{sha[:12]}",
+        "title": "Planning agenda April 28, 2026",
+        "url": url,
+        "document_date": "2026-04-28",
+        "fetched_at": "2026-04-29T00:00:00Z",
+        "sha256": sha,
+        "text_sha256": sha,
+        "extraction_status": "extracted",
+        "pdf_reference_id": None,
+        "text_reference_id": None,
     }
 
 
 def _records(document: dict[str, Any], *, status: str = "Layout") -> list[dict[str, Any]]:
     return parse_agenda_items(
         f"1. SAMPLE RIDGE\n{status} (24 lots) Developer: Builder\nLocated: West of Road",
-        source_document=document, checked_at="2026-04-29T00:00:00Z",
+        source_document=document,
+        checked_at="2026-04-29T00:00:00Z",
     )
 
 
@@ -51,7 +65,10 @@ def test_same_revision_replay_retains_rejection_and_never_fabricates_location() 
     assert parsed["geometry"] is None
     assert parsed["publish_record"]["centroid"] is None
     candidate_id = _merge_candidate(
-        uow, parsed, document_id=doc_id, revision_id=revision_id,
+        uow,
+        parsed,
+        document_id=doc_id,
+        revision_id=revision_id,
         document_date=document["document_date"],
     )
     assert candidate_id
@@ -63,10 +80,16 @@ def test_same_revision_replay_retains_rejection_and_never_fabricates_location() 
     uow.upsert_phase3("agenda_staged_records", candidate_id, rejected)
     doc_again, rev_again = _merge_document(uow, document, "run-b")
     assert (doc_again, rev_again) == (doc_id, revision_id)
-    assert _merge_candidate(
-        uow, parsed, document_id=doc_id, revision_id=revision_id,
-        document_date=document["document_date"],
-    ) == candidate_id
+    assert (
+        _merge_candidate(
+            uow,
+            parsed,
+            document_id=doc_id,
+            revision_id=revision_id,
+            document_date=document["document_date"],
+        )
+        == candidate_id
+    )
     after = uow.get_phase3("agenda_staged_records", candidate_id)
     assert after and after["review_status"] == "rejected"
     assert after["review_notes"] == "Cannot verify location"
@@ -81,7 +104,10 @@ def test_changed_unanchored_observation_waits_for_audited_mapping() -> None:
     assert doc_id and old_revision
     original = _records(old)[0]
     candidate_id = _merge_candidate(
-        uow, original, document_id=doc_id, revision_id=old_revision,
+        uow,
+        original,
+        document_id=doc_id,
+        revision_id=old_revision,
         document_date=old["document_date"],
     )
     assert candidate_id
@@ -95,13 +121,20 @@ def test_changed_unanchored_observation_waits_for_audited_mapping() -> None:
     next_doc, next_revision = _merge_document(uow, changed, "run-b")
     assert next_doc == doc_id and next_revision != old_revision
     new_observation = _records(changed, status="Final")[0]
-    assert _merge_candidate(
-        uow, new_observation, document_id=doc_id, revision_id=next_revision,
-        document_date=changed["document_date"],
-    ) is None
+    assert (
+        _merge_candidate(
+            uow,
+            new_observation,
+            document_id=doc_id,
+            revision_id=next_revision,
+            document_date=changed["document_date"],
+        )
+        is None
+    )
     # The initial revision also has an observation. Locate the new unresolved one.
     unresolved = next(
-        item for item in uow.rows["agenda_observations"].values()
+        item
+        for item in uow.rows["agenda_observations"].values()
         if item["status"] == "identity_unresolved"
     )
     assert unresolved["candidate_id"] is None
@@ -111,17 +144,24 @@ def test_changed_unanchored_observation_waits_for_audited_mapping() -> None:
     unresolved["candidate_id"] = candidate_id
     unresolved["status"] = "resolved"
     uow.upsert_phase3("agenda_observations", unresolved["id"], unresolved)
-    assert _merge_candidate(
-        uow, new_observation, document_id=doc_id, revision_id=next_revision,
-        document_date=changed["document_date"],
-    ) == candidate_id
+    assert (
+        _merge_candidate(
+            uow,
+            new_observation,
+            document_id=doc_id,
+            revision_id=next_revision,
+            document_date=changed["document_date"],
+        )
+        == candidate_id
+    )
     current = uow.get_phase3("agenda_staged_records", candidate_id)
     assert current and current["review_status"] == "pending"
     assert current["content_revision"] == 2
     assert len(uow.rows["agenda_candidate_revisions"]) == 2
-    assert uow.rows["agenda_decision_events"][f"{candidate_id}:legacy-baseline"][
-        "action"
-    ] == "approved"
+    assert (
+        uow.rows["agenda_decision_events"][f"{candidate_id}:legacy-baseline"]["action"]
+        == "approved"
+    )
 
 
 def test_same_legacy_title_id_cannot_link_across_document_revisions() -> None:
@@ -131,7 +171,10 @@ def test_same_legacy_title_id_cannot_link_across_document_revisions() -> None:
     assert document_id and old_revision
     record = _records(document)[0]
     candidate_id = _merge_candidate(
-        uow, record, document_id=document_id, revision_id=old_revision,
+        uow,
+        record,
+        document_id=document_id,
+        revision_id=old_revision,
         document_date=document["document_date"],
     )
     assert candidate_id
@@ -140,10 +183,16 @@ def test_same_legacy_title_id_cannot_link_across_document_revisions() -> None:
     newer["normalized_status"] = "final"
     # A parser/extraction revision can retain the old title-derived legacy ID.
     # It is still a new unanchored observation, even if that ID resolves.
-    assert _merge_candidate(
-        uow, newer, document_id=document_id, revision_id="new-extraction-revision",
-        document_date=document["document_date"],
-    ) is None
+    assert (
+        _merge_candidate(
+            uow,
+            newer,
+            document_id=document_id,
+            revision_id="new-extraction-revision",
+            document_date=document["document_date"],
+        )
+        is None
+    )
     assert uow.get_phase3("agenda_staged_records", candidate_id)["review_status"] == "pending"
 
 
@@ -172,10 +221,16 @@ def test_changed_url_is_quarantined_until_explicit_alias_mapping() -> None:
     alias_key = _digest(["huntsville_planning_agendas", moved["url"], moved["document_date"]])
     # The operator resolution command writes this alias with CAS and an audit
     # event; the next verified run may then follow it without guessing.
-    uow.upsert_phase3("agenda_document_aliases", alias_key, {
-        "id": alias_key, "document_id": old_id, "url": moved["url"],
-        "document_date": moved["document_date"],
-    })
+    uow.upsert_phase3(
+        "agenda_document_aliases",
+        alias_key,
+        {
+            "id": alias_key,
+            "document_id": old_id,
+            "url": moved["url"],
+            "document_date": moved["document_date"],
+        },
+    )
     assert _merge_document(uow, moved, "run-retry")[0] == old_id
 
 
@@ -203,8 +258,11 @@ def test_legacy_same_content_backfill_preserves_approval_and_notes() -> None:
     doc_id, revision_id = _merge_document(uow, document, "run-backfill")
     assert doc_id and revision_id
     candidate_id = _merge_candidate(
-        uow, _records(document)[0], document_id=doc_id,
-        revision_id=revision_id, document_date=document["document_date"],
+        uow,
+        _records(document)[0],
+        document_id=doc_id,
+        revision_id=revision_id,
+        document_date=document["document_date"],
     )
     assert candidate_id == parsed["id"]
     after = uow.get_phase3("agenda_staged_records", candidate_id)
@@ -230,8 +288,225 @@ def test_inventory_identifies_legacy_gaps_without_deriving_identity() -> None:
     )
     assert result["read_only"] is True
     assert result["missing_counts"] == {
-        "document_alias": 1, "document_revision": 1,
-        "candidate_revision": 1, "decision_baseline": 1,
+        "document_alias": 1,
+        "document_revision": 1,
+        "candidate_revision": 1,
+        "decision_baseline": 1,
     }
     assert result["samples"]["document_alias"] == ["legacy-doc"]
     assert result["samples"]["decision_baseline"] == ["reviewed"]
+
+
+def test_historical_replay_preserves_latest_document_candidate_and_publication() -> None:
+    uow = MemoryUow()
+    old = _document("a" * 64)
+    doc_id, old_revision = _merge_document(uow, old, "run-a")
+    assert doc_id and old_revision
+    candidate_id = _merge_candidate(
+        uow,
+        _records(old)[0],
+        document_id=doc_id,
+        revision_id=old_revision,
+        document_date=old["document_date"],
+    )
+    assert candidate_id
+    newer = _document("b" * 64)
+    _, new_revision = _merge_document(uow, newer, "run-b")
+    assert new_revision
+    incoming = _records(newer, status="Final")[0]
+    assert (
+        _merge_candidate(
+            uow,
+            incoming,
+            document_id=doc_id,
+            revision_id=new_revision,
+            document_date=newer["document_date"],
+        )
+        is None
+    )
+    occurrence = next(
+        row
+        for row in uow.rows["agenda_observations"].values()
+        if row["status"] == "identity_unresolved"
+    )
+    occurrence["candidate_id"] = candidate_id
+    occurrence["status"] = "resolved"
+    uow.upsert_phase3("agenda_observations", occurrence["id"], occurrence)
+    assert (
+        _merge_candidate(
+            uow,
+            incoming,
+            document_id=doc_id,
+            revision_id=new_revision,
+            document_date=newer["document_date"],
+        )
+        == candidate_id
+    )
+    current = uow.get_phase3("agenda_staged_records", candidate_id)
+    assert current and current["content_revision"] == 2
+    current.update(
+        review_status="rejected",
+        review_notes="Decision on latest revision",
+        state_revision=3,
+        review_actor="fixture",
+        reviewed_at="2026-05-01",
+    )
+    uow.upsert_phase3("agenda_staged_records", candidate_id, current)
+    public_id = current["publish_record"]["public_id"]
+    uow.upsert_phase3(
+        "development_records", public_id, {"public_id": public_id, "title": "old public"}
+    )
+    before = copy.deepcopy(uow.rows)
+    _merge_agenda_batch(uow, [old], _records(old), {"status": "healthy"}, "run-a-replay")
+    for collection in (
+        "source_documents",
+        "agenda_staged_records",
+        "development_records",
+        "agenda_candidate_revisions",
+        "agenda_decision_events",
+    ):
+        assert uow.rows[collection] == before[collection]
+    assert len(uow.rows["agenda_document_observations"]) == 3
+    # The same protection applies to pre-marker checkpoints with revision evidence.
+    for row in uow.rows["agenda_observations"].values():
+        row.pop("applied_content_revision", None)
+    _merge_agenda_batch(uow, [old], _records(old), {"status": "healthy"}, "legacy-replay")
+    assert uow.rows["agenda_staged_records"] == before["agenda_staged_records"]
+
+
+def test_limited_refresh_reports_all_retained_unresolved_identities() -> None:
+    uow = MemoryUow()
+    for name in ("agenda_unresolved_documents", "agenda_observations"):
+        uow.upsert_phase3(
+            name, "old-unresolved", {"id": "old-unresolved", "status": "identity_unresolved"}
+        )
+        uow.upsert_phase3(name, "resolved", {"id": "resolved", "status": "resolved"})
+    newer = _document("c" * 64)
+    health = _merge_agenda_batch(uow, [newer], [], {"status": "healthy"}, "limited")
+    assert health["status"] == "degraded"
+    assert health["identity_unresolved_count"] == 2
+    assert health["validation_errors"] == ["agenda_identity_unresolved"]
+
+
+def test_artifact_decision_round_trip_and_failed_validation(
+    tmp_path: Any, monkeypatch: Any
+) -> None:
+    from app.config import get_settings
+    from app.ingestion.agenda_store import (
+        AgendaRevisionConflict,
+        list_unresolved_documents,
+        list_unresolved_observations,
+        merge_agenda_artifacts,
+        resolve_agenda_document_alias,
+        resolve_agenda_observation,
+    )
+    from app.phase3_store import (
+        _read_collection,
+        get_phase3_staged_record,
+        reset_phase3_state,
+        set_phase3_staged_review_status,
+    )
+
+    monkeypatch.setenv("INGESTION_DATA_DIR", str(tmp_path))
+    monkeypatch.setenv("PHASE3_STORE_BACKEND", "artifact")
+    monkeypatch.setenv("DATA_MODE", "live")
+    monkeypatch.setenv("ARTIFACT_DURABILITY_REQUIRED", "false")
+    monkeypatch.setenv("HOSTED_INGESTION_ENABLED", "false")
+    get_settings.cache_clear()
+    reset_phase3_state(force_memory=False)
+    try:
+        old = _document("a" * 64)
+        merge_agenda_artifacts(
+            source_documents=[old],
+            staged_records=_records(old),
+            health={"status": "healthy"},
+            run_id="a",
+        )
+        candidate = _read_collection("agenda_staged_records")[0]
+        rejected = set_phase3_staged_review_status(
+            candidate["id"], "rejected", notes="Retain private note", expected_revision=1
+        )
+        assert rejected and rejected["state_revision"] == 2
+        reset_phase3_state(force_memory=False)
+        merge_agenda_artifacts(
+            source_documents=[old],
+            staged_records=_records(old),
+            health={"status": "healthy"},
+            run_id="a-replay",
+        )
+        assert get_phase3_staged_record(candidate["id"]) == rejected
+        changed = _document("b" * 64)
+        merge_agenda_artifacts(
+            source_documents=[changed],
+            staged_records=_records(changed, status="Final"),
+            health={"status": "healthy"},
+            run_id="b",
+        )
+        health_rows = _read_collection("agenda_health")
+        assert len(health_rows) == 1
+        assert health_rows[0]["status"] == "degraded"
+        assert health_rows[0]["identity_unresolved_count"] == 1
+        unresolved = list_unresolved_observations()[0]
+        before = {str(path): path.read_bytes() for path in tmp_path.rglob("*.json")}
+        with pytest.raises(AgendaRevisionConflict):
+            resolve_agenda_observation(
+                unresolved["id"],
+                candidate_id=candidate["id"],
+                expected_observation_revision=1,
+                expected_candidate_revision=1,
+                actor="fixture",
+                reason="Audited link",
+            )
+        assert before == {str(path): path.read_bytes() for path in tmp_path.rglob("*.json")}
+        with monkeypatch.context() as failing_merge:
+
+            def fail_after_resolution(*args: Any, **kwargs: Any) -> None:
+                raise ValueError("injected validation failure")
+
+            failing_merge.setattr(
+                "app.ingestion.agenda_store._merge_candidate", fail_after_resolution
+            )
+            with pytest.raises(ValueError, match="injected validation failure"):
+                resolve_agenda_observation(
+                    unresolved["id"],
+                    candidate_id=candidate["id"],
+                    expected_observation_revision=1,
+                    expected_candidate_revision=2,
+                    actor="fixture",
+                    reason="Audited link",
+                )
+        assert before == {str(path): path.read_bytes() for path in tmp_path.rglob("*.json")}
+        resolved = resolve_agenda_observation(
+            unresolved["id"],
+            candidate_id=candidate["id"],
+            expected_observation_revision=1,
+            expected_candidate_revision=2,
+            actor="fixture",
+            reason="Audited link",
+        )
+        assert (
+            resolved
+            and resolved["content_revision"] == 2
+            and resolved["review_status"] == "pending"
+        )
+        moved = _document("b" * 64, url="https://example.test/moved.pdf")
+        merge_agenda_artifacts(
+            source_documents=[moved],
+            staged_records=[],
+            health={"status": "healthy"},
+            run_id="moved",
+        )
+        document_observation = list_unresolved_documents()[0]
+        resolve_agenda_document_alias(
+            document_observation["id"],
+            document_id=resolved["source_payload"]["source_document_id"],
+            expected_observation_revision=1,
+            actor="fixture",
+            reason="Same packet",
+        )
+        assert list_unresolved_documents() == []
+        assert _read_collection("agenda_identity_resolutions")
+        assert _read_collection("agenda_decision_events")[0]["notes"] == "Retain private note"
+    finally:
+        reset_phase3_state()
+        get_settings.cache_clear()

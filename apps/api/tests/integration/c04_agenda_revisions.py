@@ -229,6 +229,32 @@ def run(api_url: str, reviewer_token: str, result: Path) -> None:
                     row for row in api.get("/api/reviewer/staged-records").json()
                     if row["id"] == candidate_id
                 )
+                latest_document = api.get("/api/source-documents").json()
+                historical_run = "c04-historical-" + uuid4().hex
+                historical, historical_records, historical_refs = setup_document(
+                    service, root, run_id=historical_run,
+                    pdf=b"synthetic PDF revision one", text=first_text,
+                )
+                before_observations = count("agenda_document_observations")
+                merge(
+                    historical, historical_records, historical_refs,
+                    historical_run, service.sink_id,
+                )
+                after_historical = next(
+                    row for row in api.get("/api/reviewer/staged-records").json()
+                    if row["id"] == candidate_id
+                )
+                assert after_historical == current
+                assert after_historical["review_notes"] == "Fixture location verified"
+                assert api.get("/api/source-documents").json() == latest_document
+                assert count("agenda_document_observations") == before_observations + 1
+                assert count("agenda_candidate_revisions") == 2
+                with SessionLocal() as session:
+                    historical_public = session.scalar(select(Phase3CollectionItem).where(
+                        Phase3CollectionItem.collection_name == "development_records",
+                        Phase3CollectionItem.item_id == public_id,
+                    ))
+                    assert historical_public and historical_public.payload_json == persisted_public
                 same_approval = api.post(
                     f"/api/reviewer/staged-records/{candidate_id}/approve",
                     json={
@@ -364,6 +390,30 @@ def run(api_url: str, reviewer_token: str, result: Path) -> None:
                 assert count("agenda_document_revisions") == before_revisions
                 merge(newest, newest_records, newest_refs, newest_run, service.sink_id)
                 assert count("source_documents") == before_documents + 1
+                # The moved packet's unresolved item is outside this refresh;
+                # both retained document and item issues must remain visible.
+                unresolved_moved_run = "c04-unresolved-moved-" + uuid4().hex
+                unresolved_moved, _, unresolved_moved_refs = setup_document(
+                    service, root, run_id=unresolved_moved_run,
+                    pdf=b"synthetic ambiguous URL", text=changed_text,
+                    url="https://example.test/c04/another-moved-agenda.pdf",
+                )
+                merge(
+                    unresolved_moved, [], unresolved_moved_refs,
+                    unresolved_moved_run, service.sink_id,
+                )
+                merge(newest, newest_records, newest_refs, newest_run, service.sink_id)
+                with SessionLocal() as session:
+                    stored_health = session.scalar(select(Phase3CollectionItem).where(
+                        Phase3CollectionItem.collection_name == "agenda_health",
+                        Phase3CollectionItem.item_id == SOURCE,
+                    ))
+                    assert stored_health
+                    assert stored_health.payload_json["status"] == "degraded"
+                    assert stored_health.payload_json["identity_unresolved_count"] == 2
+                    assert "agenda_identity_unresolved" in stored_health.payload_json[
+                        "validation_errors"
+                    ]
                 assert any(
                     row["id"] == original_document["id"]
                     for row in api.get("/api/source-documents").json()
@@ -375,6 +425,8 @@ def run(api_url: str, reviewer_token: str, result: Path) -> None:
                     "stale_decision_and_resolution_409": True,
                     "resolved_revision_pending_then_one_publication": True,
                     "same_approval_returns_persisted_snapshot": True,
+                    "historical_replay_preserves_latest_decision_and_publication": True,
+                    "limited_refresh_retains_unresolved_document_and_item_health": True,
                     "changed_second_approval_defers_to_c06": True,
                     "changed_url_requires_audited_alias": True,
                     "mid_merge_failure_rolled_back_and_older_document_remained": True,

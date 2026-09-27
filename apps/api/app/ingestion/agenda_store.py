@@ -9,8 +9,10 @@ from __future__ import annotations
 import copy
 import hashlib
 import json
+from collections.abc import Iterator
+from contextlib import contextmanager
 from datetime import UTC, datetime
-from typing import Any
+from typing import Any, cast
 from uuid import UUID, uuid4
 
 from app.config import get_settings
@@ -20,6 +22,65 @@ from app.ingestion.artifact_sink import ArtifactError
 SOURCE_KEY = "huntsville_planning_agendas"
 FINGERPRINT_VERSION = 1
 PARSER_VERSION = "agenda-text-v1"
+
+
+class ArtifactAgendaUnitOfWork:
+    """Single-writer item merges; file commits are atomic individually only."""
+
+    def __init__(self) -> None:
+        self.rows: dict[str, dict[str, dict[str, Any]]] = {}
+        self.dirty: set[str] = set()
+
+    def _collection(self, name: str) -> dict[str, dict[str, Any]]:
+        from app.phase3_store import _collection_item_id, _read_collection
+
+        if name not in self.rows:
+            self.rows[name] = {
+                (
+                    SOURCE_KEY if name == "agenda_health" else _collection_item_id(name, index, row)
+                ): row
+                for index, row in enumerate(_read_collection(name))
+            }
+        return self.rows[name]
+
+    def get_phase3(self, name: str, key: str) -> dict[str, Any] | None:
+        return copy.deepcopy(self._collection(name).get(key))
+
+    def list_phase3(self, name: str) -> list[dict[str, Any]]:
+        return copy.deepcopy(list(self._collection(name).values()))
+
+    def upsert_phase3(self, name: str, key: str, value: dict[str, Any]) -> None:
+        self._collection(name)[key] = copy.deepcopy(value)
+        self.dirty.add(name)
+
+    def commit(self) -> None:
+        from app.phase3_store import _write_collection
+
+        # Validation failures discard staged mutations. An interrupted commit
+        # can still leave partial cross-file state; use PostgreSQL for hosting.
+        for name in sorted(self.dirty):
+            _write_collection(name, list(self.rows[name].values()))
+
+
+@contextmanager
+def _agenda_mutation() -> Iterator[Any]:
+    from app.phase3_store import _use_transactional_postgres
+
+    settings = get_settings()
+    require_hosted_artifact_storage(settings)
+    if _use_transactional_postgres():
+        from app.db import SessionLocal
+        from app.transactional_store import CollectionUnitOfWork
+
+        with SessionLocal.begin() as session:
+            with CollectionUnitOfWork(session).canonical_mutation() as uow:
+                yield uow
+    else:
+        if settings.artifact_durability_required:
+            raise ArtifactError("artifact_configuration")
+        artifact_uow = ArtifactAgendaUnitOfWork()
+        yield artifact_uow
+        artifact_uow.commit()
 
 
 class AgendaIdentityConflict(RuntimeError):
@@ -58,16 +119,15 @@ def _content(record: dict[str, Any], document_date: str | None) -> dict[str, Any
     }
 
 
-def _existing_document(
-    uow: Any, incoming: dict[str, Any]
-) -> tuple[str | None, bool]:
+def _existing_document(uow: Any, incoming: dict[str, Any]) -> tuple[str | None, bool]:
     """Exact URL/date alias only; a changed URL is not proof of identity."""
     alias_key = _digest([SOURCE_KEY, incoming.get("url"), incoming.get("document_date")])
     alias = uow.get_phase3("agenda_document_aliases", alias_key)
     if alias is not None:
         return str(alias["document_id"]), False
     existing = [
-        doc for doc in uow.list_phase3("source_documents")
+        doc
+        for doc in uow.list_phase3("source_documents")
         if doc.get("url") == incoming.get("url")
         and doc.get("document_date") == incoming.get("document_date")
     ]
@@ -78,12 +138,12 @@ def _existing_document(
     # Same-date, different-URL documents are ambiguous until an operator links
     # the alias. This avoids inventing a second logical meeting on URL churn.
     same_date = [
-        doc for doc in uow.list_phase3("source_documents")
+        doc
+        for doc in uow.list_phase3("source_documents")
         if incoming.get("document_date") and doc.get("document_date") == incoming["document_date"]
     ]
     same_url = [
-        doc for doc in uow.list_phase3("source_documents")
-        if doc.get("url") == incoming.get("url")
+        doc for doc in uow.list_phase3("source_documents") if doc.get("url") == incoming.get("url")
     ]
     if same_date or same_url:
         return None, True
@@ -95,30 +155,51 @@ def _merge_document(
 ) -> tuple[str | None, str | None]:
     document_id, ambiguous = _existing_document(uow, incoming)
     if document_id is None and ambiguous:
-        key = _digest([
-            SOURCE_KEY, incoming.get("url"), incoming.get("document_date"),
-            incoming.get("sha256"),
-        ])
-        _immutable(uow, "agenda_unresolved_documents", key, {
-            "id": key,
-            "url": incoming.get("url"),
-            "document_date": incoming.get("document_date"),
-            "sha256": incoming.get("sha256"),
-            "reason": "document_identity_ambiguous",
-            "status": "identity_unresolved",
-            "observation_revision": 1,
-        })
+        key = _digest(
+            [
+                SOURCE_KEY,
+                incoming.get("url"),
+                incoming.get("document_date"),
+                incoming.get("sha256"),
+            ]
+        )
+        _immutable(
+            uow,
+            "agenda_unresolved_documents",
+            key,
+            {
+                "id": key,
+                "url": incoming.get("url"),
+                "document_date": incoming.get("document_date"),
+                "sha256": incoming.get("sha256"),
+                "reason": "document_identity_ambiguous",
+                "status": "identity_unresolved",
+                "observation_revision": 1,
+            },
+        )
         return None, None
     document_id = document_id or f"agenda-doc-{uuid4().hex}"
     alias_key = _digest([SOURCE_KEY, incoming.get("url"), incoming.get("document_date")])
-    _immutable(uow, "agenda_document_aliases", alias_key, {
-        "id": alias_key, "document_id": document_id,
-        "url": incoming.get("url"), "document_date": incoming.get("document_date"),
-    })
-    revision_id = _digest([
-        document_id, incoming.get("sha256"), incoming.get("text_sha256"),
-        incoming.get("extraction_status"), PARSER_VERSION,
-    ])
+    _immutable(
+        uow,
+        "agenda_document_aliases",
+        alias_key,
+        {
+            "id": alias_key,
+            "document_id": document_id,
+            "url": incoming.get("url"),
+            "document_date": incoming.get("document_date"),
+        },
+    )
+    revision_id = _digest(
+        [
+            document_id,
+            incoming.get("sha256"),
+            incoming.get("text_sha256"),
+            incoming.get("extraction_status"),
+            PARSER_VERSION,
+        ]
+    )
     revision = {
         "id": revision_id,
         "document_id": document_id,
@@ -140,13 +221,24 @@ def _merge_document(
             if previous.get(key) != revision[key]:
                 raise AgendaIdentityConflict("document revision collision")
     run_key = _digest([revision_id, run_id or incoming.get("fetched_at")])
-    _immutable(uow, "agenda_document_observations", run_key, {
-        "id": run_key, "document_id": document_id, "document_revision_id": revision_id,
-        "run_id": run_id, "fetched_at": incoming.get("fetched_at"),
-        "pdf_reference_id": incoming.get("pdf_reference_id"),
-        "text_reference_id": incoming.get("text_reference_id"),
-    })
+    _immutable(
+        uow,
+        "agenda_document_observations",
+        run_key,
+        {
+            "id": run_key,
+            "document_id": document_id,
+            "document_revision_id": revision_id,
+            "run_id": run_id,
+            "fetched_at": incoming.get("fetched_at"),
+            "pdf_reference_id": incoming.get("pdf_reference_id"),
+            "text_reference_id": incoming.get("text_reference_id"),
+        },
+    )
     current = uow.get_phase3("source_documents", document_id)
+    if previous is not None and current and current.get("revision_id") not in (None, revision_id):
+        # A verified replay appends run evidence, without reactivating history.
+        return document_id, revision_id
     document = copy.deepcopy(incoming)
     document["id"] = document_id
     document["revision_id"] = revision_id
@@ -159,8 +251,13 @@ def _merge_document(
 
 
 def _merge_candidate(
-    uow: Any, incoming: dict[str, Any], *, document_id: str, revision_id: str,
-    document_date: str | None, legacy_ambiguous: bool = False,
+    uow: Any,
+    incoming: dict[str, Any],
+    *,
+    document_id: str,
+    revision_id: str,
+    document_date: str | None,
+    legacy_ambiguous: bool = False,
 ) -> str | None:
     ordinal = incoming.get("observation_ordinal")
     occurrence_id = _digest([revision_id, PARSER_VERSION, ordinal])
@@ -169,12 +266,25 @@ def _merge_candidate(
         candidate_id = mapped.get("candidate_id")
         if candidate_id is None:
             return None
+        already_applied = mapped.get("applied_content_revision") is not None or (
+            "applied_content_revision" not in mapped
+            and any(
+                row.get("candidate_id") == candidate_id
+                and row.get("document_revision_id") == revision_id
+                for row in uow.list_phase3("agenda_candidate_revisions")
+            )
+        )
+        if already_applied:
+            # Resolved mappings from older checkpoints have revision evidence
+            # instead of this marker. Neither form may replay over a decision.
+            return str(candidate_id)
     else:
         # First import of a document can adopt an exact legacy staged ID. A new
         # document revision with no authoritative item key cannot guess a match.
         legacy = uow.get_phase3("agenda_staged_records", str(incoming["id"]))
         prior_candidates = [
-            row for row in uow.list_phase3("agenda_staged_records")
+            row
+            for row in uow.list_phase3("agenda_staged_records")
             if (row.get("source_payload") or {}).get("source_document_id") == document_id
             and (row.get("source_payload") or {}).get("document_revision_id") is not None
             and (row.get("source_payload") or {}).get("document_revision_id") != revision_id
@@ -201,14 +311,18 @@ def _merge_candidate(
         else:
             candidate_id = f"stage-agenda-{uuid4().hex}"
         observation = {
-            "id": occurrence_id, "document_id": document_id,
-            "document_revision_id": revision_id, "parser_version": PARSER_VERSION,
-            "ordinal": ordinal, "source_excerpt": str(incoming.get("title", ""))[:200],
+            "id": occurrence_id,
+            "document_id": document_id,
+            "document_revision_id": revision_id,
+            "parser_version": PARSER_VERSION,
+            "ordinal": ordinal,
+            "source_excerpt": str(incoming.get("title", ""))[:200],
             "source_snapshot": copy.deepcopy(incoming),
             "document_date": document_date,
             "candidate_id": candidate_id,
             "status": "resolved" if candidate_id else "identity_unresolved",
             "observation_revision": 1,
+            "applied_content_revision": None,
         }
         _immutable(uow, "agenda_observations", occurrence_id, observation)
         if candidate_id is None:
@@ -220,31 +334,41 @@ def _merge_candidate(
         if current.get("review_status") not in (None, "pending") and not current.get("reviewed_at"):
             baseline_id = f"{candidate_id}:legacy-baseline"
             if uow.get_phase3("agenda_decision_events", baseline_id) is None:
-                uow.upsert_phase3("agenda_decision_events", baseline_id, {
-                    "id": baseline_id, "candidate_id": candidate_id,
-                    "content_revision": int(current.get("content_revision", 1)),
-                    "previous_status": None, "action": current["review_status"],
-                    "notes": current.get("review_notes"),
-                    "actor": current.get("review_actor") or "unknown_legacy",
-                    "decided_at": current.get("reviewed_at"),
-                    "state_revision": int(current.get("state_revision", 1)),
-                    "baseline": True,
-                })
-        prior_fp = current.get("content_fingerprint") or _digest(
-            _content(current, document_date)
-        )
+                uow.upsert_phase3(
+                    "agenda_decision_events",
+                    baseline_id,
+                    {
+                        "id": baseline_id,
+                        "candidate_id": candidate_id,
+                        "content_revision": int(current.get("content_revision", 1)),
+                        "previous_status": None,
+                        "action": current["review_status"],
+                        "notes": current.get("review_notes"),
+                        "actor": current.get("review_actor") or "unknown_legacy",
+                        "decided_at": current.get("reviewed_at"),
+                        "state_revision": int(current.get("state_revision", 1)),
+                        "baseline": True,
+                    },
+                )
+        prior_fp = current.get("content_fingerprint") or _digest(_content(current, document_date))
         prior_content_revision = int(current.get("content_revision", 1))
         prior_version_id = f"{candidate_id}:{prior_content_revision}"
         if uow.get_phase3("agenda_candidate_revisions", prior_version_id) is None:
-            uow.upsert_phase3("agenda_candidate_revisions", prior_version_id, {
-                "id": prior_version_id, "candidate_id": candidate_id,
-                "content_revision": prior_content_revision, "content_fingerprint": prior_fp,
-                "fingerprint_version": FINGERPRINT_VERSION,
-                "document_revision_id": (current.get("source_payload") or {}).get(
-                    "document_revision_id"
-                ),
-                "source_snapshot": copy.deepcopy(current),
-            })
+            uow.upsert_phase3(
+                "agenda_candidate_revisions",
+                prior_version_id,
+                {
+                    "id": prior_version_id,
+                    "candidate_id": candidate_id,
+                    "content_revision": prior_content_revision,
+                    "content_fingerprint": prior_fp,
+                    "fingerprint_version": FINGERPRINT_VERSION,
+                    "document_revision_id": (current.get("source_payload") or {}).get(
+                        "document_revision_id"
+                    ),
+                    "source_snapshot": copy.deepcopy(current),
+                },
+            )
         if prior_fp == fingerprint:
             if current.get("content_fingerprint") is None:
                 current["content_fingerprint"] = fingerprint
@@ -252,6 +376,7 @@ def _merge_candidate(
                 current["content_revision"] = prior_content_revision
                 current["state_revision"] = int(current.get("state_revision", 1))
                 uow.upsert_phase3("agenda_staged_records", str(candidate_id), current)
+            _mark_observation_applied(uow, occurrence_id, prior_content_revision)
             return str(candidate_id)
     content_revision = int(current.get("content_revision", 1)) + 1 if current else 1
     state_revision = int(current.get("state_revision", 0)) + 1 if current else 1
@@ -277,50 +402,66 @@ def _merge_candidate(
         )
     record["publish_record"]["source_fields"]["source_document_id"] = document_id
     version_id = f"{candidate_id}:{content_revision}"
-    _immutable(uow, "agenda_candidate_revisions", version_id, {
-        "id": version_id, "candidate_id": candidate_id,
-        "content_revision": content_revision, "content_fingerprint": fingerprint,
-        "fingerprint_version": FINGERPRINT_VERSION,
-        "document_revision_id": revision_id, "source_snapshot": copy.deepcopy(record),
-    })
+    _immutable(
+        uow,
+        "agenda_candidate_revisions",
+        version_id,
+        {
+            "id": version_id,
+            "candidate_id": candidate_id,
+            "content_revision": content_revision,
+            "content_fingerprint": fingerprint,
+            "fingerprint_version": FINGERPRINT_VERSION,
+            "document_revision_id": revision_id,
+            "source_snapshot": copy.deepcopy(record),
+        },
+    )
     uow.upsert_phase3("agenda_staged_records", str(candidate_id), record)
+    _mark_observation_applied(uow, occurrence_id, content_revision)
     return str(candidate_id)
 
 
+def _mark_observation_applied(uow: Any, occurrence_id: str, content_revision: int) -> None:
+    observation = uow.get_phase3("agenda_observations", occurrence_id)
+    assert observation is not None
+    observation["applied_content_revision"] = content_revision
+    uow.upsert_phase3("agenda_observations", occurrence_id, observation)
+
+
 def merge_agenda_artifacts(
-    *, source_documents: list[dict[str, Any]], staged_records: list[dict[str, Any]],
-    health: dict[str, Any], run_id: str | None = None,
-    artifact_sink_id: str | None = None, required_reference_ids: tuple[UUID, ...] = (),
+    *,
+    source_documents: list[dict[str, Any]],
+    staged_records: list[dict[str, Any]],
+    health: dict[str, Any],
+    run_id: str | None = None,
+    artifact_sink_id: str | None = None,
+    required_reference_ids: tuple[UUID, ...] = (),
 ) -> dict[str, Any]:
     """Append immutable evidence and merge only affected agenda items atomically."""
     settings = get_settings()
     require_hosted_artifact_storage(settings)
-    if settings.phase3_store_backend != "postgres":
-        raise ArtifactError("artifact_configuration")
+    from app.phase3_store import _use_transactional_postgres
+
+    if not _use_transactional_postgres():
+        with _agenda_mutation() as uow:
+            return _merge_agenda_batch(uow, source_documents, staged_records, health, run_id)
     from app.db import SessionLocal
     from app.ingestion.artifact_manifest import require_verified_references
     from app.models import ArtifactBlob, ArtifactReference
-    from app.phase3_store import build_duplicate_candidates
     from app.transactional_store import CollectionUnitOfWork
 
     if settings.artifact_durability_required and (not run_id or not artifact_sink_id):
         raise ArtifactError("artifact_unavailable")
-    by_legacy_document: dict[str, list[dict[str, Any]]] = {}
-    health_out = copy.deepcopy(health)
-    legacy_counts: dict[str, int] = {}
-    for record in staged_records:
-        by_legacy_document.setdefault(
-            str((record.get("source_payload") or {}).get("source_document_id")), []
-        ).append(record)
-        legacy_id = str(record["id"])
-        legacy_counts[legacy_id] = legacy_counts.get(legacy_id, 0) + 1
     with SessionLocal.begin() as session:
         with CollectionUnitOfWork(session).canonical_mutation() as uow:
             if settings.artifact_durability_required:
                 assert run_id is not None and artifact_sink_id is not None
                 require_verified_references(
-                    session, reference_ids=required_reference_ids,
-                    source_key=SOURCE_KEY, run_id=run_id, sink_id=artifact_sink_id,
+                    session,
+                    reference_ids=required_reference_ids,
+                    source_key=SOURCE_KEY,
+                    run_id=run_id,
+                    sink_id=artifact_sink_id,
                 )
                 expected_ids = {
                     UUID(str(reference))
@@ -331,9 +472,8 @@ def merge_agenda_artifacts(
                     )
                     if reference is not None
                 }
-                if (
-                    expected_ids != set(required_reference_ids)
-                    or len(expected_ids) != 2 * len(source_documents)
+                if expected_ids != set(required_reference_ids) or len(expected_ids) != 2 * len(
+                    source_documents
                 ):
                     raise ArtifactError("artifact_unavailable")
                 for document in source_documents:
@@ -347,43 +487,68 @@ def merge_agenda_artifacts(
                         pdf.artifact_type != "source_pdf"
                         or text.artifact_type != "extracted_text"
                         or text.parent_reference_id != pdf.id
-                        or pdf_blob is None or text_blob is None
+                        or pdf_blob is None
+                        or text_blob is None
                         or pdf_blob.sha256 != document.get("sha256")
                         or text_blob.sha256 != document.get("text_sha256")
                     ):
                         raise ArtifactError("artifact_integrity")
-            affected: set[str] = set()
-            unresolved_count = 0
-            for document in source_documents:
-                document_id, revision_id = _merge_document(uow, document, run_id)
-                if document_id is None or revision_id is None:
-                    unresolved_count += 1
-                    continue
-                for record in by_legacy_document.get(str(document["id"]), []):
-                    candidate_id = _merge_candidate(
-                        uow, record, document_id=document_id, revision_id=revision_id,
-                        document_date=document.get("document_date"),
-                        legacy_ambiguous=legacy_counts[str(record["id"])] > 1,
-                    )
-                    if candidate_id:
-                        affected.add(candidate_id)
-                    else:
-                        unresolved_count += 1
-            published = uow.list_phase3("development_records")
-            candidates = [
-                row for row in uow.list_phase3("agenda_staged_records")
-                if str(row.get("id")) in affected
-            ]
-            for candidate in build_duplicate_candidates(candidates, published):
-                uow.upsert_phase3("duplicate_candidates", str(candidate["id"]), candidate)
-            if unresolved_count:
-                health_out["status"] = "degraded"
-                health_out["identity_unresolved_count"] = unresolved_count
-                errors = list(health_out.get("validation_errors") or [])
-                errors.append("agenda_identity_unresolved")
-                health_out["validation_errors"] = errors
-                health_out["error_count"] = len(errors)
-            uow.upsert_phase3("agenda_health", SOURCE_KEY, health_out)
+            return _merge_agenda_batch(uow, source_documents, staged_records, health, run_id)
+
+
+def _merge_agenda_batch(
+    uow: Any,
+    source_documents: list[dict[str, Any]],
+    staged_records: list[dict[str, Any]],
+    health: dict[str, Any],
+    run_id: str | None,
+) -> dict[str, Any]:
+    from app.phase3_store import build_duplicate_candidates
+
+    by_legacy_document: dict[str, list[dict[str, Any]]] = {}
+    health_out = copy.deepcopy(health)
+    legacy_counts: dict[str, int] = {}
+    for record in staged_records:
+        by_legacy_document.setdefault(
+            str((record.get("source_payload") or {}).get("source_document_id")), []
+        ).append(record)
+        legacy_id = str(record["id"])
+        legacy_counts[legacy_id] = legacy_counts.get(legacy_id, 0) + 1
+    affected: set[str] = set()
+    for document in source_documents:
+        document_id, revision_id = _merge_document(uow, document, run_id)
+        if document_id is None or revision_id is None:
+            continue
+        for record in by_legacy_document.get(str(document["id"]), []):
+            candidate_id = _merge_candidate(
+                uow,
+                record,
+                document_id=document_id,
+                revision_id=revision_id,
+                document_date=document.get("document_date"),
+                legacy_ambiguous=legacy_counts[str(record["id"])] > 1,
+            )
+            if candidate_id:
+                affected.add(candidate_id)
+    published = uow.list_phase3("development_records")
+    candidates = [
+        row for row in uow.list_phase3("agenda_staged_records") if str(row.get("id")) in affected
+    ]
+    for candidate in build_duplicate_candidates(candidates, published):
+        uow.upsert_phase3("duplicate_candidates", str(candidate["id"]), candidate)
+    unresolved_count = sum(
+        row.get("status") == "identity_unresolved"
+        for name in ("agenda_unresolved_documents", "agenda_observations")
+        for row in uow.list_phase3(name)
+    )
+    if unresolved_count:
+        health_out["status"] = "degraded"
+        health_out["identity_unresolved_count"] = unresolved_count
+        errors = list(health_out.get("validation_errors") or [])
+        errors.append("agenda_identity_unresolved")
+        health_out["validation_errors"] = errors
+        health_out["error_count"] = len(errors)
+    uow.upsert_phase3("agenda_health", SOURCE_KEY, health_out)
     return health_out
 
 
@@ -400,7 +565,8 @@ def list_unresolved_documents() -> list[dict[str, Any]]:
 
     return [
         {
-            "id": row["id"], "url": row["url"],
+            "id": row["id"],
+            "url": row["url"],
             "document_date": row.get("document_date"),
             "sha256": row["sha256"],
             "observation_revision": row["observation_revision"],
@@ -411,8 +577,12 @@ def list_unresolved_documents() -> list[dict[str, Any]]:
 
 
 def resolve_agenda_document_alias(
-    observation_id: str, *, document_id: str | None,
-    expected_observation_revision: int, actor: str, reason: str,
+    observation_id: str,
+    *,
+    document_id: str | None,
+    expected_observation_revision: int,
+    actor: str,
+    reason: str,
 ) -> dict[str, Any] | None:
     """Link a new URL to a document or explicitly create a separate one.
 
@@ -421,43 +591,51 @@ def resolve_agenda_document_alias(
     """
     if not reason.strip():
         raise ValueError("A resolution reason is required")
-    from app.db import SessionLocal
-    from app.transactional_store import CollectionUnitOfWork
 
-    with SessionLocal.begin() as session:
-        with CollectionUnitOfWork(session).canonical_mutation() as uow:
-            observation = uow.get_phase3("agenda_unresolved_documents", observation_id)
-            if observation is None:
-                return None
-            if observation.get("status") != "identity_unresolved" or (
-                observation["observation_revision"] != expected_observation_revision
-            ):
-                raise AgendaRevisionConflict("document observation changed")
-            if document_id is not None and uow.get_phase3("source_documents", document_id) is None:
-                raise AgendaIdentityConflict("logical document does not exist")
-            resolved_id = document_id or f"agenda-doc-{uuid4().hex}"
-            alias_key = _digest([
-                SOURCE_KEY, observation["url"], observation.get("document_date")
-            ])
-            _immutable(uow, "agenda_document_aliases", alias_key, {
-                "id": alias_key, "document_id": resolved_id,
+    with _agenda_mutation() as uow:
+        observation = uow.get_phase3("agenda_unresolved_documents", observation_id)
+        if observation is None:
+            return None
+        if observation.get("status") != "identity_unresolved" or (
+            observation["observation_revision"] != expected_observation_revision
+        ):
+            raise AgendaRevisionConflict("document observation changed")
+        if document_id is not None and uow.get_phase3("source_documents", document_id) is None:
+            raise AgendaIdentityConflict("logical document does not exist")
+        resolved_id = document_id or f"agenda-doc-{uuid4().hex}"
+        alias_key = _digest([SOURCE_KEY, observation["url"], observation.get("document_date")])
+        _immutable(
+            uow,
+            "agenda_document_aliases",
+            alias_key,
+            {
+                "id": alias_key,
+                "document_id": resolved_id,
                 "url": observation["url"],
                 "document_date": observation.get("document_date"),
-            })
-            observation["status"] = "resolved"
-            observation["observation_revision"] += 1
-            observation["document_id"] = resolved_id
-            uow.upsert_phase3("agenda_unresolved_documents", observation_id, observation)
-            event_id = f"document:{observation_id}:{observation['observation_revision']}"
-            _immutable(uow, "agenda_identity_resolutions", event_id, {
-                "id": event_id, "observation_id": observation_id,
+            },
+        )
+        observation["status"] = "resolved"
+        observation["observation_revision"] += 1
+        observation["document_id"] = resolved_id
+        uow.upsert_phase3("agenda_unresolved_documents", observation_id, observation)
+        event_id = f"document:{observation_id}:{observation['observation_revision']}"
+        _immutable(
+            uow,
+            "agenda_identity_resolutions",
+            event_id,
+            {
+                "id": event_id,
+                "observation_id": observation_id,
                 "document_id": resolved_id,
                 "action": "link" if document_id else "create",
-                "actor": actor, "reason": reason.strip(),
+                "actor": actor,
+                "reason": reason.strip(),
                 "expected_observation_revision": expected_observation_revision,
                 "resolved_at": datetime.now(UTC).isoformat(),
-            })
-            return observation
+            },
+        )
+        return cast(dict[str, Any], observation)
 
 
 def list_unresolved_observations() -> list[dict[str, Any]]:
@@ -465,7 +643,8 @@ def list_unresolved_observations() -> list[dict[str, Any]]:
 
     return [
         {
-            "id": row["id"], "document_id": row["document_id"],
+            "id": row["id"],
+            "document_id": row["document_id"],
             "document_revision_id": row["document_revision_id"],
             "source_excerpt": row["source_excerpt"],
             "observation_revision": row["observation_revision"],
@@ -476,154 +655,185 @@ def list_unresolved_observations() -> list[dict[str, Any]]:
 
 
 def resolve_agenda_observation(
-    observation_id: str, *, candidate_id: str | None, expected_observation_revision: int,
-    expected_candidate_revision: int | None, actor: str, reason: str,
+    observation_id: str,
+    *,
+    candidate_id: str | None,
+    expected_observation_revision: int,
+    expected_candidate_revision: int | None,
+    actor: str,
+    reason: str,
 ) -> dict[str, Any] | None:
     """Audit a link or explicit new-candidate decision; never match mutable text."""
     if not reason.strip():
         raise ValueError("A resolution reason is required")
-    from app.db import SessionLocal
-    from app.transactional_store import CollectionUnitOfWork
 
-    with SessionLocal.begin() as session:
-        with CollectionUnitOfWork(session).canonical_mutation() as uow:
-            observation = uow.get_phase3("agenda_observations", observation_id)
-            if observation is None:
-                return None
-            if observation["status"] != "identity_unresolved" or (
-                int(observation["observation_revision"]) != expected_observation_revision
-            ):
-                raise AgendaRevisionConflict("agenda observation changed")
-            current = (
-                uow.get_phase3("agenda_staged_records", candidate_id)
-                if candidate_id is not None else None
-            )
-            if candidate_id is not None and current is None:
-                raise AgendaIdentityConflict("candidate does not exist")
-            if current is not None and (
-                current.get("source_payload") or {}
-            ).get("source_document_id") != observation["document_id"]:
-                raise AgendaIdentityConflict("candidate belongs to a different document")
-            if (
-                current is not None
-                and int(current.get("state_revision", 0)) != expected_candidate_revision
-            ):
-                raise AgendaRevisionConflict("candidate changed")
-            if candidate_id is None and expected_candidate_revision is not None:
-                raise AgendaRevisionConflict("new candidate has no prior revision")
-            resolved_id = candidate_id or f"stage-agenda-{uuid4().hex}"
-            observation["candidate_id"] = resolved_id
-            observation["status"] = "resolved"
-            observation["observation_revision"] += 1
-            uow.upsert_phase3("agenda_observations", observation_id, observation)
-            event_id = f"{observation_id}:{observation['observation_revision']}"
-            _immutable(uow, "agenda_identity_resolutions", event_id, {
-                "id": event_id, "observation_id": observation_id,
-                "candidate_id": resolved_id, "action": "link" if candidate_id else "create",
-                "actor": actor, "reason": reason.strip(),
+    with _agenda_mutation() as uow:
+        observation = uow.get_phase3("agenda_observations", observation_id)
+        if observation is None:
+            return None
+        if observation["status"] != "identity_unresolved" or (
+            int(observation["observation_revision"]) != expected_observation_revision
+        ):
+            raise AgendaRevisionConflict("agenda observation changed")
+        current = (
+            uow.get_phase3("agenda_staged_records", candidate_id)
+            if candidate_id is not None
+            else None
+        )
+        if candidate_id is not None and current is None:
+            raise AgendaIdentityConflict("candidate does not exist")
+        if (
+            current is not None
+            and (current.get("source_payload") or {}).get("source_document_id")
+            != observation["document_id"]
+        ):
+            raise AgendaIdentityConflict("candidate belongs to a different document")
+        if (
+            current is not None
+            and int(current.get("state_revision", 0)) != expected_candidate_revision
+        ):
+            raise AgendaRevisionConflict("candidate changed")
+        if candidate_id is None and expected_candidate_revision is not None:
+            raise AgendaRevisionConflict("new candidate has no prior revision")
+        resolved_id = candidate_id or f"stage-agenda-{uuid4().hex}"
+        observation["candidate_id"] = resolved_id
+        observation["applied_content_revision"] = None
+        observation["status"] = "resolved"
+        observation["observation_revision"] += 1
+        uow.upsert_phase3("agenda_observations", observation_id, observation)
+        event_id = f"{observation_id}:{observation['observation_revision']}"
+        _immutable(
+            uow,
+            "agenda_identity_resolutions",
+            event_id,
+            {
+                "id": event_id,
+                "observation_id": observation_id,
+                "candidate_id": resolved_id,
+                "action": "link" if candidate_id else "create",
+                "actor": actor,
+                "reason": reason.strip(),
                 "expected_observation_revision": expected_observation_revision,
                 "expected_candidate_revision": expected_candidate_revision,
                 "resolved_at": datetime.now(UTC).isoformat(),
-            })
-            return_id = _merge_candidate(
-                uow, observation["source_snapshot"],
-                document_id=observation["document_id"],
-                revision_id=observation["document_revision_id"],
-                document_date=observation.get("document_date"),
-            )
-            assert return_id == resolved_id
-            result = uow.get_phase3("agenda_staged_records", resolved_id)
-            assert result is not None
-            if current is not None and result["state_revision"] == current["state_revision"]:
-                result["state_revision"] += 1
-                uow.upsert_phase3("agenda_staged_records", resolved_id, result)
-            return result
+            },
+        )
+        return_id = _merge_candidate(
+            uow,
+            observation["source_snapshot"],
+            document_id=observation["document_id"],
+            revision_id=observation["document_revision_id"],
+            document_date=observation.get("document_date"),
+        )
+        assert return_id == resolved_id
+        result = uow.get_phase3("agenda_staged_records", resolved_id)
+        assert result is not None
+        if current is not None and result["state_revision"] == current["state_revision"]:
+            result["state_revision"] += 1
+            uow.upsert_phase3("agenda_staged_records", resolved_id, result)
+        return cast(dict[str, Any], result)
 
 
 def review_agenda_candidate(
-    staged_id: str, *, action: str, notes: str | None,
-    expected_revision: int | None, actor: str = "reviewer",
+    staged_id: str,
+    *,
+    action: str,
+    notes: str | None,
+    expected_revision: int | None,
+    actor: str = "reviewer",
 ) -> tuple[dict[str, Any], dict[str, Any] | None] | None:
     """Review and optional first publication commit together with state history."""
     from datetime import UTC, datetime
 
-    from app.db import SessionLocal
     from app.ingestion.source_merge import public_fingerprint
     from app.public_fields import public_source_fields
     from app.public_geometry import require_publishable_geometry
-    from app.transactional_store import CollectionUnitOfWork
 
-    with SessionLocal.begin() as session:
-        with CollectionUnitOfWork(session).canonical_mutation() as uow:
-            record = uow.get_phase3("agenda_staged_records", staged_id)
-            if record is None:
-                return None
-            if (
-                expected_revision is None
-                or expected_revision != int(record.get("state_revision", 0))
-            ):
-                raise AgendaRevisionConflict("agenda decision revision changed")
-            published: dict[str, Any] | None = None
-            if action == "approved":
-                require_publishable_geometry(record)
-                published = copy.deepcopy(record["publish_record"])
-                # A reviewer geometry correction may be stored on the staged row.
-                published["geometry"] = copy.deepcopy(record["geometry"])
-                published["centroid"] = record.get("centroid") or _point_centroid(
-                    record["geometry"]
-                )
-                published["geometry_source"] = record["geometry_source"]
-                published["geometry_confidence"] = record["geometry_confidence"]
-                require_publishable_geometry(published)
-                published["source_fields"] = public_source_fields(
-                    published.get("source_fields", {})
-                )
-                published["review_status"] = "published"
-                published["date_last_checked"] = datetime.now(UTC).date().isoformat()
-                public_id = str(published["public_id"])
-                existing_public = uow.get_phase3("development_records", public_id)
-                if existing_public is not None:
-                    if public_fingerprint(existing_public) != public_fingerprint(published):
-                        raise AgendaPublicationPending(
-                            "changed agenda publication requires versioned update"
-                        )
-                    published = existing_public
-                else:
-                    uow.upsert_phase3("development_records", public_id, published)
-                    version_id = f"version-{public_id}-1"
-                    uow.upsert_phase3("record_versions", version_id, {
-                        "id": version_id, "public_id": public_id, "version_number": 1,
+    with _agenda_mutation() as uow:
+        record = uow.get_phase3("agenda_staged_records", staged_id)
+        if record is None:
+            return None
+        if expected_revision is None or expected_revision != int(record.get("state_revision", 0)):
+            raise AgendaRevisionConflict("agenda decision revision changed")
+        published: dict[str, Any] | None = None
+        if action == "approved":
+            require_publishable_geometry(record)
+            published = copy.deepcopy(record["publish_record"])
+            # A reviewer geometry correction may be stored on the staged row.
+            published["geometry"] = copy.deepcopy(record["geometry"])
+            published["centroid"] = record.get("centroid") or _point_centroid(record["geometry"])
+            published["geometry_source"] = record["geometry_source"]
+            published["geometry_confidence"] = record["geometry_confidence"]
+            require_publishable_geometry(published)
+            published["source_fields"] = public_source_fields(published.get("source_fields", {}))
+            published["review_status"] = "published"
+            published["date_last_checked"] = datetime.now(UTC).date().isoformat()
+            public_id = str(published["public_id"])
+            existing_public = uow.get_phase3("development_records", public_id)
+            if existing_public is not None:
+                if public_fingerprint(existing_public) != public_fingerprint(published):
+                    raise AgendaPublicationPending(
+                        "changed agenda publication requires versioned update"
+                    )
+                published = existing_public
+            else:
+                uow.upsert_phase3("development_records", public_id, published)
+                version_id = f"version-{public_id}-1"
+                uow.upsert_phase3(
+                    "record_versions",
+                    version_id,
+                    {
+                        "id": version_id,
+                        "public_id": public_id,
+                        "version_number": 1,
                         "changed_at": datetime.now(UTC).isoformat(),
-                        "changed_by": actor, "change_type": "published",
+                        "changed_by": actor,
+                        "change_type": "published",
                         "snapshot": copy.deepcopy(published),
-                    })
-                    change_id = f"change-{public_id}-published"
-                    uow.upsert_phase3("change_log", change_id, {
-                        "id": change_id, "public_id": public_id, "title": published["title"],
+                    },
+                )
+                change_id = f"change-{public_id}-published"
+                uow.upsert_phase3(
+                    "change_log",
+                    change_id,
+                    {
+                        "id": change_id,
+                        "public_id": public_id,
+                        "title": published["title"],
                         "changed_at": datetime.now(UTC).isoformat(),
                         "change_type": "published",
                         "summary": (
                             f"{published['title']} was published from a reviewer-gated source."
                         ),
-                    })
-            elif action not in {"rejected", "needs_info"}:
-                raise ValueError("Unsupported agenda review action")
-            previous_status = record["review_status"]
-            record["review_status"] = action
-            record["review_notes"] = notes
-            record["review_actor"] = actor
-            record["reviewed_at"] = datetime.now(UTC).isoformat()
-            record["state_revision"] = expected_revision + 1
-            uow.upsert_phase3("agenda_staged_records", staged_id, record)
-            event_id = f"{staged_id}:{record['state_revision']}"
-            _immutable(uow, "agenda_decision_events", event_id, {
-                "id": event_id, "candidate_id": staged_id,
+                    },
+                )
+        elif action not in {"rejected", "needs_info"}:
+            raise ValueError("Unsupported agenda review action")
+        previous_status = record["review_status"]
+        record["review_status"] = action
+        record["review_notes"] = notes
+        record["review_actor"] = actor
+        record["reviewed_at"] = datetime.now(UTC).isoformat()
+        record["state_revision"] = expected_revision + 1
+        uow.upsert_phase3("agenda_staged_records", staged_id, record)
+        event_id = f"{staged_id}:{record['state_revision']}"
+        _immutable(
+            uow,
+            "agenda_decision_events",
+            event_id,
+            {
+                "id": event_id,
+                "candidate_id": staged_id,
                 "content_revision": record["content_revision"],
-                "previous_status": previous_status, "action": action,
-                "notes": notes, "actor": actor, "decided_at": record["reviewed_at"],
+                "previous_status": previous_status,
+                "action": action,
+                "notes": notes,
+                "actor": actor,
+                "decided_at": record["reviewed_at"],
                 "state_revision": record["state_revision"],
-            })
-            return record, published
+            },
+        )
+        return record, published
 
 
 def _point_centroid(geometry: dict[str, Any]) -> list[float] | None:
