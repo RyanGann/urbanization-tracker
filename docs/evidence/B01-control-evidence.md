@@ -99,3 +99,22 @@ teardown. Final result bytes SHA-256:
 `b65f827e1b09e45ab5465dccd77d5b6591b9e3a0c85b610254575a7bd3c25333`.
 Project `urbanization_t01_8eeb877286dc` left zero labelled containers/volumes.
 No official source requests were made during either fixture run.
+
+## Final authority and form binding
+
+The final runtime head `90571c8d8c6f72682d760a0a840a3b537fa9c3e7` also binds
+the actual request's single Host header to its normalized URL authority, including
+explicit/default port consistency. POST requires one form Content-Type with only
+an optional UTF-8 charset and absent or identity Content-Encoding. Injected
+headers/hooks, duplicate authorities/media types and encoded bodies fail before
+control capture. Ruff, strict mypy (47 files) and all 274 backend tests passed.
+
+That clean head passed run `2026-09-27T07-25-56-928Z-7e55e337` using the same
+command above. [Authority run metadata](B01-control-evidence-authority-run.json)
+and [exact synthetic results](B01-control-evidence-authority-results.json) preserve
+the successful checks; result SHA-256 is
+`50e392e65fa03c7bfce139bc40368b7f88c54cbb5b9cc3a10d3a986fe5dd9a6c`.
+Independent exact-label queries confirmed zero containers and volumes for
+`urbanization_t01_56595c296b2c`. The CI workflow now runs the owning `d01-scoped`
+scenario to exercise original controls and request binding on future changes.
+No official source requests were made.
