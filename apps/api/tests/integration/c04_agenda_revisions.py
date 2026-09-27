@@ -267,6 +267,17 @@ def run(api_url: str, reviewer_token: str, result: Path) -> None:
                 assert linked.status_code == 200, linked.text
                 assert linked.json()["review_status"] == "pending"
                 assert linked.json()["content_revision"] == 2
+                identity_health = next(
+                    row
+                    for row in api.get("/api/source-health").json()["sources"]
+                    if row["key"] == SOURCE
+                )
+                assert identity_health["status"] == "healthy"
+                assert "agenda_identity_unresolved" not in identity_health["validation_errors"]
+                with SessionLocal() as session:
+                    stored = CollectionUnitOfWork(session).get_phase3("agenda_health", SOURCE)
+                    assert stored["identity_unresolved_count"] == 0
+                    assert stored["last_attempt_at"] == "2026-09-24T12:00:00Z"
                 assert count("agenda_decision_events") == 1
                 with SessionLocal.begin() as session:
                     with CollectionUnitOfWork(session).canonical_mutation() as uow:
@@ -459,6 +470,19 @@ def run(api_url: str, reviewer_token: str, result: Path) -> None:
                     "document_id": original_document["id"],
                     "status": "retry_required",
                 }
+                alias_health = next(
+                    row
+                    for row in api.get("/api/source-health").json()["sources"]
+                    if row["key"] == SOURCE
+                )
+                assert "agenda_identity_unresolved" not in alias_health["validation_errors"]
+                with SessionLocal() as session:
+                    assert (
+                        CollectionUnitOfWork(session).get_phase3("agenda_health", SOURCE)[
+                            "identity_unresolved_count"
+                        ]
+                        == 0
+                    )
                 merge(moved, moved_records, moved_refs, moved_run, service.sink_id)
                 assert count("source_documents") == before_documents
                 newest_run = "c04-newest-" + uuid4().hex
@@ -926,6 +950,7 @@ def run(api_url: str, reviewer_token: str, result: Path) -> None:
                     json.dumps(
                         {
                             "pending_text_rollback": True,
+                            "identity_resolution_refreshes_health_without_fetch": True,
                             "same_bytes_same_run_durable_pairs_keep_fetched_context": True,
                             "same_revision_decision_retained": True,
                             "changed_unanchored_quarantined": True,

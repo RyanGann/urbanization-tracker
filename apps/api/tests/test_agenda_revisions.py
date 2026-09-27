@@ -810,6 +810,51 @@ def test_public_health_preserves_safe_identity_code_and_redacts_private_errors()
     assert health.validation_errors == ["agenda_identity_unresolved", "source_error"]
 
 
+@pytest.mark.parametrize("baseline", ["healthy", "degraded", None])
+def test_identity_health_derivation_preserves_fetch_failure_and_timestamps(baseline: Any) -> None:
+    from app.ingestion.agenda_store import (
+        SOURCE_KEY,
+        _persist_agenda_health,
+        _refresh_agenda_identity_health,
+    )
+
+    uow = MemoryUow()
+    uow.upsert_phase3("agenda_observations", "item", {"status": "identity_unresolved"})
+    uow.upsert_phase3("agenda_unresolved_documents", "doc", {"status": "identity_unresolved"})
+    health = _persist_agenda_health(
+        uow,
+        {
+            "status": baseline or "degraded",
+            "checked_at": "2026-09-27T00:00:00Z",
+            "validation_errors": ["agenda_identity_unresolved", "agenda_identity_unresolved"]
+            + (["artifact_unavailable"] if baseline == "degraded" else []),
+            "records_seen": 12,
+        },
+    )
+    if baseline is None:
+        health.pop("ingestion_status")
+        uow.upsert_phase3("agenda_health", SOURCE_KEY, health)
+    timestamps = {
+        key: health.get(key) for key in ("checked_at", "last_attempt_at", "last_success_at")
+    }
+    uow.upsert_phase3("agenda_observations", "item", {"status": "resolved"})
+    _refresh_agenda_identity_health(uow)
+    partial = uow.get_phase3("agenda_health", SOURCE_KEY)
+    assert partial["identity_unresolved_count"] == 1
+    assert partial["validation_errors"].count("agenda_identity_unresolved") == 1
+    uow.upsert_phase3("agenda_unresolved_documents", "doc", {"status": "resolved"})
+    _refresh_agenda_identity_health(uow)
+    final = uow.get_phase3("agenda_health", SOURCE_KEY)
+    assert final["identity_unresolved_count"] == 0
+    assert "agenda_identity_unresolved" not in final["validation_errors"]
+    assert final["status"] == ("healthy" if baseline == "healthy" else "degraded")
+    assert final["error_count"] == len(final["validation_errors"])
+    assert final["records_seen"] == 12
+    assert {key: final.get(key) for key in timestamps} == timestamps
+    if baseline == "degraded":
+        assert final["validation_errors"] == ["artifact_unavailable"]
+
+
 def test_artifact_decision_round_trip_and_failed_validation(
     tmp_path: Any, monkeypatch: Any
 ) -> None:
@@ -902,6 +947,32 @@ def test_artifact_decision_round_trip_and_failed_validation(
                     reason="Audited link",
                 )
         assert before == {str(path): path.read_bytes() for path in tmp_path.rglob("*.json")}
+        with monkeypatch.context() as failing_health:
+            from app.ingestion.agenda_store import _refresh_agenda_identity_health
+
+            def fail_after_health(uow: Any) -> None:
+                _refresh_agenda_identity_health(uow)
+                assert (
+                    uow.get_phase3("agenda_health", "huntsville_planning_agendas")[
+                        "identity_unresolved_count"
+                    ]
+                    == 0
+                )
+                raise ValueError("injected post-health failure")
+
+            failing_health.setattr(
+                "app.ingestion.agenda_store._refresh_agenda_identity_health", fail_after_health
+            )
+            with pytest.raises(ValueError, match="post-health failure"):
+                resolve_agenda_observation(
+                    unresolved["id"],
+                    candidate_id=candidate["id"],
+                    expected_observation_revision=1,
+                    expected_candidate_revision=2,
+                    actor="fixture",
+                    reason="Audited link",
+                )
+        assert before == {str(path): path.read_bytes() for path in tmp_path.rglob("*.json")}
         resolved = resolve_agenda_observation(
             unresolved["id"],
             candidate_id=candidate["id"],
@@ -915,6 +986,10 @@ def test_artifact_decision_round_trip_and_failed_validation(
             and resolved["content_revision"] == 2
             and resolved["review_status"] == "pending"
         )
+        resolved_health = _read_collection("agenda_health")[0]
+        assert resolved_health["identity_unresolved_count"] == 0
+        assert resolved_health["status"] == "healthy"
+        assert "agenda_identity_unresolved" not in resolved_health["validation_errors"]
         moved = _document("b" * 64, url="https://example.test/moved.pdf")
         merge_agenda_artifacts(
             source_documents=[moved],
@@ -931,6 +1006,8 @@ def test_artifact_decision_round_trip_and_failed_validation(
             reason="Same packet",
         )
         assert list_unresolved_documents() == []
+        assert _read_collection("agenda_health")[0]["identity_unresolved_count"] == 0
+        assert _read_collection("agenda_health")[0]["status"] == "healthy"
         assert _read_collection("agenda_identity_resolutions")
         assert _read_collection("agenda_decision_events")[0]["notes"] == "Retain private note"
     finally:

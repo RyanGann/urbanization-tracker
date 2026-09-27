@@ -665,23 +665,48 @@ def _persist_agenda_health(uow: Any, health: dict[str, Any]) -> dict[str, Any]:
     health_out["last_success_at"] = previous.get("last_success_at") or (
         previous.get("checked_at") if previous.get("status") == "healthy" else None
     )
+    health_out["ingestion_status"] = health_out.get("status", "degraded")
+    if health_out["ingestion_status"] == "healthy":
+        health_out["last_success_at"] = health_out.get("checked_at")
+    health_out = _derive_agenda_identity_health(uow, health_out)
+    uow.upsert_phase3("agenda_health", SOURCE_KEY, health_out)
+    return health_out
+
+
+def _derive_agenda_identity_health(uow: Any, health: dict[str, Any]) -> dict[str, Any]:
+    health_out = copy.deepcopy(health)
     unresolved_count = sum(
         row.get("status") == "identity_unresolved"
         for name in ("agenda_unresolved_documents", "agenda_observations")
         for row in uow.list_phase3(name)
     )
     health_out["identity_unresolved_count"] = unresolved_count
+    errors = [
+        error
+        for error in health_out.get("validation_errors") or []
+        if error != "agenda_identity_unresolved"
+    ]
+    # Legacy degraded rows have no independent fetch baseline. Resolution must
+    # not infer that a failed fetch succeeded from absence of an identity error.
+    health_out["status"] = health_out.get("ingestion_status") or health_out.get(
+        "status", "degraded"
+    )
     if unresolved_count:
         health_out["status"] = "degraded"
-        health_out["identity_unresolved_count"] = unresolved_count
-        errors = list(health_out.get("validation_errors") or [])
         errors.append("agenda_identity_unresolved")
-        health_out["validation_errors"] = errors
-        health_out["error_count"] = len(errors)
-    elif health_out.get("status") == "healthy":
-        health_out["last_success_at"] = health_out.get("checked_at")
-    uow.upsert_phase3("agenda_health", SOURCE_KEY, health_out)
+    if errors:
+        health_out["status"] = "degraded"
+    health_out["validation_errors"] = errors
+    health_out["error_count"] = len(errors)
     return health_out
+
+
+def _refresh_agenda_identity_health(uow: Any) -> None:
+    previous = uow.get_phase3("agenda_health", SOURCE_KEY)
+    if previous is not None:
+        uow.upsert_phase3(
+            "agenda_health", SOURCE_KEY, _derive_agenda_identity_health(uow, previous)
+        )
 
 
 def persist_agenda_health(health: dict[str, Any]) -> dict[str, Any]:
@@ -773,6 +798,7 @@ def resolve_agenda_document_alias(
                 "resolved_at": datetime.now(UTC).isoformat(),
             },
         )
+        _refresh_agenda_identity_health(uow)
         return cast(dict[str, Any], observation)
 
 
@@ -870,6 +896,7 @@ def resolve_agenda_observation(
             result["state_revision"] += 1
             uow.upsert_phase3("agenda_staged_records", resolved_id, result)
         _refresh_duplicate_suggestions(uow, {resolved_id})
+        _refresh_agenda_identity_health(uow)
         return cast(dict[str, Any], result)
 
 
