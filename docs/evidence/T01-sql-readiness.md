@@ -6,8 +6,10 @@ Retained service logs showed database startup around 09:05:41 UTC, temporary
 Unix-only readiness at 09:06:04.249, initialization shutdown at 09:06:27.216,
 and final TCP readiness at 09:06:37.963. The prior harness had a 60-second outer
 window, a new API container per SQL attempt, a separate 60-second command cap,
-and a two-second delay while requiring two successes. This measured startup
-exceeded its readiness window; it was not an application assertion failure.
+and a two-second delay while requiring two successes. The loop did not complete
+two stable TCP SQL probes within its 60-second window; old probes lacked
+timestamps, so exact deadline crossing by final TCP startup is not established.
+This was not an application assertion failure.
 
 The replacement starts one API-context poller with an authoritative 180-second
 host deadline including container startup. Monotonic host elapsed time prevents
