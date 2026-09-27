@@ -4,6 +4,7 @@ import { mkdir, readFile, realpath, rm, writeFile } from "node:fs/promises";
 import { spawn } from "node:child_process";
 import { dirname, isAbsolute, join, relative, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
+import { waitForDatabase as pollDatabase } from "./database-readiness.mjs";
 import { preparePerformance, enableMeasurementLimits, captureDatabase, startResourceSampling } from "./performance/integration.mjs";
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), "..");
@@ -99,7 +100,7 @@ function parseArgs(argv) {
   return options;
 }
 
-function run(command, args, { cwd = root, env, log, allowFailure = false, timeoutMs = 120_000, ignoreInterrupt = false } = {}) {
+function run(command, args, { cwd = root, env, log, allowFailure = false, timeoutMs = 120_000, ignoreInterrupt = false, killGraceMs = 5_000 } = {}) {
   return new Promise((resolveRun, rejectRun) => {
     if (interrupted && !ignoreInterrupt) {
       rejectRun(new Error("integration run interrupted"));
@@ -113,7 +114,7 @@ function run(command, args, { cwd = root, env, log, allowFailure = false, timeou
     const timeout = setTimeout(() => {
       timedOut = true;
       child.kill("SIGTERM");
-      killEscalation = setTimeout(() => child.kill("SIGKILL"), 5_000);
+      killEscalation = setTimeout(() => child.kill("SIGKILL"), killGraceMs);
     }, timeoutMs);
     child.stdout.on("data", (chunk) => { output += chunk; });
     child.stderr.on("data", (chunk) => { output += chunk; });
@@ -174,23 +175,8 @@ async function publishedPort(compose, service, containerPort, log) {
   return `http://${address}`;
 }
 
-async function waitForDatabase(compose, log, timeoutMs = 60_000) {
-  const deadline = Date.now() + timeoutMs;
-  let lastError = "not attempted";
-  let consecutiveSuccesses = 0;
-  while (Date.now() < deadline) {
-    if (interrupted) throw new Error("integration run interrupted");
-    const probe = await run("docker", [...compose, "run", "--rm", "--no-deps", "api", "python", "-c", "from sqlalchemy import text; from app.db import engine; engine.connect().execute(text('SELECT 1'))"], { log, allowFailure: true, timeoutMs: 60_000 });
-    if (probe.code === 0) {
-      consecutiveSuccesses += 1;
-      if (consecutiveSuccesses === 2) return;
-    } else {
-      consecutiveSuccesses = 0;
-      lastError = probe.output.trim();
-    }
-    await new Promise((resolveDelay) => setTimeout(resolveDelay, 2_000));
-  }
-  throw new Error(`database SQL readiness probe timed out: ${lastError}`);
+async function waitForDatabase(compose, log) {
+  return pollDatabase({ compose, log, run, root });
 }
 
 async function waitForWeb(compose, log, timeoutMs = 90_000) {
