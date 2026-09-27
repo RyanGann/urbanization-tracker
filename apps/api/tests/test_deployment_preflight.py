@@ -93,12 +93,16 @@ def test_hosted_ingestion_rejects_local_artifact_sink() -> None:
     assert _status_for(result, "artifact_storage") == "fail"
 
 
-def test_hosted_ingestion_requires_complete_s3_configuration() -> None:
+@pytest.mark.parametrize("endpoint", [
+    "https://objects.example.test", "https://objects.example.test:443",
+    "https://objects.example.test:8443", "https://[::1]:8443",
+])
+def test_hosted_ingestion_requires_complete_s3_configuration(endpoint: str) -> None:
     settings = production_settings(
         hosted_ingestion_enabled=True,
         artifact_durability_required=True,
         artifact_sink="s3",
-        artifact_s3_endpoint="https://objects.example.test",
+        artifact_s3_endpoint=endpoint,
         artifact_s3_bucket="private-artifacts",
         artifact_s3_access_key="synthetic-access",
         artifact_s3_secret_key="synthetic-secret",
@@ -119,6 +123,11 @@ def test_hosted_ingestion_requires_complete_s3_configuration() -> None:
         {"artifact_s3_endpoint": "http://objects.example.test"},
         {"artifact_s3_endpoint": "https://objects.example.test/private"},
         {"artifact_s3_endpoint": "https://objects.example.test?token=private"},
+        {"artifact_s3_endpoint": "https://objects.example.test:notaport"},
+        {"artifact_s3_endpoint": "https://objects.example.test:99999"},
+        {"artifact_s3_endpoint": "https://objects.example.test:-1"},
+        {"artifact_s3_endpoint": "https://objects.example.test:0"},
+        {"artifact_s3_endpoint": "https://[::1]:notaport"},
         {"artifact_s3_region": ""},
         {"artifact_s3_bucket": "b" * 64},
         {"artifact_s3_bucket": "ab"},

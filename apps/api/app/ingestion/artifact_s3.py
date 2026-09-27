@@ -36,11 +36,13 @@ def validate_s3_configuration(
     """Validate sink configuration without creating a client or making a network call."""
     try:
         parsed = urlsplit(endpoint)
+        port = parsed.port  # urlsplit defers malformed/out-of-range port validation.
     except ValueError:
         raise ArtifactError("artifact_configuration") from None
     if (
         parsed.scheme not in ({"https", "http"} if allow_http else {"https"})
         or not parsed.hostname
+        or port == 0
         or parsed.username
         or parsed.password
         or parsed.query
