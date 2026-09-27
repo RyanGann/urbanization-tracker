@@ -18,6 +18,10 @@ depends_on: str | Sequence[str] | None = None
 
 
 def upgrade() -> None:
+    op.create_index(
+        "ix_environmental_features_layer_id", "environmental_features",
+        ["environmental_layer_id", "id"],
+    )
     op.create_table(
         "environmental_display_builds",
         sa.Column("id", sa.Integer(), primary_key=True),

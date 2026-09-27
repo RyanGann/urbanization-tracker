@@ -248,6 +248,7 @@ class EnvironmentalLayer(Base):
 class EnvironmentalFeature(Base):
     __tablename__ = "environmental_features"
     __table_args__ = (
+        Index("ix_environmental_features_layer_id", "environmental_layer_id", "id"),
         Index(
             "uq_environmental_managed_feature", "environmental_layer_id", "source_feature_id",
             unique=True, postgresql_where=text("import_managed IS TRUE"),

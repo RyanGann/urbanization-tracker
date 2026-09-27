@@ -1,13 +1,50 @@
 # P04a shadow display builder — real PostGIS evidence
 
-The final pure classifier follow-up propagates every SQLSTATE class-40
+The classifier follow-up propagates every SQLSTATE class-40
 transaction rollback condition, including `40000`, `40002` and `40003`, rather
 than only serialization/deadlock codes. Focused regressions and the full API
 suite passed (334 tests), along with Ruff and mypy. This changes no recipe,
-geometry or successful output; the raw clean real proof below predates this
+geometry or successful output. The final source-fence proof includes this
 classifier expansion. The owning CI scenario verifies the final PR head.
 
-## Final authenticated-topology proof
+## Final source-fence proof
+
+Clean code head `2c67dc3f99bfe2e182fd6be54826719dd06561f2` passed run
+`2026-09-27T07-59-05-505Z-042fd0fd` with `working_tree_dirty=false`.
+Before committing validation, the v5 builder locks/refetches the layer parent,
+streams ID-only share locks over every existing feature row (including
+unmanaged rows), rechecks the managed source snapshot/backend identity and
+revalidates every completed band. The transaction retains these locks through
+status commit; validated replay uses the same fence. Local lock and statement
+timeouts are five and sixty seconds respectively.
+
+A separate session changed unprocessed geometry after the first checkpoint
+while bypassing the advisory-lock convention: finalization refused the old
+identity and left the build nonvalidated. Separate-session geometry edits and
+unmanaged-to-managed flag changes both received actual SQLSTATE `55P03` while
+the final fence held. Earlier topology tamper, timeout/system-error rollback,
+stable insertion-order identity and geometry checks passed again.
+Final result SHA-256 is
+`ec60c1594871fe1043ae8c716fe5c668227c95585c72eedbddf3c6da85fa29ed`;
+display version is
+`0d87115e2e17b49b4fd016f42c3d5c06104c96f2be46fb25c1467966242b6770`;
+configuration SHA-256 is
+`21634ca559f1be23b139022027b516b5911df1e96437f504661c21bc349eecaa`.
+Original, source-based geometry part-set and SVG bytes remain unchanged, so
+the earlier accepted visual QA scope still applies. Exact project
+`urbanization_t01_6807f2ca5cdd` was removed; independent checks found zero
+containers and volumes. Artifacts remain under
+`tmp/agents/p04a/tmp/integration/2026-09-27T07-59-05-505Z-042fd0fd/`.
+
+After this local proof, unmerged migration 0008 and the model add a nonpartial
+`(environmental_layer_id, id)` B-tree to support ordered fencing of all parent
+rows without relying on the managed-only identity index. The lock/hash/output
+semantics are unchanged; final-head CI owns migration plus scenario validation.
+No local full scenario was repeated solely for this index, and no production
+plan or latency budget is claimed. The prior clean `741f0b4` run is retained
+as pre-fix evidence only; it did not test the unmanaged-to-managed protection.
+
+## Earlier authenticated-topology proof
 
 Clean code head `06a0eb2c47910159390193b86ed444932fe42b9d` passed run
 `2026-09-27T07-39-50-585Z-d4de6233` with `working_tree_dirty=false`.
