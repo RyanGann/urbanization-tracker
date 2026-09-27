@@ -93,6 +93,45 @@ def test_auth_cannot_launder_request_identity(
     assert report["requests"] == 0 and requests == []
     assert report["control_artifacts"] == []
     assert not list((tmp_path / "auth").glob("control-*"))
+
+
+@pytest.mark.parametrize("credentials", ["Authorization", "Proxy-Authorization", "Cookie", "jar"])
+@pytest.mark.parametrize("method", ["GET", "POST"])
+def test_static_credentials_refuse_public_source_capture(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, credentials: str, method: str,
+) -> None:
+    if method == "POST":
+        monkeypatch.setattr("app.ingestion.scoped_arcgis.MAX_GET_URL_BYTES", 0)
+    transport, requests = _fixture([1])
+    with httpx.Client(transport=transport,
+                      headers={} if credentials == "jar" else {credentials: "private"},
+                      cookies={"session": "private"} if credentials == "jar" else {}) as client:
+        report = stage_scoped_source(
+            CONFIG, _scope(tmp_path), tmp_path / "credentials", client=client,
+        )
+    assert report["coverage"] == "failed"
+    assert report["error_code"] == "source_client_credentials_refused"
+    assert report["requests"] == 0 and requests == [] and report["control_artifacts"] == []
+    assert "private" not in json.dumps(report)
+    assert not list((tmp_path / "credentials").glob("control-*"))
+
+
+def test_response_cookie_refuses_next_request_without_false_complete(tmp_path: Path) -> None:
+    base, requests = _fixture([1])
+
+    def cookie_response(request: httpx.Request) -> httpx.Response:
+        response = base.handle_request(request)
+        response.headers["Set-Cookie"] = "session=private; Path=/"
+        return response
+
+    with httpx.Client(transport=httpx.MockTransport(cookie_response)) as client:
+        report = stage_scoped_source(CONFIG, _scope(tmp_path), tmp_path / "set-cookie",
+                                     client=client, budget=CollectionBudget(min_interval_seconds=0))
+    assert report["coverage"] == "failed"
+    assert report["error_code"] == "source_client_credentials_refused"
+    assert report["requests"] == 1 and len(requests) == 1
+    assert [item["role"] for item in report["control_artifacts"]] == ["initial_metadata"]
+    assert "private" not in json.dumps(report)
 CONTEXT_POLYGON = {
     "rings": [[[-88.0, 33.0], [-85.0, 33.0], [-85.0, 36.0], [-88.0, 36.0], [-88.0, 33.0]]],
     "spatialReference": {"wkid": 4326},

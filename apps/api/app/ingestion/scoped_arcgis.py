@@ -287,6 +287,11 @@ class _Session:
                 raise ScopeError("source_client_hooks_refused")
             if self.client.auth is not None:
                 raise ScopeError("source_client_auth_refused")
+            credential_headers = ("authorization", "proxy-authorization", "cookie")
+            if self.client.cookies or any(
+                name in self.client.headers for name in credential_headers
+            ):
+                raise ScopeError("source_client_credentials_refused")
             if self.requests >= self.budget.max_requests:
                 raise BudgetExceeded("request_budget_exceeded")
             now = time.monotonic()
@@ -324,6 +329,8 @@ class _Session:
                     if response.is_redirect or response.history:
                         raise ScopeError("source_redirect_refused")
                     actual = response.request
+                    if any(name in actual.headers for name in credential_headers):
+                        raise ScopeError("source_client_credentials_refused")
                     if actual.method != event["method"] or str(
                         actual.url.copy_with(query=None, fragment=None)
                     ) != url:

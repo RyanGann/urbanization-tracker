@@ -130,6 +130,10 @@ bytes; arbitrary Python transports are not a claim of server authenticity.
 Injected clients must also have `auth=None`: HTTPX auth generators can mutate
 then restore the request just like hooks. Both unsupported configurations are
 checked before every send and refuse proof without I/O.
+Static Authorization/Proxy-Authorization/Cookie headers and nonempty cookie jars
+are also refused before each send, with defensive actual-header validation before
+capture. Thus retained observations describe the supported unauthenticated public
+request context. These checks do not provide an upstream cryptographic signature.
 The clean `90571c8` real run above predates this unsupported-client guard. The
 owning CI scenario checks the current default-client path.
 
