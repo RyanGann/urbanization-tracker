@@ -13,6 +13,7 @@ from pathlib import Path
 from unittest.mock import patch
 
 from sqlalchemy import text
+from sqlalchemy.exc import DBAPIError
 
 from app.db import SessionLocal
 from app.ingestion import display_builder
@@ -145,6 +146,20 @@ def _build_id(layer_id: int) -> int:
         """), {"id": layer_id})
         assert result is not None
         return int(result)
+
+
+def _checkpoint_snapshot(build_id: int) -> tuple:
+    with SessionLocal() as session:
+        bands = session.execute(text("""
+            SELECT band_key, status, checkpoint_feature_id, processed_count,
+                   part_count, collapsed_count, invalid_count,
+                   checkpoint_sha256, parts_sha256
+            FROM environmental_display_bands WHERE build_id = :id ORDER BY band_key
+        """), {"id": build_id}).all()
+        results = session.scalar(text("""
+            SELECT count(*) FROM environmental_display_feature_results WHERE build_id = :id
+        """), {"id": build_id})
+    return tuple(tuple(row) for row in bands), results, _part_hash(build_id)
 
 
 def _visual_samples(build_id: int, output: Path) -> None:
@@ -294,6 +309,26 @@ def run(output: Path) -> dict:
             WHERE b.environmental_layer_id = :id GROUP BY b.status
         """), {"id": layer_id}).one()
     assert building[0] == "building" and building[1] == 2
+    assert _canonical_hash(layer_id) == original_hash
+    checkpoint_before = _checkpoint_snapshot(_build_id(layer_id))
+    original_project = display_builder._simplified
+    timeout_feature_id = metadata[3]["id"]
+
+    def statement_timeout(session, feature_id, tolerance):
+        if feature_id == timeout_feature_id:
+            # The preceding feature in this batch has already inserted parts.
+            session.execute(text("SET LOCAL statement_timeout = '50ms'"))
+            session.execute(text("SELECT pg_sleep(0.15)"))
+        return original_project(session, feature_id, tolerance)
+
+    with patch.object(display_builder, "_simplified", statement_timeout):
+        try:
+            build_environmental_display(LAYER, VERSION, batch_size=3)
+        except DBAPIError as exc:
+            assert getattr(exc.orig, "sqlstate", None) == "57014"
+        else:
+            raise AssertionError("statement timeout became a permanent feature verdict")
+    assert _checkpoint_snapshot(_build_id(layer_id)) == checkpoint_before
     assert _canonical_hash(layer_id) == original_hash
     first = build_environmental_display(LAYER, VERSION, batch_size=3)
     assert first["display_status"] == "validated" and not first["publicly_active"]
@@ -551,6 +586,7 @@ def run(output: Path) -> dict:
         "reverse_insertion_order_checksums_match": True,
         "metadata_only_input_batches": True,
         "enlarged_canonical_replay_refused": True,
+        "statement_timeout_preserves_committed_checkpoint": True,
         "bands": first["bands"],
         "hole_counts": list(hole), "multipart_components": list(multipart),
         "dense_parts": dense_parts, "maximum_part_vertices": maximum_vertices,

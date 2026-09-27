@@ -1,5 +1,88 @@
 # P04a shadow display builder — real PostGIS evidence
 
+## September 27 clean committed-head proof
+
+The isolated builder was rebased onto exact O01 head
+`72e1ccd42f5dad43d323a8567c136b9e9f866486`. On clean P04a code head
+`ff9147ff16ceb11ec8069b136bbca84bd9eb9e3a`, this command passed:
+
+```text
+node scripts/run-integration.mjs --suite api --scenario display-builder
+run_id: 2026-09-27T07-02-21-214Z-be1c3937
+working_tree_dirty: false
+outcome: passed
+cleanup_result: removed
+results.json SHA-256: a9fd67615604221fd646adc318c2c762d648205c72cf679db263c44e862df89f
+```
+
+All five required bands processed all five synthetic polygon-family features.
+The process was killed after its first committed two-feature checkpoint,
+resumed with a different batch size, and replayed without duplicate parts.
+Recreating the same layer content with reversed insertion order produced the
+same display version, stable band checksums and source-based part-set checksum,
+despite different database feature IDs. Internal `checkpoint_sha256` binds
+numeric traversal separately from completed `parts_sha256`, which binds source
+identities and output digests in C collation order. The recipe includes the
+input/output rejection limits as well as projection, tolerances and topology
+validation settings.
+
+The P04 geometry fixture SHA-256 is
+`40f3c8bae8f81416ea52a19965364fb3792bd8604efe1f29a715573d756a37ca`;
+the general T01 seed fixture SHA-256 is
+`932eacb03655a3dee1a2838abf9ddf8d5dfa44f744482408611b61a2561bbee2`.
+The final source-based part-set SHA-256 is
+`ddd817b079733fea98e6b8c48ad347fb59a375570f83390cb15720c318b69e78`.
+Original EPSG:4326 EWKB remained
+`ac3b7a0c5522893ca5cb578d5925fb86b6e17e06d8554ed1a30d877291b7d96f`
+and exact screening remained one hit. The hole remained one hole, the
+multipolygon remained two components, and the dense feature generated four
+parts at z17–18 with at most 153 vertices per part (limit 256). Every band
+rejected the out-of-domain latitude fixture without altering originals. Replay
+refused both a coherent part geometry/digest edit and a changed part source ID.
+
+Input batches now retain metadata only, with one bounded EWKB fetched per
+feature; replay streams original geometry with `yield_per=1` and guards the
+current byte size before transferring it. The configured limits are 32 MiB
+input EWKB, one million input vertices, 8,192 parts and 64 MiB output per
+feature. A deliberately enlarged canonical geometry was refused on replay
+using a lowered 512-byte transfer guard, avoiding a resource-heavy 32 MiB test
+allocation. This proves the guard mechanism, not a measured process RSS limit.
+
+The default selective `EXPLAIN (ANALYZE, BUFFERS)` over 6,000 bounded synthetic
+background parts used `ix_environmental_display_parts_geometry` in a bitmap
+index scan, returned one row and touched seven shared-hit blocks. Its single
+execution measured 0.134 ms; this is query-plan evidence, not a latency
+benchmark or p95 claim. The artificial background build remained incomplete
+and never became a validated derivative or publication input. The tiny core
+fixture's default plan and a separately forced index diagnostic are retained
+as separate observations.
+
+The scenario retained `p04a/fill-only-bands.svg` and an offline Playwright
+render retained `p04a/fill-only-bands.png`. Root visual QA accepted the fixed
+scale synthetic generalization sample: holes, multipart pieces and the
+adjacent edge remain visible, and the narrow channel remains a thin fill.
+The dense z17–18 sample shows faint antialias hairlines between SVG paths;
+PostGIS union equality passed, so no geometry gap was introduced. P06 must
+check antialias behavior in the actual map renderer. These samples do not
+establish real map/tile-client acceptance at the advertised zoom levels.
+SVG SHA-256 is
+`2f25f77c53b9a04c5e7fecf8be2ffb91b34163e9e9704d4e52baa4f431e13a93`;
+PNG SHA-256 is
+`35972d37dbe452ba4eedfa51c47eb599198ef052d24b39583e3e8ae7840a7fc4`.
+
+Ruff passed for `app tests alembic`, mypy passed for 56 application files, and
+the full API suite passed 309 tests with two upstream deprecation warnings in
+the existing no-network check image. Its 57 dependency pins match the committed
+lock file. The real run migrated through additive 0008, removed its exact
+Docker project `urbanization_t01_a5f293d47053`, and an independent project-label
+check found zero remaining containers and volumes. Machine-readable artifacts
+are under `tmp/agents/p04a/tmp/integration/2026-09-27T07-02-21-214Z-be1c3937/`.
+No active pointer, public tile URL, source refresh or canonical mutation was
+introduced. Public activation and provenance/source-use gates remain P04b and
+bridge work.
+
+## Earlier September 24 checkpoint proof
+
 Run on 2026-09-24 from the isolated `codex/p04a-display-builder` worktree:
 
 ```text

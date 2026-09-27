@@ -13,6 +13,7 @@ from datetime import UTC, datetime
 from typing import Any
 
 from sqlalchemy import select, text
+from sqlalchemy.exc import DBAPIError
 from sqlalchemy.orm import Session
 
 from app.ingestion.display_config import (
@@ -40,10 +41,22 @@ from app.models import (
 
 MAX_DIAGNOSTIC_SAMPLES = 25
 EMPTY_SHA = "0" * 64
+RETRYABLE_SQLSTATES = frozenset({
+    "40001", "40P01", "55P03", "57014", "57P01", "57P02", "57P03", "57P04", "57P05",
+})
 
 
 class DisplayBuildError(RuntimeError):
     """A build cannot be trusted as a complete derivative."""
+
+
+def _retryable_database_error(error: Exception) -> bool:
+    if not isinstance(error, DBAPIError):
+        return False
+    state = getattr(error.orig, "sqlstate", None) or getattr(error.orig, "pgcode", None)
+    return error.connection_invalidated or isinstance(state, str) and (
+        state in RETRYABLE_SQLSTATES or state.startswith(("08", "53"))
+    )
 
 
 def _bytes(value: Any) -> bytes:
@@ -393,7 +406,12 @@ def _build_feature(
                 raise DisplayBuildError("subdivision_topology_mismatch")
     except DisplayBuildError as exc:
         return _failure_result(build, band, feature, str(exc)), []
-    except Exception:
+    except Exception as exc:
+        if _retryable_database_error(exc):
+            # A transient operational failure is not a geometry verdict.
+            # Roll back the whole uncommitted batch; a later explicit call
+            # resumes the same version from its last durable checkpoint.
+            raise
         return _failure_result(build, band, feature, "projection_or_postgis_failure"), []
 
     part_bytes.sort()
