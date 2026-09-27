@@ -125,11 +125,11 @@ class LocalArtifactSink:
                         while chunk := source.read(CHUNK_BYTES):
                             total += len(chunk)
                             if total > 8 * CHUNK_BYTES:
-                                raise ArtifactError("artifact_integrity")
+                                raise ArtifactError("artifact_checkpoint")
                             digest.update(chunk)
                             output.write(chunk)
                     if digest.hexdigest() != part.sha256 or total != part.byte_size:
-                        raise ArtifactError("artifact_integrity")
+                        raise ArtifactError("artifact_checkpoint")
                 output.flush()
                 os.fsync(output.fileno())
             with Path(temporary).open("rb") as source:

@@ -143,6 +143,41 @@ def test_lost_local_checkpointed_part_requires_fresh_upload(
     verify(sink, blob)
 
 
+@pytest.mark.parametrize("damage", ["changed_bytes", "changed_size"])
+def test_corrupted_local_checkpointed_part_requires_fresh_upload(
+    tmp_path: Path, damage: str
+) -> None:
+    data = b"intact source bytes"
+    blob = hash_stream(io.BytesIO(data))
+    sink = LocalArtifactSink(tmp_path)
+    old_upload = sink.begin(blob)
+    part = sink.upload_part(blob, old_upload, 1, data)
+    pending_part = tmp_path / ".pending" / blob.sha256 / old_upload / "1"
+    pending_part.write_bytes(b"X" + data[1:] if damage == "changed_bytes" else data + b"X")
+    with pytest.raises(ArtifactError, match="artifact_checkpoint"):
+        sink.complete(blob, old_upload, (part,))
+    with pytest.raises(ArtifactError, match="artifact_checkpoint"):
+        upload(
+            sink=sink,
+            source=io.BytesIO(data),
+            blob=blob,
+            upload_id=old_upload,
+            parts=(part,),
+            checkpoint=lambda *_: None,
+            assert_lease=lambda: None,
+        )
+    upload(
+        sink=sink,
+        source=io.BytesIO(data),
+        blob=blob,
+        upload_id=None,
+        parts=(),
+        checkpoint=lambda *_: None,
+        assert_lease=lambda: None,
+    )
+    verify(sink, blob)
+
+
 def test_local_existing_corruption_is_never_overwritten(tmp_path: Path) -> None:
     data = b"original"
     blob = hash_stream(io.BytesIO(data))

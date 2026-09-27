@@ -3,7 +3,9 @@
 from __future__ import annotations
 
 import hashlib
+import ipaddress
 import json
+import re
 from collections.abc import Iterator
 from typing import Any
 from urllib.parse import urlsplit
@@ -44,13 +46,31 @@ def validate_s3_configuration(
         or parsed.query
         or parsed.fragment
         or parsed.path not in {"", "/"}
-        or not bucket
-        or len(bucket) > 63
+        or not _valid_bucket_name(bucket)
         or not region
         or not access_key
         or not secret_key
     ):
         raise ArtifactError("artifact_configuration")
+
+
+def _valid_bucket_name(bucket: str) -> bool:
+    """Use the portable DNS-compatible S3 general-purpose bucket subset."""
+    if not 3 <= len(bucket) <= 63 or not re.fullmatch(
+        r"[a-z0-9][a-z0-9.-]*[a-z0-9]", bucket
+    ):
+        return False
+    if any(fragment in bucket for fragment in ("..", ".-", "-.")):
+        return False
+    if bucket.startswith(("xn--", "sthree-", "amzn-s3-demo-")) or bucket.endswith(
+        ("-s3alias", "--ol-s3", ".mrap", "--x-s3", "--table-s3")
+    ):
+        return False
+    try:
+        ipaddress.IPv4Address(bucket)
+    except ipaddress.AddressValueError:
+        return True
+    return False
 
 
 class S3ArtifactSink:
