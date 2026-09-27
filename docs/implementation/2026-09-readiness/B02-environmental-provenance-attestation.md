@@ -57,10 +57,10 @@ be retroactively promoted by a caller's checksum assertion.
    for an immutable version conflicts. A crash leaves shadow data/no attestation.
 6. Expose a bounded DB-only `require_environmental_provenance` helper for a caller
    holding C02 lock. Compare expected layer/version/input checksum/attestation,
+   P03 validated state, pre-existing seal and exact verified required references,
    and require an explicit expected sink identity from the caller's selected
    provider. A retained provider during restore must be selected deliberately;
    proof-local sink identity alone cannot authorize a different hosted provider.
-   P03 validated state, pre-existing seal and exact verified required references.
    No remote reads, hashing or full geometry scan under lock; no auto-sealing a
    different set. P04b separately checks bands/pointer revision and O04 clearance.
 7. Maintain an unforgeable monotonic parent canonical revision on every feature
@@ -115,6 +115,22 @@ be retroactively promoted by a caller's checksum assertion.
   fixture hashes and measured bounds. Codex review and green CI; root merges.
 
 ## Rollout and recovery
+
+Implementation receipt: [B02 owning evidence](../../evidence/B02-environmental-provenance.md)
+records the clean `9329881` real PostgreSQL run, exact artifacts and honest failed
+fixture attempts. The owning command is
+`node scripts/run-integration.mjs --suite api --scenario b02-provenance` and is
+wired into CI. Current review/merge state remains authoritative in `plan.json`.
+
+The operator command `attest-environmental-scoped` requires `--apply`, a fixed
+allowlisted environmental `--source`, a fresh `--workspace` under the configured
+ingestion `raw` directory, and either a durable `--run-id` or an existing complete
+D01 `--staged-dir` plus `--scope-file`. Its result is `attested_shadow`; P03 coverage
+remains unknown. It never fetches official source APIs itself. Existing canary or
+incomplete observations refuse proof. A replay uses another fresh workspace and
+the same durable source/run identities. The DB-only helper requires the caller's
+explicit `expected_sink_id`, including an explicitly selected retained provider
+when recovering copied data.
 
 B02 may merge shadow-only without owner rights choices. Preserve previous data
 and immutable artifacts/attestations. Missing proof leaves no public pointer or

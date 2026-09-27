@@ -1,0 +1,45 @@
+{
+  "run_id": "2026-09-27T09-45-08-793Z-9abea6dc",
+  "project": "urbanization_t01_6152dd187abf",
+  "suite": "api",
+  "performance": null,
+  "scenario": "b02-provenance",
+  "api_url": "http://127.0.0.1:54179",
+  "fixture_sha256": "932eacb03655a3dee1a2838abf9ddf8d5dfa44f744482408611b61a2561bbee2",
+  "fixture": {
+    "id": "t01-postgis-3c09cd873698",
+    "title": "T01 PostGIS Fixture 3c09cd873698"
+  },
+  "scenario_artifacts": {},
+  "command": "node scripts/run-integration.mjs --suite api --scenario b02-provenance",
+  "options": {
+    "suite": "api",
+    "scenario": "b02-provenance",
+    "keep_on_failure": false,
+    "assert_failure": false,
+    "isolation_check": false
+  },
+  "outcome": "failed",
+  "failure": "docker exited with 1",
+  "commit_sha": "ec933831cbb8b2f2d7878b28276859466010443d",
+  "working_tree_dirty": false,
+  "images": {
+    "database": "postgis/postgis:16-3.4",
+    "mail": "axllent/mailpit:v1.27.1",
+    "browser": "mcr.microsoft.com/playwright:v1.60.0-noble"
+  },
+  "image_digests": {
+    "database": "postgis/postgis@sha256:44126d872ac91993766c341e369c539e8196614321765d36a6f1bab0419a5fa5",
+    "mail": "axllent/mailpit@sha256:986b14ff7b253e62883ea19fd3112806f116e5e2f221e03f12fb81c7312ff532",
+    "browser": "mcr.microsoft.com/playwright@sha256:9bd26ad900bb5e0f4dee75839e957a89ae89c2b7ab1e76050e559790e946b948"
+  },
+  "image_ids": {
+    "urbanization_t01_6152dd187abf-api-1": "sha256:5313efa08b2a9335140527cab3b7d7c5f03e3027dbe7144ac7db30e26f6d979b",
+    "urbanization_t01_6152dd187abf-mail-1": "sha256:774f5f77986b98051deecb040426ec57c259fd0d61f85724500e6737cadb1747",
+    "urbanization_t01_6152dd187abf-api-gateway-1": "sha256:6769dc3a703c719c1d2756bda113659be28ae16cf0da58dd5fd823d6b9a050ea",
+    "urbanization_t01_6152dd187abf-db-1": "sha256:06287eb8e12c43f425773085c48d6ad02d73f8b442ac209810c1b211eb0a643b"
+  },
+  "retained": false,
+  "cleanup_result": "removed",
+  "cleanup_failure": null
+}
