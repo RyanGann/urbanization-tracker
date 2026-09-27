@@ -285,6 +285,8 @@ class _Session:
             # Supported injected clients are hook-free; recheck every send.
             if any(self.client.event_hooks.get(kind) for kind in ("request", "response")):
                 raise ScopeError("source_client_hooks_refused")
+            if self.client.auth is not None:
+                raise ScopeError("source_client_auth_refused")
             if self.requests >= self.budget.max_requests:
                 raise BudgetExceeded("request_budget_exceeded")
             now = time.monotonic()

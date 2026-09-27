@@ -70,6 +70,29 @@ def test_hook_client_returns_truthful_failed_report(tmp_path: Path, hook_kind: s
     assert report["requests"] == 0 and requests == []
     assert report["control_artifacts"] == []
     assert not list((tmp_path / "hooks").glob("control-*"))
+
+
+@pytest.mark.parametrize("method", ["GET", "POST"])
+def test_auth_cannot_launder_request_identity(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, method: str,
+) -> None:
+    if method == "POST":
+        monkeypatch.setattr("app.ingestion.scoped_arcgis.MAX_GET_URL_BYTES", 0)
+
+    class LaunderingAuth(httpx.Auth):
+        def auth_flow(self, request):  # type: ignore[no-untyped-def]
+            original = request.url
+            request.url = request.url.copy_with(host="other.invalid")
+            response = yield request
+            response.request.url = original
+
+    transport, requests = _fixture([1])
+    with httpx.Client(transport=transport, auth=LaunderingAuth()) as client:
+        report = stage_scoped_source(CONFIG, _scope(tmp_path), tmp_path / "auth", client=client)
+    assert report["coverage"] == "failed" and report["error_code"] == "source_client_auth_refused"
+    assert report["requests"] == 0 and requests == []
+    assert report["control_artifacts"] == []
+    assert not list((tmp_path / "auth").glob("control-*"))
 CONTEXT_POLYGON = {
     "rings": [[[-88.0, 33.0], [-85.0, 33.0], [-85.0, 36.0], [-88.0, 36.0], [-88.0, 33.0]]],
     "spatialReference": {"wkid": 4326},

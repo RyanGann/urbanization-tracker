@@ -127,6 +127,9 @@ Injected clients with either hook type are now refused before each send, returni
 `source_client_hooks_refused` with zero requests and no finalized controls. The
 production default client is unchanged. Test transport injection supplies fixture
 bytes; arbitrary Python transports are not a claim of server authenticity.
+Injected clients must also have `auth=None`: HTTPX auth generators can mutate
+then restore the request just like hooks. Both unsupported configurations are
+checked before every send and refuse proof without I/O.
 The clean `90571c8` real run above predates this unsupported-client guard. The
 owning CI scenario checks the current default-client path.
 
