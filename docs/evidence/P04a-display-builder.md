@@ -1,6 +1,40 @@
 # P04a shadow display builder — real PostGIS evidence
 
-## Final transient-failure proof
+## Final review-fix proof
+
+Clean code head `b6a2a08dff731c73f9b1a0a6ca17ac04875189d7` passed run
+`2026-09-27T07-29-17-065Z-370e8377` with `working_tree_dirty=false`.
+The streaming source snapshot now includes an actual server-side SHA-256 of
+each bounded canonical EWKB, returning digest metadata only and refusing
+oversized snapshot inputs. A geometry-only edit to an unprocessed row with
+unchanged importer fingerprint created a different display identity without
+changing the prior committed checkpoint. Restoring the input resumed the
+original version. Real PostgreSQL SQLSTATE `58030` and statement timeout
+`57014` both rolled back a partially written batch; explicit resume succeeded.
+
+The recipe now requires the actual PostGIS execution version (including GEOS
+and PROJ), so backend changes produce distinct configuration/display hashes.
+This run reported:
+
+```text
+POSTGIS="3.4.3 e365945" [EXTENSION] PGSQL="160" GEOS="3.9.0-CAPI-1.16.2" PROJ="7.2.1 NETWORK_ENABLED=OFF URL_ENDPOINT=https://cdn.proj.org USER_WRITABLE_DIRECTORY=/var/lib/postgresql/.local/share/proj DATABASE_PATH=/usr/share/proj/proj.db" LIBXML="2.9.10" LIBJSON="0.15" LIBPROTOBUF="1.3.3" WAGYU="0.5.0 (Internal)" TOPOLOGY
+```
+
+Display version is
+`384c7863920195b446235bc5b20e25f796d46f8cda4b2389a89a7b7aa1136ef3`;
+configuration SHA-256 is
+`fd4921d0de9386f2fe81ceccaf8a525206790ae2f17095aea26155b61ae8ce54`.
+Source-based part-set, original EWKB and SVG hashes match the earlier proofs
+below, preserving the accepted synthetic visual QA scope. Final result SHA-256
+is `bd4f0874f893bd156577954ac7ddcadbb61981beaa4bae3f340e6157a4f157ac`.
+All 325 API tests, Ruff and mypy passed. Migration 0008 depends on O01 0007.
+The owning CI workflow now runs `display-builder` after environmental import
+and recovery, with the same runner isolation, artifact capture and teardown.
+Exact project `urbanization_t01_5c253e52e733` was removed; independent label
+queries found zero containers and volumes. Local artifacts remain under
+`tmp/agents/p04a/tmp/integration/2026-09-27T07-29-17-065Z-370e8377/`.
+
+## Earlier transient-failure proof
 
 The final runtime change passed the same real scenario on clean code head
 `e38d0b5e774524f55e203d02f8e2d086970549a3`, run
