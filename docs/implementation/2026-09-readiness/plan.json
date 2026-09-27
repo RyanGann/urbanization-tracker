@@ -700,7 +700,7 @@
       "id": "B02",
       "title": "Bind durable complete scoped evidence to the exact environmental import",
       "path": "B02-environmental-provenance-attestation.md",
-      "status": "planned",
+      "status": "in_progress",
       "track": "Data quality",
       "gate": "G1",
       "depends_on": [
@@ -711,7 +711,8 @@
       "review": "Lead review",
       "pr_boundary": "One additive shadow-only provenance bridge PR.",
       "implementation_pr": null,
-      "evidence": null
+      "evidence": null,
+      "status_note": "Shadow-only exact durable observation/import bridge in progress after B01 and verified P04a PR36 merge (8b4889d). B02 migration follows actual 0008. No activation or rights clearance implied."
     }
   ],
   "topological_order": [

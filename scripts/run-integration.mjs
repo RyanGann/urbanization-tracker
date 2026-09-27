@@ -65,9 +65,12 @@ function parseArgs(argv) {
     if (!["desktop", "mobile"].includes(options.profile)) throw new Error("Performance profile must be desktop or mobile");
   } else {
     if (options.profile || options.smoke || (options.snapshotDir && options.scenario !== "layer-import")) throw new Error("Performance options require --suite performance");
-    if (options.scenario && !["c01-data-modes", "u00-filters", "c03-source-identity", "c04-agenda-revisions", "input-limits", "layer-import", "d01-scoped", "display-builder", "o01-artifacts"].includes(options.scenario)) throw new Error(`Scenario '${options.scenario}' is not implemented`);
+    if (options.scenario && !["c01-data-modes", "u00-filters", "c03-source-identity", "c04-agenda-revisions", "input-limits", "layer-import", "d01-scoped", "display-builder", "o01-artifacts", "b02-provenance"].includes(options.scenario)) throw new Error(`Scenario '${options.scenario}' is not implemented`);
     if (options.scenario === "display-builder" && (options.suite !== "api" || options.assertFailure || options.isolationCheck || options.child)) {
       throw new Error("--scenario display-builder requires the top-level api suite");
+    }
+    if (options.scenario === "b02-provenance" && (options.suite !== "api" || options.assertFailure || options.isolationCheck || options.child)) {
+      throw new Error("--scenario b02-provenance requires the top-level api suite without assertion or isolation flags");
     }
     if (options.scenario === "o01-artifacts" && (options.suite !== "api" || options.assertFailure || options.isolationCheck || options.child)) {
       throw new Error("--scenario o01-artifacts requires the top-level api suite without assertion or isolation flags");
@@ -336,6 +339,9 @@ async function runSuite(options) {
   if (options.scenario === "d01-scoped") {
     await mkdir(join(artifactDir, "d01-data"), { recursive: true });
   }
+  if (options.scenario === "b02-provenance") {
+    await mkdir(join(artifactDir, "b02-data"), { recursive: true });
+  }
   if (options.scenario === "o01-artifacts") {
     await mkdir(join(artifactDir, "o01-data"), { recursive: true });
   }
@@ -542,6 +548,31 @@ async function runSuite(options) {
     scenarioArtifacts.d01_results_sha256 = createHash("sha256")
       .update(await readFile(resultPath))
       .digest("hex");
+  };
+
+  const runB02Provenance = async () => {
+    const invoke = async (phase, restored = false) => run("docker", [
+      ...compose, "run", "--rm", "--no-deps",
+      "--volume", `${join(root, "apps", "api", "tests", "integration").replaceAll("\\", "/")}:/integration:ro`,
+      "--volume", `${join(artifactDir, "b02-data").replaceAll("\\", "/")}:/b02-data`,
+      ...(restored ? ["--env", "DATABASE_URL=postgresql+psycopg://integration:integration@db:5432/b02_restore"] : []),
+      "api", "python", "/integration/b02_provenance.py",
+      "--phase", phase, "--result", "/b02-data/results.json"
+    ], { log, timeoutMs: 180_000 });
+    await invoke("stage");
+    try {
+      await run("docker", [...compose, "exec", "-T", "db", "sh", "-ec",
+        "createdb -U integration b02_restore && pg_dump -U integration -Fc -f /tmp/b02.dump integration && pg_restore --exit-on-error -U integration -d b02_restore /tmp/b02.dump >/dev/null"
+      ], { log, timeoutMs: 120_000 });
+      await invoke("verify", true);
+      scenarioArtifacts.b02_results_sha256 = createHash("sha256")
+        .update(await readFile(join(artifactDir, "b02-data", "results.json"))).digest("hex");
+      scenarioArtifacts.b02_copied_restore_application_gate = true;
+    } finally {
+      await run("docker", [...compose, "exec", "-T", "db", "sh", "-ec",
+        "dropdb --if-exists -U integration b02_restore; rm -f /tmp/b02.dump"
+      ], { log, allowFailure: true, timeoutMs: 30_000 });
+    }
   };
 
   const runC03SourceIdentity = async () => {
@@ -826,6 +857,7 @@ async function runSuite(options) {
           .update(await readFile(join(artifactDir, "s02-input-limits.json"))).digest("hex");
       }
       if (options.scenario === "d01-scoped") await runD01Scoped();
+      if (options.scenario === "b02-provenance") await runB02Provenance();
       if (performance) {
         await captureDatabase({ compose, run, log, artifactDir });
         stopSampling = await startResourceSampling({ compose, run, log, artifactDir });

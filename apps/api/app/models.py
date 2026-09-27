@@ -11,6 +11,7 @@ from sqlalchemy import (
     DateTime,
     Float,
     ForeignKey,
+    ForeignKeyConstraint,
     Index,
     Integer,
     String,
@@ -217,6 +218,7 @@ class EnvironmentalLayer(Base):
     )
 
     id: Mapped[int] = mapped_column(primary_key=True)
+    canonical_revision: Mapped[int] = mapped_column(BigInteger, server_default="0", nullable=False)
     name: Mapped[str] = mapped_column(String(255), nullable=False)
     category: Mapped[str] = mapped_column(String(100), nullable=False)
     source_id: Mapped[int | None] = mapped_column(ForeignKey("data_sources.id"))
@@ -250,8 +252,11 @@ class EnvironmentalFeature(Base):
     __table_args__ = (
         Index("ix_environmental_features_layer_id", "environmental_layer_id", "id"),
         Index(
-            "uq_environmental_managed_feature", "environmental_layer_id", "source_feature_id",
-            unique=True, postgresql_where=text("import_managed IS TRUE"),
+            "uq_environmental_managed_feature",
+            "environmental_layer_id",
+            "source_feature_id",
+            unique=True,
+            postgresql_where=text("import_managed IS TRUE"),
         ),
         CheckConstraint(
             "NOT import_managed OR (source_feature_id IS NOT NULL "
@@ -338,7 +343,9 @@ class EnvironmentalDisplayFeatureResult(Base):
     __tablename__ = "environmental_display_feature_results"
     __table_args__ = (
         UniqueConstraint(
-            "build_id", "band_key", "environmental_feature_id",
+            "build_id",
+            "band_key",
+            "environmental_feature_id",
             name="uq_environmental_display_feature_result",
         ),
         CheckConstraint(
@@ -374,7 +381,10 @@ class EnvironmentalDisplayPart(Base):
     __tablename__ = "environmental_display_parts"
     __table_args__ = (
         UniqueConstraint(
-            "build_id", "band_key", "environmental_feature_id", "part_number",
+            "build_id",
+            "band_key",
+            "environmental_feature_id",
+            "part_number",
             name="uq_environmental_display_part",
         ),
         Index("ix_environmental_display_parts_build_band", "build_id", "band_key"),
@@ -602,6 +612,7 @@ class PublicWriteQuota(Base):
         DateTime(timezone=True), nullable=False, index=True
     )
 
+
 class ArtifactBlob(Base):
     __tablename__ = "artifact_blobs"
     __table_args__ = (
@@ -667,7 +678,10 @@ class ArtifactReference(Base):
     __tablename__ = "artifact_references"
     __table_args__ = (
         UniqueConstraint(
-            "source_key", "run_id", "artifact_type", "logical_key",
+            "source_key",
+            "run_id",
+            "artifact_type",
+            "logical_key",
             name="uq_artifact_reference_observation",
         ),
         CheckConstraint(
@@ -701,9 +715,7 @@ class ArtifactRunSeal(Base):
             "length(trim(source_key)) > 0 AND length(trim(run_id)) > 0",
             name="ck_artifact_seal_identity",
         ),
-        CheckConstraint(
-            "required_set_sha256 ~ '^[0-9a-f]{64}$'", name="ck_artifact_seal_digest"
-        ),
+        CheckConstraint("required_set_sha256 ~ '^[0-9a-f]{64}$'", name="ck_artifact_seal_digest"),
         CheckConstraint("required_count BETWEEN 0 AND 1024", name="ck_artifact_seal_count"),
     )
 
@@ -712,3 +724,49 @@ class ArtifactRunSeal(Base):
     required_set_sha256: Mapped[str] = mapped_column(String(64), nullable=False)
     required_count: Mapped[int] = mapped_column(Integer, nullable=False)
     sealed_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+
+class EnvironmentalAttestation(Base):
+    __tablename__ = "environmental_attestations"
+    __table_args__ = (
+        ForeignKeyConstraint(
+            ["source_key", "run_id"],
+            ["artifact_run_seals.source_key", "artifact_run_seals.run_id"],
+            ondelete="RESTRICT",
+        ),
+        CheckConstraint("canonical_revision >= 0", name="ck_environmental_proof_revision"),
+        CheckConstraint("proof_sha256 ~ '^[0-9a-f]{64}$'", name="ck_environmental_proof_digest"),
+        CheckConstraint(
+            "jsonb_typeof(binding_json) = 'object' AND octet_length(binding_json::text) <= 1048576",
+            name="ck_environmental_proof_binding_bound",
+        ),
+    )
+    id: Mapped[UUID] = mapped_column(Uuid, primary_key=True)
+    environmental_layer_id: Mapped[int] = mapped_column(
+        ForeignKey("environmental_layers.id", ondelete="RESTRICT"),
+        unique=True,
+    )
+    source_key: Mapped[str] = mapped_column(String(128), nullable=False)
+    run_id: Mapped[str] = mapped_column(String(128), nullable=False)
+    sink_id: Mapped[str] = mapped_column(String(64), nullable=False)
+    canonical_revision: Mapped[int] = mapped_column(BigInteger, nullable=False)
+    proof_sha256: Mapped[str] = mapped_column(String(64), nullable=False)
+    binding_json: Mapped[dict[str, Any]] = mapped_column(JSONB, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+
+class EnvironmentalAttestationReference(Base):
+    __tablename__ = "environmental_attestation_references"
+    __table_args__ = (
+        UniqueConstraint("attestation_id", "role", "sequence", name="uq_environmental_proof_role"),
+    )
+    attestation_id: Mapped[UUID] = mapped_column(
+        ForeignKey("environmental_attestations.id", ondelete="RESTRICT"),
+        primary_key=True,
+    )
+    reference_id: Mapped[UUID] = mapped_column(
+        ForeignKey("artifact_references.id", ondelete="RESTRICT"),
+        primary_key=True,
+    )
+    role: Mapped[str] = mapped_column(String(48), nullable=False)
+    sequence: Mapped[int] = mapped_column(Integer, nullable=False)
