@@ -279,7 +279,7 @@
       "title": "Prepare display geometry and activate complete layer versions atomically",
       "path": "P04-environmental-display-derivatives.md",
       "status": "in_progress",
-      "status_note": "Execution is split into P04a display-derivative construction (in progress) and P04b atomic activation (not complete); the P04 guide and release gates remain unchanged.",
+      "status_note": "P04a shadow display builder is implemented and locally verified in PR36, awaiting exact-head review/CI and merge. P04b atomic activation and B02 provenance remain incomplete; P04 umbrella and release gates remain in progress.",
       "track": "Performance",
       "gate": "G1",
       "depends_on": [
@@ -291,8 +291,8 @@
       ],
       "review": "Lead review",
       "pr_boundary": "P04a shadow derivative builder, then P04b checked activation/retention.",
-      "implementation_pr": null,
-      "evidence": null
+      "implementation_pr": "https://github.com/RyanGann/urbanization-tracker/pull/36",
+      "evidence": "../../evidence/P04a-display-builder.md"
     },
     {
       "id": "P05",
@@ -669,7 +669,7 @@
       "id": "B01",
       "title": "Retain bounded original source-control response evidence",
       "path": "B01-control-response-evidence.md",
-      "status": "in_review",
+      "status": "complete",
       "track": "Data quality",
       "gate": "G1",
       "depends_on": [
@@ -679,7 +679,7 @@
       "pr_boundary": "One bounded collector retention PR; staging only.",
       "implementation_pr": "https://github.com/RyanGann/urbanization-tracker/pull/34",
       "evidence": "../../evidence/B01-control-evidence.md",
-      "status_note": "Bounded original control retention and deterministic fixtures implemented; clean real API/PostGIS d01-scoped run passed. Awaiting exact-head review/CI. No durable seal, attestation or activation; B02 remains planned."
+      "status_note": "PR34 merged as 84a71b10124045ddfb88cdfa7888525181f026d8 after clean exact-head review and CI36305056544. Bounded original control retention and clean real d01-scoped proof passed; staging only. Durable attestation and activation remain separate B02/P04b work."
     },
     {
       "id": "B02",
