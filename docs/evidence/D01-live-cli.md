@@ -21,6 +21,19 @@ The scope file SHA-256 was
 Its review timestamp remains `2026-09-24T04:43:51.111Z`; no boundary was refreshed.
 Boundary/context digests and sanitized per-request method, endpoint, status,
 query digest, and response bytes are in [the report](D01-live-cli-20260927.json).
+The bundle is an array containing each exact generated canonical JSON report
+on its own line. To reproduce a source report digest, remove the array separator
+comma from its line (if present), append one LF byte, and hash those UTF-8 bytes.
+No JSON reserialization is needed; it could alter numeric spelling.
+
+| Source | Original report SHA-256 |
+| --- | --- |
+| Building permits | `a802a1adb4d48e8050dea3bd511a8b7d62ee600d7ca3c5be078da539099fb7e9` |
+| FEMA 1% floodplain | `fbfcfe667b388e4a505a9cf4bfbec47a262a8a817ae2ac46c5cd79cf4aa9a67a` |
+| New subdivisions | `c746132af9f55d43439c84602a2daa9c717c5d9cfdbdff9624c80aa70edb7dbe` |
+| USFWS wetlands | `9ce0990e46329fbf0bbe2012101a43543eae6566b8f746f18c641d6e7a7bef48` |
+| County subdivisions | `01dac99e959da58a1725bfa917fd2dd170c0fa745ffc5c69e9bf51f823a747ce` |
+
 Full scope geometry and sampled pages remain ignored locally at
 `tmp/d01-live-cli-20260927/` in the isolated worktree.
 

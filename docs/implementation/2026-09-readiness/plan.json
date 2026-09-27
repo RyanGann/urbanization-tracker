@@ -101,7 +101,7 @@
       "title": "Fetch a declared pilot scope completely and report source coverage",
       "path": "D01-source-scope-pagination-canaries.md",
       "status": "in_progress",
-      "status_note": "The scoped-ingestion implementation is merged, but its evidence leaves the opt-in live Python staging CLI check outstanding; two upstream canaries also found count/ID mismatches. Keep source activation and dependent release gates open.",
+      "status_note": "The scoped-ingestion implementation is merged and the bounded live Python staging CLI ran on 2026-09-27 (evidence: docs/evidence/D01-live-cli.md). It correctly exited 1 on wetlands/county count-ID mismatches. Keep upstream completeness, source activation and dependent release gates open.",
       "track": "Data quality",
       "gate": "G1",
       "depends_on": [
