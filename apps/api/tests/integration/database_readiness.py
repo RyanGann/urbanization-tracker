@@ -26,7 +26,8 @@ def resolve_tcp_address(dsn):
     from sqlalchemy.engine import make_url
 
     url = make_url(dsn)
-    addresses = socket.getaddrinfo(url.host, url.port or 5432, type=socket.SOCK_STREAM)
+    addresses = socket.getaddrinfo(unquote(url.host or ""), url.port or 5432,
+                                   type=socket.SOCK_STREAM)
     if not addresses:
         raise OSError("tcp_address_unavailable")
     return addresses[0][4][0]
@@ -71,6 +72,8 @@ def wait_for_sql(dsn, deadline_epoch, *, connect, clock=time.monotonic,
                     break
                 if value != (1,):
                     raise ValueError("unexpected_sql_result")
+            if clock() >= deadline:
+                break
             successes += 1
             report("success")
             if successes == 2:

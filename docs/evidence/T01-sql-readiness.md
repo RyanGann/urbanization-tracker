@@ -23,7 +23,9 @@ two-second minimum for `connect_timeout` and separate budgets per host/address;
 the single-address connection prevents multiplication of that budget.
 [PostgreSQL 16 libpq connection documentation](https://www.postgresql.org/docs/16/libpq-connect.html)
 Each attempt reserves two seconds for connect and two for SQL, with a 2,000ms
-server statement timeout; no new attempt begins without the reservation. DNS
+statement timeout bounding server query execution; no new attempt begins without
+the reservation. The authoritative host deadline also fences client transport
+and connection-close stalls. DNS
 resolution consumes the remaining budget and is fenced by the host cutoff,
 rather than claimed to have a separate resolver timeout. Two consecutive
 `SELECT 1` successes separated by one second establish readiness. Transient
@@ -32,7 +34,7 @@ UTC, elapsed/budget/remaining milliseconds, attempt number and safe error
 class/SQLSTATE, never DSNs, credentials or raw driver messages.
 
 Local checks passed Ruff, mypy for 57 application files, all 429 API tests
-(two upstream deprecations), 18 focused Python readiness cases and five Node
+(two upstream deprecations), 20 focused Python readiness cases and five Node
 process/deadline cases. Fake clocks cover startup-budget consumption, stalled
 connect/resolution, transient reset, clock drift and unavailable targets; process
 tests cover a single invocation, hard timeout and interruption propagation.

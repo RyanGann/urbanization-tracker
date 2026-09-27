@@ -28,7 +28,8 @@ class FakeClock:
         self.elapsed += seconds
 
 
-def probe(sequence, *, startup=0, timeout=180, resolver_delay=0, resolver_fails=False):
+def probe(sequence, *, startup=0, timeout=180, resolver_delay=0, resolver_fails=False,
+          close_delay=0):
     clock = FakeClock()
     clock.elapsed = startup
     logs = []
@@ -39,6 +40,7 @@ def probe(sequence, *, startup=0, timeout=180, resolver_delay=0, resolver_fails=
             return self
 
         def __exit__(self, *args):
+            clock.elapsed += close_delay
             return False
 
         def execute(self, query):
@@ -121,6 +123,24 @@ def test_transient_resolver_error_is_safe_retry_not_configuration_refusal():
     assert not ready and not calls
     assert any(row["status"] == "retry" for row in logs)
     assert "secret" not in json.dumps(logs)
+
+
+def test_stalled_connection_close_cannot_report_late_readiness():
+    ready, _, logs = probe(["success"], close_delay=181)
+    assert not ready
+    assert not any(row["status"] in ("success", "ready") for row in logs)
+
+
+def test_resolver_decodes_dns_hostname_and_chooses_one_address(monkeypatch):
+    calls = []
+
+    def addresses(host, port, **kwargs):
+        calls.append((host, port))
+        return [(2, 1, 6, "", ("127.0.0.1", port)), (2, 1, 6, "", ("127.0.0.2", port))]
+
+    monkeypatch.setattr(poller.socket, "getaddrinfo", addresses)
+    assert poller.resolve_tcp_address("postgresql://%64b:5432/integration") == "127.0.0.1"
+    assert calls == [("db", 5432)]
 
 
 @pytest.mark.parametrize("url", [
