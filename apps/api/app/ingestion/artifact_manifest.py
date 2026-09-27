@@ -328,6 +328,7 @@ class ArtifactManifest:
             row.last_audit_at = now
             row.failure_code = None
             row.next_attempt_at = None
+            row.attempts = 0
             row.lease_token = None
             row.lease_expires_at = None
             row.multipart_upload_id = None

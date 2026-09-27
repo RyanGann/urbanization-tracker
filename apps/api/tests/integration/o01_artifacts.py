@@ -146,6 +146,28 @@ def run_manifest_checks() -> dict[str, object]:
                     run_id="run-one",
                     sink_id=service.sink_id,
                 )
+        # Successful routine audits must clear consecutive retry history, so
+        # a later transient failure receives its initial bounded delay.
+        with SessionLocal.begin() as session:
+            copy = session.get(ArtifactCopy, (new_lease.blob_id, service.sink_id))
+            assert copy is not None
+            copy.attempts = 20
+        service.audit(reference_one)
+        with SessionLocal() as session:
+            copy = session.get(ArtifactCopy, (new_lease.blob_id, service.sink_id))
+            assert copy is not None and copy.attempts == 0
+        transient_lease = manifest.claim(reference_one, service.sink_id, audit=True)
+        assert transient_lease is not None
+        manifest.failed(transient_lease, ArtifactError("artifact_unavailable"))
+        with SessionLocal.begin() as session:
+            copy = session.get(ArtifactCopy, (new_lease.blob_id, service.sink_id))
+            assert copy is not None and copy.attempts == 1
+            assert copy.next_attempt_at is not None
+            now = session.scalar(select(func.clock_timestamp()))
+            assert (copy.next_attempt_at - now).total_seconds() <= 10.5
+            copy.next_attempt_at = None  # advance only this disposable retry fixture
+        service.audit(reference_one)
+
         def require_first_reference() -> None:
             with SessionLocal.begin() as session:
                 with CollectionUnitOfWork(session).canonical_mutation():
@@ -491,6 +513,7 @@ def run_manifest_checks() -> dict[str, object]:
             "expired_audit_blocks_publication_until_reverified": True,
             "expired_audit_worker_cannot_restore_verified": True,
             "cleanup_preserves_local_copy_during_audit": True,
+            "successful_audit_resets_failure_backoff": True,
         }
 
 

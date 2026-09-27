@@ -96,8 +96,14 @@ def test_hosted_ingestion_rejects_local_artifact_sink() -> None:
 @pytest.mark.parametrize("endpoint", [
     "https://objects.example.test", "https://objects.example.test:443",
     "https://objects.example.test:8443", "https://[::1]:8443",
+    "https://objects.example.test.", "https://127.0.0.1:8443",
+    "https://artifact-store:3900", "https://bücher.example:8443",
+    "https://xn--bcher-kva.example", "https://[::ffff:192.0.2.1]:8443",
+    "https://Objects.Example.Test.:08443/",
 ])
 def test_hosted_ingestion_requires_complete_s3_configuration(endpoint: str) -> None:
+    from app.ingestion.artifact_s3 import S3ArtifactSink
+
     settings = production_settings(
         hosted_ingestion_enabled=True,
         artifact_durability_required=True,
@@ -115,6 +121,17 @@ def test_hosted_ingestion_requires_complete_s3_configuration(endpoint: str) -> N
 
     assert _status_for(configured, "artifact_storage") == "pass"
     assert _status_for(missing, "artifact_storage") == "fail"
+    # Explicit synthetic credentials and region avoid metadata/network lookup;
+    # actual SDK construction must accept every syntax preflight approves.
+    sink = S3ArtifactSink(
+        endpoint=endpoint, bucket="private-artifacts", region="us-east-1",
+        access_key="synthetic-access", secret_key="synthetic-secret",
+    )
+    assert sink.client.meta.endpoint_url == sink.endpoint
+    assert sink.endpoint.isascii()
+    if endpoint.isascii():
+        assert sink.endpoint == endpoint.rstrip("/")
+    sink.client.close()
 
 
 @pytest.mark.parametrize(
@@ -128,6 +145,23 @@ def test_hosted_ingestion_requires_complete_s3_configuration(endpoint: str) -> N
         {"artifact_s3_endpoint": "https://objects.example.test:-1"},
         {"artifact_s3_endpoint": "https://objects.example.test:0"},
         {"artifact_s3_endpoint": "https://[::1]:notaport"},
+        {"artifact_s3_endpoint": "https://bad host.example"},
+        {"artifact_s3_endpoint": "https://objects.%zz"},
+        {"artifact_s3_endpoint": "https://objects.example.test\nbad"},
+        {"artifact_s3_endpoint": "https://[::1]suffix"},
+        {"artifact_s3_endpoint": "https://objects.example.test:"},
+        {"artifact_s3_endpoint": "https://@objects.example.test"},
+        {"artifact_s3_endpoint": "https://999.999.999.999"},
+        {"artifact_s3_endpoint": "https://-bad.example"},
+        {"artifact_s3_endpoint": "https://bad-.example"},
+        {"artifact_s3_endpoint": "https://bad..example"},
+        {"artifact_s3_endpoint": "https://objects.example.test.."},
+        {"artifact_s3_endpoint": "https://bad_name.example"},
+        {"artifact_s3_endpoint": "https://xn--.example"},
+        {"artifact_s3_endpoint": "https://" + "a" * 64 + ".example"},
+        {"artifact_s3_endpoint": "https://" + ".".join(["a" * 63] * 4)},
+        {"artifact_s3_region": "us east-1"},
+        {"artifact_s3_region": "us/east-1"},
         {"artifact_s3_region": ""},
         {"artifact_s3_bucket": "b" * 64},
         {"artifact_s3_bucket": "ab"},

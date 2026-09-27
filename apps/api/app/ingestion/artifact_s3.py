@@ -8,7 +8,7 @@ import json
 import re
 from collections.abc import Iterator
 from typing import Any
-from urllib.parse import urlsplit
+from urllib.parse import urlsplit, urlunsplit
 
 import boto3
 from botocore.config import Config
@@ -42,6 +42,9 @@ def validate_s3_configuration(
     if (
         parsed.scheme not in ({"https", "http"} if allow_http else {"https"})
         or not parsed.hostname
+        or any(character.isspace() or ord(character) < 32 or ord(character) == 127
+               for character in endpoint)
+        or not _valid_endpoint_host(parsed.hostname, parsed.netloc)
         or port == 0
         or parsed.username
         or parsed.password
@@ -49,11 +52,45 @@ def validate_s3_configuration(
         or parsed.fragment
         or parsed.path not in {"", "/"}
         or not _valid_bucket_name(bucket)
-        or not region
+        or not re.fullmatch(r"[a-zA-Z0-9-]+", region)
         or not access_key
         or not secret_key
     ):
         raise ArtifactError("artifact_configuration")
+
+
+def _valid_endpoint_host(hostname: str, netloc: str) -> bool:
+    """Accept DNS/IDNA, IPv4 and bracketed IPv6 syntax without DNS/network I/O."""
+    if "%" in hostname or "@" in netloc:
+        return False
+    if netloc.startswith("["):
+        if not re.fullmatch(r"\[[0-9a-fA-F:.]+\](?::[0-9]+)?", netloc):
+            return False
+        try:
+            return isinstance(ipaddress.ip_address(hostname), ipaddress.IPv6Address)
+        except ValueError:
+            return False
+    if not re.fullmatch(r"[^:/?#@\[\]\\]+(?::[0-9]+)?", netloc):
+        return False
+    if re.fullmatch(r"[0-9]+(?:\.[0-9]+){3}", hostname):
+        try:
+            ipaddress.IPv4Address(hostname)
+        except ipaddress.AddressValueError:
+            return False
+        return True
+    try:
+        ascii_host = hostname.encode("idna").decode("ascii").removesuffix(".")
+        if not ascii_host or len(ascii_host) > 253:
+            return False
+        for label in ascii_host.split("."):
+            if not re.fullmatch(r"[a-zA-Z0-9](?:[a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?", label):
+                return False
+            if label.startswith("xn--"):
+                # The codec does not validate already-ASCII punycode on encode.
+                label.encode("ascii").decode("idna")
+    except UnicodeError:
+        return False
+    return True
 
 
 def _valid_bucket_name(bucket: str) -> bool:
@@ -95,6 +132,16 @@ class S3ArtifactSink:
             allow_http=allow_http,
         )
         self.endpoint = endpoint.rstrip("/")
+        # Preserve every existing ASCII sink identity, including casing and
+        # port spelling. Previously unusable Unicode IDNA hosts normalize to
+        # ASCII for both client construction and their new sink identity.
+        parsed = urlsplit(endpoint)
+        hostname = parsed.hostname
+        assert hostname is not None
+        if not hostname.isascii():
+            host = hostname.encode("idna").decode("ascii")
+            netloc = host if parsed.port is None else f"{host}:{parsed.port}"
+            self.endpoint = urlunsplit((parsed.scheme, netloc, "", "", ""))
         self.bucket = bucket
         self.region = region
         self.client: Any = boto3.client(
