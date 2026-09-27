@@ -143,7 +143,9 @@ def _feature_count(session: Session, layer_id: int) -> int:
     """), {"layer_id": layer_id}) or 0)
 
 
-def _source_snapshot(session: Session, layer: EnvironmentalLayer) -> str:
+def _source_snapshot(
+    session: Session, layer: EnvironmentalLayer, *, lock_inputs: bool = False,
+) -> str:
     """Bind a derivative to the exact P03 import state without collecting IDs."""
     digest = hashlib.sha256()
     digest.update(canonical_bytes({
@@ -156,14 +158,17 @@ def _source_snapshot(session: Session, layer: EnvironmentalLayer) -> str:
         "accepted_count": layer.accepted_count, "rejected_count": layer.rejected_count,
         "duplicate_count": layer.duplicate_count,
     }) + b"\n")
-    rows = session.execute(text("""
+    query = """
         SELECT source_feature_id, import_fingerprint,
                CASE WHEN octet_length(ST_AsEWKB(geometry)) <= :max_bytes
                     THEN encode(sha256(ST_AsEWKB(geometry)), 'hex') END AS geometry_sha256
         FROM environmental_features
         WHERE environmental_layer_id = :layer_id AND import_managed IS TRUE
         ORDER BY source_feature_id COLLATE "C"
-    """).execution_options(yield_per=128), {"layer_id": layer.id, "max_bytes": MAX_INPUT_BYTES})
+    """ + (" FOR SHARE" if lock_inputs else "")
+    rows = session.execute(text(query).execution_options(yield_per=128), {
+        "layer_id": layer.id, "max_bytes": MAX_INPUT_BYTES,
+    })
     for source_id, fingerprint, geometry_sha in rows:
         if geometry_sha is None:
             raise DisplayBuildError("canonical_snapshot_input_oversized")
@@ -697,6 +702,31 @@ def _validate_checkpoint(
             raise DisplayBuildError("band_feature_count_incomplete")
 
 
+def _verify_final_inputs(
+    session: Session, layer: EnvironmentalLayer, build: EnvironmentalDisplayBuild,
+    bands: dict[str, EnvironmentalDisplayBand],
+) -> None:
+    # Fence non-cooperating writers through the status commit. The parent lock
+    # blocks new FK references; row share locks block existing input edits.
+    session.execute(text("SET LOCAL lock_timeout = '5s'"))
+    session.execute(text("SET LOCAL statement_timeout = '60s'"))
+    session.refresh(layer, with_for_update=True)
+    # Include unmanaged rows: otherwise a writer could enter the managed set
+    # by toggling a row's flag without changing its existing parent FK.
+    locked_ids = session.execute(text("""
+        SELECT id FROM environmental_features
+        WHERE environmental_layer_id = :layer_id ORDER BY id FOR SHARE
+    """).execution_options(yield_per=128), {"layer_id": layer.id})
+    for _ in locked_ids:
+        pass
+    if _source_snapshot(session, layer, lock_inputs=True) != build.source_snapshot_sha256:
+        raise DisplayBuildError("source_snapshot_changed_during_build")
+    if _backend_version(session) != build.config_json["postgis_execution_version"]:
+        raise DisplayBuildError("postgis_execution_version_changed_during_build")
+    for spec in BANDS:
+        _validate_checkpoint(session, layer, build, bands[spec.key], require_complete=True)
+
+
 def build_environmental_display(
     layer_key: str, data_version: str, *, batch_size: int = 8,
     fail_after_batches: int | None = None,
@@ -722,7 +752,7 @@ def build_environmental_display(
                 band = by_key[spec.key]
                 if band.status != "validated":
                     raise DisplayBuildError("validated_build_missing_band")
-                _validate_checkpoint(session, layer, build, band, require_complete=True)
+            _verify_final_inputs(session, layer, build, by_key)
             return {**_report(build, stored_bands, layer), "replayed": True}
         completed_batches = 0
         for spec in BANDS:
@@ -747,6 +777,7 @@ def build_environmental_display(
             band.status = "failed" if band.invalid_count else "validated"
             band.finished_at = datetime.now(UTC)
             session.commit()
+        _verify_final_inputs(session, layer, build, by_key)
         build.status = (
             "validated" if all(by_key[spec.key].status == "validated" for spec in BANDS)
             else "failed"

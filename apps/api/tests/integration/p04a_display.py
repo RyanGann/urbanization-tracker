@@ -383,6 +383,48 @@ def run(output: Path) -> dict:
                     WHERE id = :id
                 """), {"id": topology_result_id})
     assert build_environmental_display(LAYER, VERSION)["replayed"]
+    with SessionLocal.begin() as session:
+        unmanaged_probe_id = session.scalar(text("""
+            INSERT INTO environmental_features
+                (environmental_layer_id, source_feature_id, attributes_json,
+                 import_managed, import_fingerprint, geometry)
+            SELECT environmental_layer_id, 'unmanaged-fence-probe', attributes_json,
+                   false, import_fingerprint, geometry
+            FROM environmental_features WHERE id = :id RETURNING id
+        """), {"id": metadata[0]["id"]})
+    original_snapshot = display_builder._source_snapshot
+    final_lock_probes = set()
+
+    def probe_final_lock(session, layer, *, lock_inputs=False):
+        snapshot = original_snapshot(session, layer, lock_inputs=lock_inputs)
+        if lock_inputs and layer.id == layer_id and not final_lock_probes:
+            probes = (
+                ("geometry", metadata[0]["id"], "geometry = ST_Translate(geometry, 1, 0)"),
+                ("managed_flag", unmanaged_probe_id, "import_managed = true"),
+            )
+            for name, feature_id, assignment in probes:
+                try:
+                    with SessionLocal.begin() as writer:
+                        writer.execute(text("SET LOCAL lock_timeout = '100ms'"))
+                        writer.execute(text(f"""
+                            UPDATE environmental_features SET {assignment} WHERE id = :id
+                        """), {"id": feature_id})
+                except DBAPIError as exc:
+                    assert getattr(exc.orig, "sqlstate", None) == "55P03"
+                    final_lock_probes.add(name)
+                else:
+                    raise AssertionError("noncooperating writer bypassed final snapshot locks")
+        return snapshot
+
+    try:
+        with patch.object(display_builder, "_source_snapshot", probe_final_lock):
+            assert build_environmental_display(LAYER, VERSION)["replayed"]
+        assert final_lock_probes == {"geometry", "managed_flag"}
+    finally:
+        with SessionLocal.begin() as session:
+            session.execute(text("DELETE FROM environmental_features WHERE id = :id"), {
+                "id": unmanaged_probe_id,
+            })
     # A coherent edit to geometry and its row SHA must still be detected by
     # the independently stored per-feature output digest on replay.
     with SessionLocal.begin() as session:
@@ -515,6 +557,45 @@ def run(output: Path) -> dict:
             """), {"id": unprocessed_id, "ewkb": bytes(unprocessed_ewkb)})
     mutation_resume = build_environmental_display(mutation_layer, mutation_version)
     assert mutation_resume["display_version"] == original_mutation_version
+
+    inflight_layer = "p04a_inflight_mutation"
+    inflight_version = "8" * 64
+    inflight_id = _seed_layer(inflight_layer, inflight_version, fixture)
+    with SessionLocal() as session:
+        inflight_feature_id, inflight_ewkb = session.execute(text("""
+            SELECT id, ST_AsEWKB(geometry) FROM environmental_features
+            WHERE environmental_layer_id = :id ORDER BY id OFFSET 2 LIMIT 1
+        """), {"id": inflight_id}).one()
+
+    def mutate_after_checkpoint(batch):
+        if batch == 1:
+            # Separate session deliberately bypasses the importer advisory lock.
+            with SessionLocal.begin() as writer:
+                writer.execute(text("""
+                    UPDATE environmental_features SET geometry = ST_Translate(geometry, 0.001, 0)
+                    WHERE id = :id
+                """), {"id": inflight_feature_id})
+
+    try:
+        try:
+            build_environmental_display(
+                inflight_layer, inflight_version, batch_size=2,
+                after_checkpoint=mutate_after_checkpoint,
+            )
+        except DisplayBuildError as exc:
+            assert str(exc) == "source_snapshot_changed_during_build"
+        else:
+            raise AssertionError("inflight canonical mutation produced a validated build")
+        with SessionLocal() as session:
+            assert session.scalar(text("""
+                SELECT status FROM environmental_display_builds WHERE environmental_layer_id = :id
+            """), {"id": inflight_id}) != "validated"
+    finally:
+        with SessionLocal.begin() as session:
+            session.execute(text("""
+                UPDATE environmental_features SET geometry = ST_GeomFromEWKB(:ewkb)
+                WHERE id = :id
+            """), {"id": inflight_feature_id, "ewkb": bytes(inflight_ewkb)})
     with SessionLocal() as session:
         hole = session.execute(text("""
             SELECT r.source_holes, r.display_holes FROM environmental_display_feature_results r
@@ -682,6 +763,9 @@ def run(output: Path) -> dict:
         "statement_timeout_preserves_committed_checkpoint": True,
         "system_failure_preserves_committed_checkpoint": True,
         "topology_metadata_tamper_refused": True,
+        "inflight_canonical_mutation_prevents_validation": True,
+        "final_snapshot_blocks_noncooperating_writer": True,
+        "final_snapshot_blocks_unmanaged_to_managed_toggle": True,
         "unprocessed_geometry_mutation_changes_identity": True,
         "postgis_execution_version": first["postgis_execution_version"],
         "bands": first["bands"],
