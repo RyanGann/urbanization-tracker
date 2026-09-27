@@ -2,7 +2,7 @@ from functools import lru_cache
 from pathlib import Path
 from typing import Literal
 
-from pydantic import Field, field_validator
+from pydantic import Field, SecretStr, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -32,7 +32,7 @@ class Settings(BaseSettings):
         description="Directory for raw, processed, and health ingestion artifacts.",
     )
     hosted_ingestion_enabled: bool = Field(
-        default=True,
+        default=False,
         description=(
             "Allow scheduled ingestion commands to fetch and publish source data. Hosted "
             "environments should keep this disabled until durable artifact storage is ready."
@@ -49,6 +49,21 @@ class Settings(BaseSettings):
             "to object storage."
         ),
     )
+    artifact_sink: Literal["local", "s3"] = "local"
+    artifact_durability_required: bool = Field(
+        default=False,
+        description="Require verified durable source artifacts before PostgreSQL publication.",
+    )
+    artifact_sink_id: str = Field(default="local-development", min_length=1, max_length=64)
+    artifact_local_root: Path | None = None
+    artifact_max_bytes: int = Field(default=1024**3, ge=1, le=8 * 1024**3)
+    artifact_staging_max_bytes: int = Field(default=4 * 1024**3, ge=1, le=64 * 1024**3)
+    artifact_s3_endpoint: str | None = Field(default=None, repr=False)
+    artifact_s3_bucket: str | None = Field(default=None, repr=False)
+    artifact_s3_region: str = "us-east-1"
+    artifact_s3_access_key: SecretStr | None = None
+    artifact_s3_secret_key: SecretStr | None = None
+    artifact_s3_allow_http: bool = False
     cors_origins: str = Field(
         default="http://localhost:5173,http://127.0.0.1:5173",
         description="Comma-separated list of allowed browser origins.",

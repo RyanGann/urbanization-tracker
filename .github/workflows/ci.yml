@@ -91,6 +91,9 @@ jobs:
       - name: Check source identity batches and copied restore
         run: node scripts/run-integration.mjs --suite api --scenario c03-source-identity
 
+      - name: Check durable artifact manifests and publication gates
+        run: node scripts/run-integration.mjs --suite api --scenario o01-artifacts
+
       - name: Check public input limits and shared two-worker quotas
         run: node scripts/run-integration.mjs --suite api --scenario input-limits
 

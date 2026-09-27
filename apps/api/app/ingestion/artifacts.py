@@ -1,12 +1,18 @@
 from __future__ import annotations
 
 import hashlib
+import importlib
 import json
+import os
+from collections.abc import Iterator
+from contextlib import contextmanager
 from datetime import UTC, datetime
 from pathlib import Path
-from typing import Any
+from tempfile import NamedTemporaryFile
+from typing import Any, cast
 
 from app.config import get_settings
+from app.ingestion.artifact_sink import ArtifactError
 
 
 def utc_now() -> datetime:
@@ -31,6 +37,88 @@ def read_json(path: Path, default: Any) -> Any:
 def write_json(path: Path, payload: Any) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(json.dumps(payload, indent=2, sort_keys=True), encoding="utf-8")
+
+
+def write_staged_json(data_dir: Path, path: Path, payload: Any) -> None:
+    write_staged_bytes(
+        data_dir, path, json.dumps(payload, indent=2, sort_keys=True).encode("utf-8")
+    )
+
+
+def write_staged_bytes(data_dir: Path, path: Path, payload: bytes) -> None:
+    """Enforce the local raw/text cache budget before creating a payload file.
+
+    The budget is deliberately conservative for atomic replacement: the old
+    file and new temporary file both count until the replacement completes.
+    Metadata manifests and run summaries are not source-payload staging.
+    """
+    if not get_settings().artifact_durability_required:
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_bytes(payload)
+        return
+    root = data_dir.resolve()
+    target = path.resolve()
+    staging_roots = (root / "raw", root / "processed" / "source_documents")
+    if not target.is_relative_to(root) or not any(
+        target.is_relative_to(stage_root) for stage_root in staging_roots
+    ):
+        raise ArtifactError("artifact_path")
+    if any(parent.is_symlink() for parent in (path, *path.parents) if parent != root):
+        raise ArtifactError("artifact_path")
+    with staging_budget_lock(root):
+        used = 0
+        for stage_root in staging_roots:
+            if not stage_root.exists():
+                continue
+            for staged in stage_root.rglob("*"):
+                if staged.is_symlink():
+                    raise ArtifactError("artifact_path")
+                if staged.is_file():
+                    used += staged.stat().st_size
+        if used + len(payload) > get_settings().artifact_staging_max_bytes:
+            raise ArtifactError("artifact_too_large")
+        path.parent.mkdir(parents=True, exist_ok=True)
+        temporary_path: Path | None = None
+        try:
+            with NamedTemporaryFile(
+                dir=path.parent, prefix=f".{path.name}.", delete=False
+            ) as temp:
+                temporary_path = Path(temp.name)
+                temp.write(payload)
+                temp.flush()
+                os.fsync(temp.fileno())
+            os.replace(temporary_path, path)
+        finally:
+            if temporary_path is not None:
+                temporary_path.unlink(missing_ok=True)
+
+
+@contextmanager
+def staging_budget_lock(root: Path) -> Iterator[None]:
+    """Serialize the scan and write across workers sharing a staging root."""
+    root.mkdir(parents=True, exist_ok=True)
+    with (root / ".artifact-staging.lock").open("a+b") as handle:
+        windows_lock: Any = None
+        if os.name == "nt":
+            windows_lock = cast(Any, importlib.import_module("msvcrt"))
+
+            handle.seek(0)
+            if not handle.read(1):
+                handle.write(b"\0")
+                handle.flush()
+            handle.seek(0)
+            windows_lock.locking(handle.fileno(), windows_lock.LK_LOCK, 1)
+        else:
+            import fcntl
+
+            fcntl.flock(handle.fileno(), fcntl.LOCK_EX)
+        try:
+            yield
+        finally:
+            if os.name == "nt":
+                windows_lock.locking(handle.fileno(), windows_lock.LK_UNLCK, 1)
+            else:
+                fcntl.flock(handle.fileno(), fcntl.LOCK_UN)
 
 
 def append_jsonl(path: Path, payloads: list[dict[str, Any]]) -> None:

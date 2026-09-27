@@ -1,9 +1,11 @@
 from datetime import datetime
 from typing import Any
+from uuid import UUID
 
 from geoalchemy2 import Geometry
 from sqlalchemy import (
     JSON,
+    BigInteger,
     Boolean,
     CheckConstraint,
     DateTime,
@@ -14,9 +16,11 @@ from sqlalchemy import (
     String,
     Text,
     UniqueConstraint,
+    Uuid,
     func,
     text,
 )
+from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.db import Base
@@ -473,3 +477,114 @@ class PublicWriteQuota(Base):
     expires_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, index=True
     )
+
+class ArtifactBlob(Base):
+    __tablename__ = "artifact_blobs"
+    __table_args__ = (
+        CheckConstraint("sha256 ~ '^[0-9a-f]{64}$'", name="ck_artifact_blob_digest"),
+        CheckConstraint("byte_size BETWEEN 0 AND 8589934592", name="ck_artifact_blob_size"),
+    )
+
+    id: Mapped[UUID] = mapped_column(Uuid, primary_key=True)
+    sha256: Mapped[str] = mapped_column(String(64), nullable=False, unique=True)
+    byte_size: Mapped[int] = mapped_column(BigInteger, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+
+class ArtifactCopy(Base):
+    __tablename__ = "artifact_copies"
+    __table_args__ = (
+        UniqueConstraint("sink_id", "object_key", name="uq_artifact_copy_destination"),
+        CheckConstraint("sink_id ~ '^[0-9a-f]{64}$'", name="ck_artifact_copy_sink"),
+        CheckConstraint(
+            "object_key ~ '^sha256/[0-9a-f]{2}/[0-9a-f]{2}/[0-9a-f]{64}$'",
+            name="ck_artifact_copy_key",
+        ),
+        CheckConstraint(
+            "state IN ('pending','uploaded','verified','failed')", name="ck_artifact_copy_state"
+        ),
+        CheckConstraint("attempts >= 0", name="ck_artifact_copy_attempts"),
+        CheckConstraint(
+            "(lease_token IS NULL) = (lease_expires_at IS NULL)", name="ck_artifact_copy_lease"
+        ),
+        CheckConstraint(
+            "state <> 'verified' OR verified_at IS NOT NULL", name="ck_artifact_copy_verified"
+        ),
+        CheckConstraint(
+            "jsonb_typeof(multipart_parts) = 'array' AND "
+            "jsonb_array_length(multipart_parts) <= 1024 AND "
+            "octet_length(multipart_parts::text) <= 524288",
+            name="ck_artifact_copy_checkpoint",
+        ),
+        Index("ix_artifact_copy_retry", "state", "next_attempt_at"),
+    )
+
+    blob_id: Mapped[UUID] = mapped_column(
+        ForeignKey("artifact_blobs.id", ondelete="RESTRICT"), primary_key=True
+    )
+    sink_id: Mapped[str] = mapped_column(String(64), primary_key=True)
+    object_key: Mapped[str] = mapped_column(String(80), nullable=False)
+    state: Mapped[str] = mapped_column(String(16), nullable=False)
+    uploaded_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    verified_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    last_audit_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    failure_code: Mapped[str | None] = mapped_column(String(48))
+    attempts: Mapped[int] = mapped_column(Integer, nullable=False, server_default="0")
+    next_attempt_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    lease_token: Mapped[UUID | None] = mapped_column(Uuid)
+    lease_expires_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    multipart_upload_id: Mapped[str | None] = mapped_column(String(2048))
+    multipart_parts: Mapped[list[dict[str, Any]]] = mapped_column(
+        JSONB, nullable=False, server_default=text("'[]'::jsonb")
+    )
+
+
+class ArtifactReference(Base):
+    __tablename__ = "artifact_references"
+    __table_args__ = (
+        UniqueConstraint(
+            "source_key", "run_id", "artifact_type", "logical_key",
+            name="uq_artifact_reference_observation",
+        ),
+        CheckConstraint(
+            "length(trim(source_key)) > 0 AND length(trim(run_id)) > 0 AND "
+            "length(trim(artifact_type)) > 0 AND length(trim(logical_key)) > 0",
+            name="ck_artifact_reference_identity",
+        ),
+        CheckConstraint("parent_reference_id <> id", name="ck_artifact_reference_parent"),
+        Index("ix_artifact_reference_run", "source_key", "run_id"),
+    )
+
+    id: Mapped[UUID] = mapped_column(Uuid, primary_key=True)
+    source_key: Mapped[str] = mapped_column(String(128), nullable=False)
+    run_id: Mapped[str] = mapped_column(String(128), nullable=False)
+    artifact_type: Mapped[str] = mapped_column(String(48), nullable=False)
+    logical_key: Mapped[str] = mapped_column(String(256), nullable=False)
+    blob_id: Mapped[UUID] = mapped_column(ForeignKey("artifact_blobs.id", ondelete="RESTRICT"))
+    required: Mapped[bool] = mapped_column(Boolean, nullable=False)
+    content_type: Mapped[str | None] = mapped_column(String(128))
+    source_url: Mapped[str | None] = mapped_column(Text)
+    parent_reference_id: Mapped[UUID | None] = mapped_column(
+        ForeignKey("artifact_references.id", ondelete="RESTRICT")
+    )
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+
+class ArtifactRunSeal(Base):
+    __tablename__ = "artifact_run_seals"
+    __table_args__ = (
+        CheckConstraint(
+            "length(trim(source_key)) > 0 AND length(trim(run_id)) > 0",
+            name="ck_artifact_seal_identity",
+        ),
+        CheckConstraint(
+            "required_set_sha256 ~ '^[0-9a-f]{64}$'", name="ck_artifact_seal_digest"
+        ),
+        CheckConstraint("required_count BETWEEN 0 AND 1024", name="ck_artifact_seal_count"),
+    )
+
+    source_key: Mapped[str] = mapped_column(String(128), primary_key=True)
+    run_id: Mapped[str] = mapped_column(String(128), primary_key=True)
+    required_set_sha256: Mapped[str] = mapped_column(String(64), nullable=False)
+    required_count: Mapped[int] = mapped_column(Integer, nullable=False)
+    sealed_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
