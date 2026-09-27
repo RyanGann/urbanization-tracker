@@ -286,6 +286,10 @@ class _Session:
                         actual.url.copy_with(query=None, fragment=None)
                     ) != url:
                         raise ScopeError("actual_request_identity_mismatch")
+                    authority = actual.headers.get_list("host")
+                    if (len(authority) != 1
+                        or authority[0].lower() != actual.url.netloc.decode("ascii").lower()):
+                        raise ScopeError("actual_request_authority_mismatch")
                     try:
                         if long_query:
                             # Client-level URL params are not part of this form query.

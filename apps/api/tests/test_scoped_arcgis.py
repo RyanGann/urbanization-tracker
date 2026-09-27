@@ -436,6 +436,35 @@ def test_actual_request_refuses_duplicate_query_keys(
     assert len(requests) == 1
 
 
+@pytest.mark.parametrize("method", ["GET", "POST"])
+@pytest.mark.parametrize("injection", ["client", "hook", "duplicate"])
+def test_actual_request_refuses_changed_or_duplicate_authority(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, method: str, injection: str,
+) -> None:
+    if method == "POST":
+        monkeypatch.setattr("app.ingestion.scoped_arcgis.MAX_GET_URL_BYTES", 0)
+
+    def changed_authority(request: httpx.Request) -> None:
+        if injection == "duplicate":
+            request.headers = httpx.Headers([
+                *request.headers.multi_items(), ("Host", "other.invalid")
+            ])
+        else:
+            request.headers["Host"] = "other.invalid"
+
+    transport, requests = _fixture([1])
+    with httpx.Client(transport=transport,
+                      headers={"Host": "other.invalid"} if injection == "client" else None,
+                      event_hooks={"request": [] if injection == "client"
+                                   else [changed_authority]}) as client:
+        report = stage_scoped_source(CONFIG, _scope(tmp_path), tmp_path / "authority",
+                                     client=client, budget=CollectionBudget(max_attempts=1,
+                                                                          min_interval_seconds=0))
+    assert report["error_code"] == "actual_request_authority_mismatch"
+    assert report["coverage"] == "failed" and report["control_artifacts"] == []
+    assert len(requests) == 1 and report["requests"] == 1
+
+
 def test_page_cap_refuses_additional_geometry_artifacts(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
 ) -> None:
