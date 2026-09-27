@@ -2,9 +2,9 @@
 
 Prepared September 19, 2026 from the [project review](../../reviews/2026-09-19-project-review.md) and code at `dbdaf099f31bc0444fe202aaf2ee65b3c9268d34`.
 
-**Recommendation: finish a dependable Huntsville pilot on the current stack, with real API/PostGIS tests and bounded map delivery.** This package contains **38 PR-sized guides**, including **nine performance PRs**, shared contracts, an execution order and acceptance gates. Current implementation status, PRs and evidence are recorded only in [plan.json](plan.json). The guides describe scope and acceptance criteria; their presence does not establish completed implementation.
+**Recommendation: finish a dependable Huntsville pilot on the current stack, with real API/PostGIS tests and bounded map delivery.** This package contains **39 PR-sized guides**, including **nine performance PRs**, shared contracts, an execution order and acceptance gates. Current implementation status, PRs and evidence are recorded only in [plan.json](plan.json). The guides describe scope and acceptance criteria; their presence does not establish completed implementation.
 
-The full roadmap includes later environmental goals and an optional 3D experiment. It is not a requirement to finish all 38 PRs before seeing improvement: U00 fixes filter visibility early, and P02 removes the startup geometry download early. The user has the existing site open in the side browser; this planning task has not revalidated browser automation or changed that running preview.
+The full roadmap includes later environmental goals and an optional 3D experiment. It is not a requirement to finish all 39 PRs before seeing improvement: U00 fixes filter visibility early, and P02 removes the startup geometry download early. The user has the existing site open in the side browser; this planning task has not revalidated browser automation or changed that running preview.
 
 ## Read and dispatch
 
@@ -66,6 +66,7 @@ A PR can merge before its broader gate is complete if its intermediate state is 
 | --- | --- | --- |
 | [T01: Run integration tests against the real API and PostGIS](T01-real-api-postgis-harness.md) | Ready to start | Lead review |
 | [S01: Patch frontend dependencies and verify map compatibility](S01-frontend-dependency-update.md) | Ready to start | Routine with visual review |
+| [S04: Patch frontend development tools and retain application compatibility](S04-development-toolchain-security.md) | S01, T01 | Lead review with existing browser smoke |
 | [C01: Distinguish live data, demo fixtures, empty collections, and unavailable stores](C01-explicit-data-modes.md) | T01 | Routine coding agent |
 | [P01: Establish a reproducible map performance baseline](P01-performance-baseline.md) | T01 | Routine coding agent |
 | [U00: Make current map filters show the intended records](U00-immediate-filter-correctness.md) | C01 | Routine coding agent |
@@ -119,7 +120,7 @@ A PR can merge before its broader gate is complete if its intermediate state is 
 | Guide | Depends on | Review |
 | --- | --- | --- |
 | [O01: Upload and verify ingestion artifacts before activating data](O01-durable-artifact-uploads.md) | C02 | Lead review |
-| [O02: Update hosted configuration and readiness checks for the new contracts](O02-deployment-guardrails.md) | S01, C01, P05, P07, O01, S03 | Lead review |
+| [O02: Update hosted configuration and readiness checks for the new contracts](O02-deployment-guardrails.md) | S01, C01, P05, P07, O01, S03, S04 | Lead review |
 | [O04: Prepare code-license, data-use, and public disclosure decisions](O04-release-data-use-decisions.md) | D01, P02 | Owner decision after prepared evidence |
 | [O03: Rehearse migration, recovery, and resident/reviewer workflows](O03-restricted-alpha-rehearsal.md) | C08, C09, U03, D02, P09, O02, O04, D01 | Lead review |
 
@@ -152,6 +153,6 @@ Waterways, watersheds, broader protected-land/habitat sources, additional jurisd
 
 Run `node scripts/validate-readiness-plan.mjs` from the repository root after changing this package. The [tracked validator](../../../scripts/validate-readiness-plan.mjs) checks guide files, dependency cycles and ordering, index/manifest agreement, required sections, status/evidence consistency and local links across the package and updated entry documents. Evidence paths in plan.json are relative to this directory. A complete guide requires a PR URL, an existing evidence file and complete prerequisites; a blocked guide requires a blocked_reason. This validates the plan, not application behavior or GitHub merge status.
 
-Validation passed for the baseline of 38 guides, including nine performance guides. Whitespace checks passed.
+The initial baseline contained 38 guides, including nine performance guides. S04 adds the development toolchain security follow-up. Whitespace checks passed.
 
 Application CI runs independently of plan validation. Live API, performance-budget and launch-acceptance results belong in each implementation PR's evidence report; the original project-review checks are historical evidence.

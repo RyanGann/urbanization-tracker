@@ -504,7 +504,8 @@
         "P05",
         "P07",
         "O01",
-        "S03"
+        "S03",
+        "S04"
       ],
       "review": "Lead review",
       "pr_boundary": "One configuration/preflight PR; no deployment action.",
@@ -645,11 +646,28 @@
       "pr_boundary": "One small correctness PR on current endpoints; do this before the larger map refactor.",
       "implementation_pr": "https://github.com/RyanGann/urbanization-tracker/pull/20",
       "evidence": "../../evidence/U00-filter-correctness.md"
+    },
+    {
+      "id": "S04",
+      "title": "Patch frontend development tools and retain application compatibility",
+      "path": "S04-development-toolchain-security.md",
+      "status": "in_review",
+      "track": "Security",
+      "gate": "G0",
+      "depends_on": [
+        "S01",
+        "T01"
+      ],
+      "review": "Lead review with existing browser smoke",
+      "pr_boundary": "One development dependency and lockfile PR; no application redesign.",
+      "implementation_pr": "https://github.com/RyanGann/urbanization-tracker/pull/35",
+      "evidence": "../../evidence/2026-09-27-s04-development-toolchain.md"
     }
   ],
   "topological_order": [
     "S01",
     "T01",
+    "S04",
     "C01",
     "P01",
     "C02",
