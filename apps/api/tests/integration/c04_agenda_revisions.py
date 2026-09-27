@@ -717,7 +717,7 @@ def run(api_url: str, reviewer_token: str, result: Path) -> None:
                 # Existing processed ownership must survive agenda approval.
                 for ownership in ("processed", "changed", "ambiguous"):
                     owned_id = f"c04-owned-{ownership}"
-                    staged_id = f"agenda-{owned_id}"
+                    staged_id = f"stage-agenda-{owned_id}"
                     with SessionLocal.begin() as session:
                         with CollectionUnitOfWork(session).canonical_mutation() as uow:
                             fixture = copy.deepcopy(
