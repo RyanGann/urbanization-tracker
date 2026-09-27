@@ -1,6 +1,16 @@
 # C04 agenda identity and decision retention
 
-## Latest public-store ownership verification
+## Latest merged-main and mixed-backend verification
+
+The C04 commit set was backed up at `codex/c04-before-b01-main` and explicitly rebased onto actual merged main `84a71b10124045ddfb88cdfa7888525181f026d8`. Range-diff preserves every runtime patch; the only changed patch contexts retain the merged B01/B02 graph and D01 CI scenario alongside C04. B01 is marked complete from verified merged PR34; D01, O01 and S04 completion, all 42 guides and the conditional C10→O03 gate remain intact. Readiness validation passes 42 guides, nine performance guides and 595 local links. Full locked API tests, Ruff and mypy (57 files) pass after rebase; the focused agenda suite passes 25 tests.
+
+Clean corrected application head `de44f4eb5a3f4d030ee54a174881b6c71926bdb7` passed all 22 owning scenario assertions: `node scripts/run-integration.mjs --suite api --scenario c04-agenda-revisions`, run `2026-09-27T08-33-25-900Z-ba5e3446`, exact project `urbanization_t01_0306a5296ebc`. Result SHA-256 `6400432803629b98b6c8ee25bfaf8adc7278cc3c83554b3089e49f66fc33662c`; fixture checksum remains unchanged. Manifest records clean, passed and removed. Independent exact project-label checks found zero containers, volumes and networks before release.
+
+The backend-aware lookup uses keyed PostgreSQL reads for full-PG ownership. Supported development mixed mode reads the configured local processed artifact with `require_ready`, then compares exact public IDs. The same configured source supplies duplicate comparison. Focused tests cover missing and corrupt artifacts; neither becomes an empty public store. New real PostgreSQL service cases use actual synthetic processed artifact files to verify identical ownership and duplicate detection, changed and dual-store refusal, and corrupt-artifact refusal without a decision. The original 19 HTTP/DB assertions remain included. This is PostGIS/API with an O01 local manifest, not a Garage run; O01 separately owns Garage verification.
+
+Run `2026-09-27T08-29-55-937Z-31f5b6a7` on `299ddc1` failed its new duplicate fixture assertion: a previously renamed candidate title did not match the copied public snapshot. The fixture-only title alignment is the difference in the corrected clean run above. Failed exact project `urbanization_t01_9f91b287d826` was removed and independently verified with zero containers, volumes and networks. This failed run is retained as failed evidence. Earlier checks below apply only to their stated checkpoints.
+
+## Earlier public-store ownership verification
 
 Clean application commit `6d429134716d703431e5f04a63484d4a12d75e47` passed the owning real PostGIS/API scenario with all 19 assertions on September 27. Command: `node scripts/run-integration.mjs --suite api --scenario c04-agenda-revisions`. Run `2026-09-27T08-04-27-204Z-c8ecd250`, exact project `urbanization_t01_e154559ce77c`, result SHA-256 `99ea627ad376a45bed5edd8d2f98db681b89fdd634ff3b21a28d2092b6340be6`; the fixture checksum remains unchanged. Manifest records `working_tree_dirty=false`, passed and cleanup removed. Independent exact-label checks found zero containers and zero volumes before releasing the stack slot.
 
