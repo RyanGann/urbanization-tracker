@@ -567,11 +567,15 @@ def frozen_checks(service: ArtifactService, result: dict[str, Any]) -> dict[str,
             "DELETE FROM environmental_attestation_references WHERE attestation_id=:proof",
             {"proof": proof},
         ),
-        ("TRUNCATE environmental_features", {}),
         ("ALTER TABLE environmental_features DISABLE TRIGGER b02_feature", {}),
     ]
-    for statement, values in statements:
-        assert refusal(statement, values) in {"P0001", "42501"}
+    for index, (statement, values) in enumerate(statements):
+        state = refusal(statement, values)
+        assert state in {"P0001", "42501"}, {"freeze_case": index, "sqlstate": state}
+    restrict_state = refusal("TRUNCATE environmental_features", {})
+    assert restrict_state in {"0A000", "42501"}, {"truncate_restrict_sqlstate": restrict_state}
+    cascade_state = refusal("TRUNCATE environmental_features CASCADE", {})
+    assert cascade_state == "P0001", {"truncate_cascade_sqlstate": cascade_state}
     assert (
         refusal(
             "INSERT INTO environmental_attestations(id,environmental_layer_id,source_key,run_id,"
@@ -646,6 +650,8 @@ def frozen_checks(service: ArtifactService, result: dict[str, Any]) -> dict[str,
         "ordinary_copy_audit_allowed": True,
         "oversized_binding_insert_refused": True,
         "wrong_expected_provider_refused": True,
+        "truncate_restrict_sqlstate": restrict_state,
+        "truncate_cascade_sqlstate": cascade_state,
     }
 
 
