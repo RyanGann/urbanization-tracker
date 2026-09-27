@@ -1,5 +1,12 @@
 # P04a shadow display builder — real PostGIS evidence
 
+The final pure classifier follow-up propagates every SQLSTATE class-40
+transaction rollback condition, including `40000`, `40002` and `40003`, rather
+than only serialization/deadlock codes. Focused regressions and the full API
+suite passed (334 tests), along with Ruff and mypy. This changes no recipe,
+geometry or successful output; the raw clean real proof below predates this
+classifier expansion. The owning CI scenario verifies the final PR head.
+
 ## Final authenticated-topology proof
 
 Clean code head `06a0eb2c47910159390193b86ed444932fe42b9d` passed run

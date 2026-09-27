@@ -55,7 +55,7 @@ def _retryable_database_error(error: Exception) -> bool:
         return False
     state = getattr(error.orig, "sqlstate", None) or getattr(error.orig, "pgcode", None)
     return error.connection_invalidated or isinstance(state, str) and (
-        state in RETRYABLE_SQLSTATES or state.startswith(("08", "53", "58"))
+        state in RETRYABLE_SQLSTATES or state.startswith(("08", "40", "53", "58"))
     )
 
 
