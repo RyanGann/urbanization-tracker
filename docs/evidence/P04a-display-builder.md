@@ -1,5 +1,53 @@
 # P04a shadow display builder — real PostGIS evidence
 
+## Final combined v6 proof
+
+On merged B01 main `84a71b10124045ddfb88cdfa7888525181f026d8`, clean runtime
+head `beaba2c87d0bce3157169eeb8ec268642bdbcb60` passed the owning scenario:
+
+```text
+run_id: 2026-09-27T08-25-25-388Z-ad6e2659
+working_tree_dirty: false
+outcome: passed
+cleanup_result: removed
+results.json SHA-256: af0d248bbd0b18f0f9703bd193ae5e8058d6d614a9ffea396f939f42cca9e4d8
+```
+
+The v6 batch traversal locks bounded source rows FOR SHARE before input
+hashing, geometry metrics or derivation, retaining the locks through checkpoint
+commit. An actual second-session edit/restore attempt between input hashing
+and simplification received SQLSTATE `55P03`. Final parent/all-feature fencing
+still blocks geometry edits and unmanaged-to-managed flag changes, rechecks
+source/backend identity, and validates every band before committing success.
+An inflight geometry-only mutation bypassing the advisory lock left its build
+nonvalidated. Each SQL lock wait is capped at five seconds and each batch/final
+statement at sixty seconds.
+
+The same clean run refused topology-count, diagnostic-count/sample, coherent
+geometry/digest, source-lineage and status-only tampering. Authenticated failed
+outcomes remained intact. Actual statement timeout and SQLSTATE 58030 preserved
+the durable checkpoint, and resume succeeded. Reversed insertion order retained
+stable version/checksum identity. The migration includes the nonpartial parent
+index, and both D01 and display-builder owning CI scenarios are preserved.
+
+Final display version is
+`5c7f1051d9bf2168dc45233abcfb30556cc658d901cdaadd865946798ae1d480`;
+configuration SHA-256 is
+`1696d0bf4df7c344c66216dfa514e86938efdbec8564e066adf1fb80d28add1d`.
+Source-based part-set, original EWKB and SVG hashes match the historical proofs
+below, so accepted fixed-scale synthetic visual QA still applies. The exact
+PostGIS/GEOS/PROJ string is unchanged. Ruff, mypy (57 application files) and all
+401 API tests passed on the rebased runtime head in the pinned offline image;
+the dependency lock remained unchanged. Exact project
+`urbanization_t01_c206e10b364f` was removed; independent checks found zero
+containers, volumes and networks. Artifacts remain under
+`tmp/agents/p04a/tmp/integration/2026-09-27T08-25-25-388Z-ad6e2659/`.
+The following proofs are historical and explicitly identify their earlier code
+heads and incomplete guard coverage. This is correctness/fixture evidence,
+not a production coverage, activation or P09 performance-budget acceptance.
+
+## Earlier metadata guard history
+
 The classifier follow-up propagates every SQLSTATE class-40
 transaction rollback condition, including `40000`, `40002` and `40003`, rather
 than only serialization/deadlock codes. Focused regressions and the full API
@@ -19,7 +67,7 @@ missing, extra or altered diagnostic fields. The owning failed-projection
 fixture tests count removal and misleading sample insertion. This guard also
 postdates the local proof and changes no geometry recipe; final CI owns it.
 
-## Final source-fence proof
+## Earlier source-fence proof (v5)
 
 Clean code head `2c67dc3f99bfe2e182fd6be54826719dd06561f2` passed run
 `2026-09-27T07-59-05-505Z-042fd0fd` with `working_tree_dirty=false`.
