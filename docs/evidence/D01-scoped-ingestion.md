@@ -108,7 +108,8 @@ ID set and at most one 25-feature geometry request per existing source. It
 paced requests at least 1.1 seconds apart globally, did not retry, made no
 source-health or canonical writes, and stopped before geometry on inconsistent
 count/ID responses. It was **not** the Python staging CLI; a live CLI test
-remains to be done after the fixture and O01 integration gates.
+was subsequently executed on September 27; see
+[the live Python CLI evidence](D01-live-cli.md) for the exact command and failures.
 
 | Source | Requests / response bytes | Scoped count / unique IDs | Geometry sample | Result |
 | --- | ---: | ---: | --- | --- |
