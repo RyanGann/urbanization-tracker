@@ -271,10 +271,16 @@ class _Session:
             try:
                 # A full city polygon is too large for a URL. ArcGIS accepts
                 # form-encoded POST for long read-only query operations.
-                stream = (self.client.stream("POST", url, data=params) if long_query
-                          else self.client.stream("GET", url, params=params))
+                stream = (self.client.stream("POST", url, data=params, follow_redirects=False)
+                          if long_query else
+                          self.client.stream("GET", url, params=params, follow_redirects=False))
                 with stream as response:
                     event["status"] = response.status_code
+                    # A redirect can change host/path, method or scoped query.
+                    # Never label its body as the original allowlisted operation,
+                    # including when a caller supplied a redirect-following client.
+                    if response.is_redirect or response.history:
+                        raise ScopeError("source_redirect_refused")
                     if (
                         response.status_code in TRANSIENT_STATUS
                         and attempt + 1 < self.budget.max_attempts
@@ -610,7 +616,9 @@ def stage_scoped_source(
         if canary else CollectionBudget()
     )
     owned_client = client is None
-    client = client or httpx.Client(timeout=httpx.Timeout(20.0, connect=5.0), follow_redirects=True)
+    client = client or httpx.Client(
+        timeout=httpx.Timeout(20.0, connect=5.0), follow_redirects=False
+    )
     destination.mkdir(parents=True, exist_ok=True)
     run_id = str(uuid4())
     base = _base_query(config, scope)

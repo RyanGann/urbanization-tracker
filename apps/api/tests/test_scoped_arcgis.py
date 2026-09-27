@@ -338,6 +338,57 @@ def test_same_endpoint_operation_wrong_scope_query_refuses_control(
     assert [item["role"] for item in report["control_artifacts"]] == ["initial_metadata"]
 
 
+@pytest.mark.parametrize("follow_redirects", [False, True])
+@pytest.mark.parametrize("method", ["GET", "POST"])
+def test_redirected_control_bytes_never_gain_original_source_label(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, follow_redirects: bool, method: str,
+) -> None:
+    if method == "POST":
+        monkeypatch.setattr("app.ingestion.scoped_arcgis.MAX_GET_URL_BYTES", 0)
+    base, _ = _fixture([1])
+    destinations: list[str] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        destinations.append(str(request.url.host))
+        if request.url.host != "other.invalid":
+            return httpx.Response(302, headers={"Location": "https://other.invalid/0?f=json"})
+        return base.handle_request(request)
+
+    with httpx.Client(transport=httpx.MockTransport(handler),
+                      follow_redirects=follow_redirects) as client:
+        report = stage_scoped_source(
+            CONFIG, _scope(tmp_path), tmp_path / "redirect", client=client,
+            budget=CollectionBudget(max_attempts=1, min_interval_seconds=0),
+        )
+    assert report["coverage"] == "failed"
+    assert report["error_code"] == "source_redirect_refused"
+    assert report["control_artifacts"] == []
+    assert not list((tmp_path / "redirect").glob("control-*"))
+    assert len(destinations) == 1 and report["requests"] == 1
+    assert report["request_log"][0]["status"] == 302
+    assert report["request_log"][0]["method"] == method
+
+
+def test_builtin_client_does_not_follow_redirects(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    original_client = httpx.Client
+    requests: list[httpx.Request] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        requests.append(request)
+        return httpx.Response(307, headers={"Location": "https://other.invalid/0"})
+
+    def client(**kwargs: Any) -> httpx.Client:
+        assert kwargs["follow_redirects"] is False
+        return original_client(transport=httpx.MockTransport(handler), **kwargs)
+
+    monkeypatch.setattr("app.ingestion.scoped_arcgis.httpx.Client", client)
+    report = stage_scoped_source(CONFIG, _scope(tmp_path), tmp_path / "builtin-redirect")
+    assert report["error_code"] == "source_redirect_refused" and len(requests) == 1
+    assert report["control_artifacts"] == []
+
+
 def test_page_cap_refuses_additional_geometry_artifacts(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
 ) -> None:
