@@ -98,6 +98,37 @@ linted and then exercised by the final clean owning run. Review/CI status belong
 the current PR head; this local proof does not substitute for those checks.
 # Additive guard-index review correction
 
+## Integrated P04a fixture correction and owning proof
+
+The P04a reverse-insertion fixture formerly renamed a managed parent identity.
+Migration0009 correctly refuses that reassignment. The fixture now independently
+seeds the same source/version in a separate disposable `p04a_replica` database,
+with ordinary Alembic head upgrade and reversed feature insertion order. It does
+not clone a busy database, disable triggers, or modify original identity. This
+is a separately seeded replica comparison, not a backup-restore test.
+
+Clean `5cd7445` run `2026-09-27T10-41-39-123Z-47631b28` failed at exact backend
+equality: the freshly migrated replica lacked optional extensions installed by
+the locked PostGIS image initialization. Its failed manifest and replica result
+remain committed. The correction mirrors the image's fixed four-extension set
+and verifies exact installed versions before ordinary migration; backend and
+all checksum assertions remain intact. No production identity guard changed.
+
+Clean `91701c6832ec536f91e8039cce2badc4e4cb0c69` owning command
+`node scripts/run-integration.mjs --suite api --scenario display-builder`, run
+`2026-09-27T10-54-31-684Z-9cfd5878`, passed against actual migration0009.
+Original and replica extension versions, complete PostGIS execution identity,
+display/source/band/part checksums match. Original canonical layer key, geometry
+and screening results remain unchanged. Both phases and bounded backend/extension
+diagnostics are retained in exact generated JSON with checksums. Both attempts'
+exact project containers, volumes and networks were independently verified absent.
+
+CI now uploads an explicit diagnostic allowlist: top-level JSON/log/PNG,
+Playwright outputs including XML, P04a JSON/SVG/PNG, P03 results and scenario
+`*-data/results.json`. Raw private fixture objects/staging, environment files and
+database dumps are deliberately excluded. This avoids traversing root-owned
+private object files while retaining owning results and cleanup manifests.
+
 The retained clean `9329881` local owning proof predates two additive indexes:
 `environmental_attestations(source_key, run_id)` and
 `environmental_attestation_references(reference_id)`. They support the exact
