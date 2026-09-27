@@ -85,7 +85,7 @@
       "id": "C03",
       "title": "Preserve source identity and merge ingestion batches safely",
       "path": "C03-stable-source-identity.md",
-      "status": "in_progress",
+      "status": "complete",
       "track": "Correctness",
       "gate": "G1",
       "depends_on": [
@@ -93,14 +93,15 @@
       ],
       "review": "Lead review",
       "pr_boundary": "One source identity and canonical batch-merge PR.",
-      "implementation_pr": null,
-      "evidence": null
+      "implementation_pr": "https://github.com/RyanGann/urbanization-tracker/pull/25",
+      "evidence": "../../evidence/C03-source-identity.md"
     },
     {
       "id": "D01",
       "title": "Fetch a declared pilot scope completely and report source coverage",
       "path": "D01-source-scope-pagination-canaries.md",
-      "status": "planned",
+      "status": "in_progress",
+      "status_note": "The scoped-ingestion implementation is merged, but its evidence leaves the opt-in live Python staging CLI check outstanding; two upstream canaries also found count/ID mismatches. Keep source activation and dependent release gates open.",
       "track": "Data quality",
       "gate": "G1",
       "depends_on": [
@@ -109,14 +110,14 @@
       ],
       "review": "Lead review",
       "pr_boundary": "One ingestion coverage PR across the current ArcGIS connectors; no new sources.",
-      "implementation_pr": null,
-      "evidence": null
+      "implementation_pr": "https://github.com/RyanGann/urbanization-tracker/pull/28",
+      "evidence": "../../evidence/D01-scoped-ingestion.md"
     },
     {
       "id": "C04",
       "title": "Retain agenda documents and reviewer decisions across refreshes",
       "path": "C04-agenda-revision-retention.md",
-      "status": "planned",
+      "status": "in_progress",
       "track": "Correctness",
       "gate": "G1",
       "depends_on": [
@@ -166,7 +167,7 @@
       "id": "S02",
       "title": "Validate geometry and limit public write abuse",
       "path": "S02-public-input-validation.md",
-      "status": "in_progress",
+      "status": "complete",
       "track": "Security",
       "gate": "G1",
       "depends_on": [
@@ -174,8 +175,8 @@
       ],
       "review": "Lead review",
       "pr_boundary": "One public API input/limits PR.",
-      "implementation_pr": null,
-      "evidence": null
+      "implementation_pr": "https://github.com/RyanGann/urbanization-tracker/pull/27",
+      "evidence": "../../evidence/S02-public-inputs.md"
     },
     {
       "id": "C07",
@@ -260,7 +261,7 @@
       "id": "P03",
       "title": "Import versioned environmental geometry into indexed PostGIS storage",
       "path": "P03-canonical-environmental-storage.md",
-      "status": "in_progress",
+      "status": "complete",
       "track": "Performance",
       "gate": "G1",
       "depends_on": [
@@ -270,14 +271,15 @@
       ],
       "review": "Lead review",
       "pr_boundary": "One additive schema/import PR; no tile endpoint or display simplification.",
-      "implementation_pr": null,
-      "evidence": null
+      "implementation_pr": "https://github.com/RyanGann/urbanization-tracker/pull/29",
+      "evidence": "../../evidence/P03-environmental-storage.md"
     },
     {
       "id": "P04",
       "title": "Prepare display geometry and activate complete layer versions atomically",
       "path": "P04-environmental-display-derivatives.md",
-      "status": "planned",
+      "status": "in_progress",
+      "status_note": "Execution is split into P04a display-derivative construction (in progress) and P04b atomic activation (not complete); the P04 guide and release gates remain unchanged.",
       "track": "Performance",
       "gate": "G1",
       "depends_on": [
@@ -486,7 +488,7 @@
       ],
       "review": "Lead review",
       "pr_boundary": "One artifact-storage adapter/manifest PR.",
-      "implementation_pr": null,
+      "implementation_pr": "https://github.com/RyanGann/urbanization-tracker/pull/30",
       "evidence": null
     },
     {
@@ -513,7 +515,8 @@
       "id": "O04",
       "title": "Prepare code-license, data-use, and public disclosure decisions",
       "path": "O04-release-data-use-decisions.md",
-      "status": "planned",
+      "status": "in_progress",
+      "status_note": "The merged PR prepared the evidence inventory and owner decision sheet. Source-use, code-license and provider choices, privacy sign-off, and runtime rights gates remain unresolved; O04 is not a satisfied release prerequisite or deployment approval.",
       "track": "Operations",
       "gate": "G3",
       "depends_on": [
@@ -522,8 +525,8 @@
       ],
       "review": "Owner decision after prepared evidence",
       "pr_boundary": "One documentation/configuration inventory PR.",
-      "implementation_pr": null,
-      "evidence": null
+      "implementation_pr": "https://github.com/RyanGann/urbanization-tracker/pull/31",
+      "evidence": "../../evidence/O04-release-decisions.md"
     },
     {
       "id": "O03",
