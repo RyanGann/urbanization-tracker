@@ -1,0 +1,49 @@
+{
+  "run_id": "2026-09-27T10-54-31-684Z-9cfd5878",
+  "project": "urbanization_t01_90df509bc4a4",
+  "suite": "api",
+  "performance": null,
+  "scenario": "display-builder",
+  "api_url": "http://127.0.0.1:59643",
+  "fixture_sha256": "932eacb03655a3dee1a2838abf9ddf8d5dfa44f744482408611b61a2561bbee2",
+  "fixture": {
+    "id": "t01-postgis-eb922ad95d1b",
+    "title": "T01 PostGIS Fixture eb922ad95d1b"
+  },
+  "scenario_artifacts": {
+    "p04a_replica_sha256": "cdbeda249cb59ecb90f1013ce496ad7983805496c367bd21df4813a1ae09c3ac",
+    "p04a": "p04a/results.json",
+    "p04a_replica_migrated_separately": true
+  },
+  "command": "node scripts/run-integration.mjs --suite api --scenario display-builder",
+  "options": {
+    "suite": "api",
+    "scenario": "display-builder",
+    "keep_on_failure": false,
+    "assert_failure": false,
+    "isolation_check": false
+  },
+  "outcome": "passed",
+  "failure": null,
+  "commit_sha": "91701c6832ec536f91e8039cce2badc4e4cb0c69",
+  "working_tree_dirty": false,
+  "images": {
+    "database": "postgis/postgis:16-3.4",
+    "mail": "axllent/mailpit:v1.27.1",
+    "browser": "mcr.microsoft.com/playwright:v1.60.0-noble"
+  },
+  "image_digests": {
+    "database": "postgis/postgis@sha256:44126d872ac91993766c341e369c539e8196614321765d36a6f1bab0419a5fa5",
+    "mail": "axllent/mailpit@sha256:986b14ff7b253e62883ea19fd3112806f116e5e2f221e03f12fb81c7312ff532",
+    "browser": "mcr.microsoft.com/playwright@sha256:9bd26ad900bb5e0f4dee75839e957a89ae89c2b7ab1e76050e559790e946b948"
+  },
+  "image_ids": {
+    "urbanization_t01_90df509bc4a4-mail-1": "sha256:774f5f77986b98051deecb040426ec57c259fd0d61f85724500e6737cadb1747",
+    "urbanization_t01_90df509bc4a4-api-gateway-1": "sha256:6769dc3a703c719c1d2756bda113659be28ae16cf0da58dd5fd823d6b9a050ea",
+    "urbanization_t01_90df509bc4a4-db-1": "sha256:06287eb8e12c43f425773085c48d6ad02d73f8b442ac209810c1b211eb0a643b",
+    "urbanization_t01_90df509bc4a4-api-1": "sha256:3661502d8098bd40829140997403ab3ec624a35c94430b99c16a1b0c525d99e8"
+  },
+  "retained": false,
+  "cleanup_result": "removed",
+  "cleanup_failure": null
+}

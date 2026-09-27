@@ -33,7 +33,7 @@ for (const signal of ["SIGINT", "SIGTERM"]) {
 
 function usage(message) {
   if (message) console.error(`Error: ${message}`);
-  console.error("Usage: node scripts/run-integration.mjs --suite api|live|concurrency|performance [--scenario functional|representative|snapshot|catalog-development|c01-data-modes|u00-filters|c03-source-identity|c04-agenda-revisions|input-limits|layer-import|d01-scoped|display-builder|o01-artifacts] [--snapshot-dir DISPOSABLE_COPY] [--profile desktop|mobile] [--smoke] [--keep-on-failure]");
+  console.error("Usage: node scripts/run-integration.mjs --suite api|live|concurrency|performance [--scenario functional|representative|snapshot|catalog-development|c01-data-modes|u00-filters|c03-source-identity|c04-agenda-revisions|input-limits|layer-import|d01-scoped|display-builder|o01-artifacts|b02-provenance] [--snapshot-dir DISPOSABLE_COPY] [--profile desktop|mobile] [--smoke] [--keep-on-failure]");
   process.exitCode = 2;
 }
 
@@ -65,9 +65,12 @@ function parseArgs(argv) {
     if (!["desktop", "mobile"].includes(options.profile)) throw new Error("Performance profile must be desktop or mobile");
   } else {
     if (options.profile || options.smoke || (options.snapshotDir && options.scenario !== "layer-import")) throw new Error("Performance options require --suite performance");
-    if (options.scenario && !["c01-data-modes", "u00-filters", "c03-source-identity", "c04-agenda-revisions", "input-limits", "layer-import", "d01-scoped", "display-builder", "o01-artifacts"].includes(options.scenario)) throw new Error(`Scenario '${options.scenario}' is not implemented`);
+    if (options.scenario && !["c01-data-modes", "u00-filters", "c03-source-identity", "c04-agenda-revisions", "input-limits", "layer-import", "d01-scoped", "display-builder", "o01-artifacts", "b02-provenance"].includes(options.scenario)) throw new Error(`Scenario '${options.scenario}' is not implemented`);
     if (options.scenario === "display-builder" && (options.suite !== "api" || options.assertFailure || options.isolationCheck || options.child)) {
       throw new Error("--scenario display-builder requires the top-level api suite");
+    }
+    if (options.scenario === "b02-provenance" && (options.suite !== "api" || options.assertFailure || options.isolationCheck || options.child)) {
+      throw new Error("--scenario b02-provenance requires the top-level api suite without assertion or isolation flags");
     }
     if (options.scenario === "o01-artifacts" && (options.suite !== "api" || options.assertFailure || options.isolationCheck || options.child)) {
       throw new Error("--scenario o01-artifacts requires the top-level api suite without assertion or isolation flags");
@@ -336,6 +339,9 @@ async function runSuite(options) {
   if (options.scenario === "d01-scoped") {
     await mkdir(join(artifactDir, "d01-data"), { recursive: true });
   }
+  if (options.scenario === "b02-provenance") {
+    await mkdir(join(artifactDir, "b02-data"), { recursive: true });
+  }
   if (options.scenario === "o01-artifacts") {
     await mkdir(join(artifactDir, "o01-data"), { recursive: true });
   }
@@ -544,6 +550,31 @@ async function runSuite(options) {
       .digest("hex");
   };
 
+  const runB02Provenance = async () => {
+    const invoke = async (phase, restored = false) => run("docker", [
+      ...compose, "run", "--rm", "--no-deps",
+      "--volume", `${join(root, "apps", "api", "tests", "integration").replaceAll("\\", "/")}:/integration:ro`,
+      "--volume", `${join(artifactDir, "b02-data").replaceAll("\\", "/")}:/b02-data`,
+      ...(restored ? ["--env", "DATABASE_URL=postgresql+psycopg://integration:integration@db:5432/b02_restore"] : []),
+      "api", "python", "/integration/b02_provenance.py",
+      "--phase", phase, "--result", "/b02-data/results.json"
+    ], { log, timeoutMs: 180_000 });
+    await invoke("stage");
+    try {
+      await run("docker", [...compose, "exec", "-T", "db", "sh", "-ec",
+        "createdb -U integration b02_restore && pg_dump -U integration -Fc -f /tmp/b02.dump integration && pg_restore --exit-on-error -U integration -d b02_restore /tmp/b02.dump >/dev/null"
+      ], { log, timeoutMs: 120_000 });
+      await invoke("verify", true);
+      scenarioArtifacts.b02_results_sha256 = createHash("sha256")
+        .update(await readFile(join(artifactDir, "b02-data", "results.json"))).digest("hex");
+      scenarioArtifacts.b02_copied_restore_application_gate = true;
+    } finally {
+      await run("docker", [...compose, "exec", "-T", "db", "sh", "-ec",
+        "dropdb --if-exists -U integration b02_restore; rm -f /tmp/b02.dump"
+      ], { log, allowFailure: true, timeoutMs: 30_000 });
+    }
+  };
+
   const runC03SourceIdentity = async () => {
     await run("docker", [
       ...compose,
@@ -651,13 +682,41 @@ async function runSuite(options) {
   };
 
   const runP04aDisplay = async () => {
-    await run("docker", [
+    const invoke = async (args, replica = false) => run("docker", [
       ...compose, "run", "--rm", "--no-deps",
       "--volume", `${join(root, "apps", "api", "tests", "integration").replaceAll("\\", "/")}:/integration:ro`,
       "--volume", `${artifactDir.replaceAll("\\", "/")}:/p04a-artifacts`,
-      "api", "python", "/integration/p04a_display.py", "--output", "/p04a-artifacts/p04a"
+      ...(replica ? ["--env", "DATABASE_URL=postgresql+psycopg://integration:integration@db:5432/p04a_replica"] : []),
+      "api", ...args
     ], { log, timeoutMs: 600_000 });
-    scenarioArtifacts.p04a = "p04a/results.json";
+    try {
+      await run("docker", [...compose, "exec", "-T", "db", "createdb", "-U", "integration", "p04a_replica"], { log, timeoutMs: 30_000 });
+      // Mirror the locked image's initialization, not the busy source DB.
+      // Its initial integration DB has optional topology/geocoder extensions
+      // which postgis_full_version includes in the immutable rendering recipe.
+      const extensionSql = "SELECT coalesce(json_agg(json_build_object('name',extname,'version',extversion) ORDER BY extname),'[]'::json)::text FROM pg_extension WHERE extname <> 'plpgsql'";
+      const extensions = async (database) => {
+        const response = await run("docker", [...compose, "exec", "-T", "db", "psql", "-U", "integration", "-d", database, "-Atqc", extensionSql], { log, timeoutMs: 30_000 });
+        if (Buffer.byteLength(response.output) > 4096) throw new Error("P04a extension diagnostic exceeded bound");
+        return JSON.parse(response.output.trim());
+      };
+      const originalExtensions = await extensions("integration");
+      const expectedNames = ["fuzzystrmatch", "postgis", "postgis_tiger_geocoder", "postgis_topology"];
+      if (JSON.stringify(originalExtensions.map((entry) => entry.name)) !== JSON.stringify(expectedNames)) throw new Error("P04a original extension set differs from locked image initialization");
+      await run("docker", [...compose, "exec", "-T", "db", "psql", "-v", "ON_ERROR_STOP=1", "-U", "integration", "-d", "p04a_replica", "-c", "CREATE EXTENSION IF NOT EXISTS postgis; CREATE EXTENSION IF NOT EXISTS postgis_topology; CREATE EXTENSION IF NOT EXISTS fuzzystrmatch; CREATE EXTENSION IF NOT EXISTS postgis_tiger_geocoder;"], { log, timeoutMs: 30_000 });
+      const replicaExtensions = await extensions("p04a_replica");
+      await writeFile(join(artifactDir, "p04a-extension-diagnostic.json"), `${JSON.stringify({ original: originalExtensions, replica: replicaExtensions }, null, 2)}\n`);
+      if (JSON.stringify(originalExtensions) !== JSON.stringify(replicaExtensions)) throw new Error("P04a replica extension identities differ");
+      await invoke(["alembic", "upgrade", "head"], true);
+      await invoke(["python", "/integration/p04a_display.py", "--replica-only", "--output", "/p04a-artifacts/p04a"], true);
+      scenarioArtifacts.p04a_replica_sha256 = createHash("sha256")
+        .update(await readFile(join(artifactDir, "p04a", "replica.json"))).digest("hex");
+      await invoke(["python", "/integration/p04a_display.py", "--output", "/p04a-artifacts/p04a", "--replica-result", "/p04a-artifacts/p04a/replica.json"]);
+      scenarioArtifacts.p04a = "p04a/results.json";
+      scenarioArtifacts.p04a_replica_migrated_separately = true;
+    } finally {
+      await run("docker", [...compose, "exec", "-T", "db", "dropdb", "--if-exists", "-U", "integration", "p04a_replica"], { log, timeoutMs: 30_000, allowFailure: true, ignoreInterrupt: true });
+    }
   };
 
   const runO01Artifacts = async () => {
@@ -826,6 +885,7 @@ async function runSuite(options) {
           .update(await readFile(join(artifactDir, "s02-input-limits.json"))).digest("hex");
       }
       if (options.scenario === "d01-scoped") await runD01Scoped();
+      if (options.scenario === "b02-provenance") await runB02Provenance();
       if (performance) {
         await captureDatabase({ compose, run, log, artifactDir });
         stopSampling = await startResourceSampling({ compose, run, log, artifactDir });

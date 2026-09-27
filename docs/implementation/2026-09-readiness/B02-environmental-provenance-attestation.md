@@ -39,7 +39,8 @@ be retroactively promoted by a caller's checksum assertion.
    SHA256. Parse B01 ORIGINAL controls to rederive count and stable initial/final
    IDs or offset count/edit-version. Validate role/source/run/query identity and
    reviewed scope. Reject canary, error, missing controls and incomplete proof.
-3. Deterministically stream ONE new canonical FeatureCollection from verified
+3. Deterministically stream ONE new P03-compatible overlay envelope containing
+   exactly one FeatureCollection from verified
    pages, preserving original geometry and declared identity/property normalization.
    Upload this input in the same complete required set BEFORE O01 sealing. Never
    attest an arbitrary supplied file based on matching counts. Keep <=1,000 pages,
@@ -56,9 +57,33 @@ be retroactively promoted by a caller's checksum assertion.
    for an immutable version conflicts. A crash leaves shadow data/no attestation.
 6. Expose a bounded DB-only `require_environmental_provenance` helper for a caller
    holding C02 lock. Compare expected layer/version/input checksum/attestation,
-   P03 validated state, pre-existing seal and exact verified required references.
+   P03 validated state, pre-existing seal and exact verified required references,
+   and require an explicit expected sink identity from the caller's selected
+   provider. A retained provider during restore must be selected deliberately;
+   proof-local sink identity alone cannot authorize a different hosted provider.
    No remote reads, hashing or full geometry scan under lock; no auto-sealing a
    different set. P04b separately checks bands/pointer revision and O04 clearance.
+7. Maintain an unforgeable monotonic parent canonical revision on every feature
+   DML (including unmanaged rows) and bound parent metadata change. Prevent
+   versioned parent deletion/reassignment/recreation. Raw SQL triggers freeze
+   attested parent/feature content, proof links and bound O01 ref/blob/seal
+   identities; copy audit state remains mutable. Only explicitly unbound parent
+   operational timestamps may change. Refuse DML/TRUNCATE escape paths under
+   normal app/operator roles; superusers disabling triggers are outside this
+   integrity contract.
+8. Before C02, compare actual stored geometry/attributes against exact input using
+   the same PostGIS GeoJSON parser and exact EWKB equality, plus source identity
+   and P03 normalization/fingerprint. Unchanged stored fingerprints cannot hide
+   geometry or attribute edits made before preparation. Independently check fixed
+   source metadata, importer/version/scope, every progress/count field and empty
+   diagnostics; reconstruct bounds with P03's PostGIS Box3D coordinate semantics.
+   Legacy source_id/version must remain null. Record stable revision around traversal;
+   final short C02 transaction locks parent and compares revision before insertion.
+   Bound ref/blob/seal identities are locked and reread before linking. Normal
+   orchestration uses parent-before-feature ordering; arbitrary raw SQL can lock a
+   feature first. Establish caller lock/statement timeouts before DML, roll back
+   SQL class40/55P03 failures and retry safely. Never hold global C02 during P03
+   file traversal to avoid this opposite-order case.
 
 ## Acceptance and verification
 
@@ -73,6 +98,17 @@ be retroactively promoted by a caller's checksum assertion.
   input/version, edited/failed P03 row, prematurely sealed subset and cap overflow.
 - [ ] Real PostGIS tests verify concurrent audit/ref changes, atomic rollback,
   replay/conflict, durable-only recovery, bounded locks and DB-only read gate.
+- [ ] Complete zero-feature controls produce an ordinary validated empty P03
+  version and idempotent attestation, with no inferred coverage promotion.
+- [ ] Full pg_dump/pg_restore into a separate clean target restores schema/data/
+  post-data triggers, then application-level bridge replay and DB-only gates pass
+  for empty and nonempty proofs. Data-only replay into a trigger-bearing existing
+  schema is a different operation and is not claimed by this recovery check.
+- [ ] Equal-count actual geometry edits before preparation and between preparation/
+  insertion refuse proof; raw SQL feature/metadata/revision/identity edits and
+  TRUNCATE after attestation refuse. Both parent-first and feature-first concurrent
+  acquisitions safely roll back/retry without stale proof. Operational timestamps
+  remain separately mutable and new content imports as a new version.
 - [ ] Upgrade empty/copied prior DB additively. Downgrade preserves evidence/
   attestation tables or explicitly refuses destructive downgrade.
 - [ ] Run affected lint/types/tests and real scenario; retain exact SHA, migration,
@@ -80,10 +116,36 @@ be retroactively promoted by a caller's checksum assertion.
 
 ## Rollout and recovery
 
+Implementation receipt: [B02 owning evidence](../../evidence/B02-environmental-provenance.md)
+records the clean `9329881` real PostgreSQL run, exact artifacts and honest failed
+fixture attempts. The owning command is
+`node scripts/run-integration.mjs --suite api --scenario b02-provenance` and is
+wired into CI. Current review/merge state remains authoritative in `plan.json`.
+
+The operator command `attest-environmental-scoped` requires `--apply`, a fixed
+allowlisted environmental `--source`, a fresh `--workspace` under the configured
+ingestion `raw` directory, and either a durable `--run-id` or an existing complete
+D01 `--staged-dir` plus `--scope-file`. Its result is `attested_shadow`; P03 coverage
+remains unknown. It never fetches official source APIs itself. Existing canary or
+incomplete observations refuse proof. A replay uses another fresh workspace and
+the same durable source/run identities. The DB-only helper requires the caller's
+explicit `expected_sink_id`, including an explicitly selected retained provider
+when recovering copied data.
+
 B02 may merge shadow-only without owner rights choices. Preserve previous data
 and immutable artifacts/attestations. Missing proof leaves no public pointer or
 tile URL. O04 source/use/decision revision is a separate public-display gate,
 never inferred from technical completeness or a successful upload.
+Technical attestation establishes independent consistency/completeness binding of
+retained observations to exact P03 bytes/version. It is not an upstream signature
+or legal clearance. Fixed production source/collector/sink allowlists and restricted
+operator access establish capture trust; injected transports are fixtures only.
+Trust also includes the controlled CLI/verifier and DB principals permitted to
+INSERT proof rows. Normal-role immutability guards preserve existing bound
+content; they do not authenticate arbitrary proof INSERTs by a malicious writer
+with the same app role. The DB-only gate assumes recorded proof came from the
+trusted verifier. This trust boundary is broader than superusers disabling
+triggers, and requires controlled DB-writer access as well as capture access.
 
 ## Outside this PR
 
