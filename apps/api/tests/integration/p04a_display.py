@@ -583,6 +583,54 @@ def run(output: Path) -> dict:
     mutation_resume = build_environmental_display(mutation_layer, mutation_version)
     assert mutation_resume["display_version"] == original_mutation_version
 
+    cardinality_layer = "p04a_initial_count_race"
+    cardinality_version = "7" * 64
+    cardinality_id = _seed_layer(cardinality_layer, cardinality_version, fixture[:1])
+    with SessionLocal.begin() as session:
+        cardinality_feature_id = session.scalar(text("""
+            INSERT INTO environmental_features
+                (environmental_layer_id, source_feature_id, attributes_json,
+                 import_managed, import_fingerprint, geometry)
+            SELECT environmental_layer_id, 'late-managed-row', attributes_json,
+                   false, import_fingerprint, geometry
+            FROM environmental_features WHERE environmental_layer_id = :id RETURNING id
+        """), {"id": cardinality_id})
+    cardinality_race_injected = False
+
+    def enter_managed_set_after_initial_count(session, layer, *, lock_inputs=False):
+        nonlocal cardinality_race_injected
+        if layer.id == cardinality_id and not cardinality_race_injected:
+            assert not lock_inputs
+            with SessionLocal.begin() as writer:
+                writer.execute(text("""
+                    UPDATE environmental_features SET import_managed = true WHERE id = :id
+                """), {"id": cardinality_feature_id})
+            cardinality_race_injected = True
+        return original_snapshot(session, layer, lock_inputs=lock_inputs)
+
+    try:
+        with patch.object(
+            display_builder, "_source_snapshot", enter_managed_set_after_initial_count
+        ):
+            try:
+                build_environmental_display(cardinality_layer, cardinality_version)
+            except DisplayBuildError as exc:
+                assert str(exc) == "canonical_import_count_mismatch"
+            else:
+                raise AssertionError("initial count/snapshot race produced validated cardinality")
+        assert cardinality_race_injected
+        with SessionLocal() as session:
+            assert session.scalar(text("""
+                SELECT status FROM environmental_display_builds WHERE environmental_layer_id = :id
+            """), {"id": cardinality_id}) != "validated"
+    finally:
+        with SessionLocal.begin() as session:
+            session.execute(text("""
+                UPDATE environmental_features SET import_managed = false WHERE id = :id
+            """), {
+                "id": cardinality_feature_id,
+            })
+
     inflight_layer = "p04a_inflight_mutation"
     inflight_version = "8" * 64
     inflight_id = _seed_layer(inflight_layer, inflight_version, fixture)
@@ -850,6 +898,7 @@ def run(output: Path) -> dict:
         "status_only_promotion_of_failed_build_refused": True,
         "diagnostic_count_and_sample_tamper_refused": True,
         "batch_lock_blocks_hash_to_derivation_edit_restore": True,
+        "initial_count_snapshot_race_prevents_validation": True,
         "unprocessed_geometry_mutation_changes_identity": True,
         "postgis_execution_version": first["postgis_execution_version"],
         "bands": first["bands"],

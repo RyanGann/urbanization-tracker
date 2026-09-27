@@ -43,6 +43,7 @@ MAX_DIAGNOSTIC_SAMPLES = 25
 EMPTY_SHA = "0" * 64
 RETRYABLE_SQLSTATES = frozenset({
     "40001", "40P01", "55P03", "57014", "57P01", "57P02", "57P03", "57P04", "57P05",
+    "XX001", "XX002",
 })
 
 
@@ -55,7 +56,8 @@ def _retryable_database_error(error: Exception) -> bool:
         return False
     state = getattr(error.orig, "sqlstate", None) or getattr(error.orig, "pgcode", None)
     return error.connection_invalidated or isinstance(state, str) and (
-        state in RETRYABLE_SQLSTATES or state.startswith(("08", "40", "53", "58"))
+        state in RETRYABLE_SQLSTATES
+        or state.startswith(("08", "40", "53", "54", "57", "58", "72", "F0"))
     )
 
 
@@ -738,6 +740,8 @@ def _verify_final_inputs(
     """).execution_options(yield_per=128), {"layer_id": layer.id})
     for _ in locked_ids:
         pass
+    if layer.accepted_count != _feature_count(session, layer.id):
+        raise DisplayBuildError("canonical_import_count_mismatch")
     if _source_snapshot(session, layer, lock_inputs=True) != build.source_snapshot_sha256:
         raise DisplayBuildError("source_snapshot_changed_during_build")
     if _backend_version(session) != build.config_json["postgis_execution_version"]:

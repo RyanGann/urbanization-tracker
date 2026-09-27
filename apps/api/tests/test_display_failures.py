@@ -14,6 +14,9 @@ class DriverError(RuntimeError):
     ("08006", True), ("53200", True), ("57P01", True), ("57P03", True),
     ("58030", True), ("58000", True),
     ("40000", True), ("40002", True), ("40003", True),
+    ("57000", True), ("57001", True),
+    ("54000", True), ("54001", True), ("54011", True), ("72000", True),
+    ("F0000", True), ("F0001", True), ("XX001", True), ("XX002", True),
     ("22012", False), ("XX000", False), (None, False),
 ])
 def test_operational_sql_failures_do_not_become_geometry_verdicts(

@@ -1,5 +1,19 @@
 # P04a shadow display builder — real PostGIS evidence
 
+Final refusal-only guards postdate the clean v6 proof: every SQLSTATE class-57
+operator-intervention condition propagates, with `57000`/`57001` unit coverage,
+as do program/server limits (54), snapshot-too-old (72), configuration (F0),
+and explicit data/index corruption (`XX001`/`XX002`). Intentional per-feature
+`22012`, explicit geometry refusals and generic geometry `XX000` remain
+accounted diagnostics; message text is never used to classify failures.
+Accepted/managed count equality is also rechecked inside the final lock fence.
+The owning scenario injects an unmanaged-to-managed transition between initial
+count and source snapshot, expecting final count refusal/nonvalidation.
+These changes affect no valid geometry recipe or output. Final-head CI owns
+the added race fixture; the raw local proof below is accurately pre-guard.
+Final guard checks: Ruff passed, mypy passed for 57 application files, and all
+411 API tests passed in the pinned offline image (two upstream deprecations).
+
 ## Final combined v6 proof
 
 On merged B01 main `84a71b10124045ddfb88cdfa7888525181f026d8`, clean runtime
