@@ -220,32 +220,36 @@ export function importReviewerDecisions(
   });
 }
 
-export function approveStagedRecord(id: string, notes: string): Promise<DevelopmentRecord> {
+export function approveStagedRecord(
+  id: string, notes: string, expectedRevision?: number | null
+): Promise<DevelopmentRecord> {
   return request<DevelopmentRecord>(`/api/reviewer/staged-records/${id}/approve`, {
     reviewer: true,
     method: "POST",
-    body: JSON.stringify({ notes })
+    body: JSON.stringify({ notes, expected_revision: expectedRevision ?? null })
   });
 }
 
 export function rejectStagedRecord(
   id: string,
-  notes: string
+  notes: string,
+  expectedRevision?: number | null
 ): Promise<StagedDevelopmentRecord> {
   return request<StagedDevelopmentRecord>(`/api/reviewer/staged-records/${id}/reject`, {
     reviewer: true,
     method: "POST",
-    body: JSON.stringify({ notes })
+    body: JSON.stringify({ notes, expected_revision: expectedRevision ?? null })
   });
 }
 
 export function markStagedRecordNeedsInfo(
   id: string,
-  notes: string
+  notes: string,
+  expectedRevision?: number | null
 ): Promise<StagedDevelopmentRecord> {
   return request<StagedDevelopmentRecord>(`/api/reviewer/staged-records/${id}/needs-info`, {
     reviewer: true,
     method: "POST",
-    body: JSON.stringify({ notes })
+    body: JSON.stringify({ notes, expected_revision: expectedRevision ?? null })
   });
 }

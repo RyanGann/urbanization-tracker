@@ -27,6 +27,14 @@ PUBLIC_SUBMISSION_SOURCE = "public-submission://local"
 DUPLICATE_TOKEN_FANOUT_LIMIT = 100
 PHASE3_COLLECTIONS = (
     "source_documents",
+    "agenda_document_aliases",
+    "agenda_document_revisions",
+    "agenda_document_observations",
+    "agenda_unresolved_documents",
+    "agenda_observations",
+    "agenda_candidate_revisions",
+    "agenda_identity_resolutions",
+    "agenda_decision_events",
     "agenda_staged_records",
     "submission_staged_records",
     "development_records",
@@ -100,7 +108,19 @@ def set_phase3_staged_review_status(
     staged_id: str,
     review_status: str,
     notes: str | None = None,
+    expected_revision: int | None = None,
 ) -> dict[str, Any] | None:
+    if staged_id.startswith("stage-agenda-") and (
+        _use_transactional_postgres()
+        or (get_phase3_staged_record(staged_id) or {}).get("content_revision") is not None
+    ):
+        from app.ingestion.agenda_store import review_agenda_candidate
+
+        reviewed = review_agenda_candidate(
+            staged_id, action=review_status, notes=notes,
+            expected_revision=expected_revision,
+        )
+        return reviewed[0] if reviewed is not None else None
     for collection_name in ("agenda_staged_records", "submission_staged_records"):
         records = _read_collection(collection_name)
         for record in records:
@@ -116,7 +136,19 @@ def set_phase3_staged_review_status(
 def publish_phase3_staged_record(
     staged_id: str,
     notes: str | None,
+    expected_revision: int | None = None,
 ) -> dict[str, Any] | None:
+    if staged_id.startswith("stage-agenda-") and (
+        _use_transactional_postgres()
+        or (get_phase3_staged_record(staged_id) or {}).get("content_revision") is not None
+    ):
+        from app.ingestion.agenda_store import review_agenda_candidate
+
+        reviewed = review_agenda_candidate(
+            staged_id, action="approved", notes=notes,
+            expected_revision=expected_revision,
+        )
+        return reviewed[1] if reviewed is not None else None
     staged = get_phase3_staged_record(staged_id)
     if staged is None:
         return None

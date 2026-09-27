@@ -118,6 +118,7 @@ def test_agenda_parser_failure_preserves_existing_revision_in_durable_mode(
     monkeypatch.setenv("ARTIFACT_DURABILITY_REQUIRED", "true")
     get_settings.cache_clear()
     replaced: list[object] = []
+    diagnostics: list[object] = []
     private = "PRIVATE_SIGNED_TOKEN"
 
     class FakeArtifactService:
@@ -155,7 +156,12 @@ def test_agenda_parser_failure_preserves_existing_revision_in_durable_mode(
     )
     monkeypatch.setattr(agenda_pipeline, "_fetch_and_parse_document", parse_document)
     monkeypatch.setattr(
-        agenda_pipeline, "replace_agenda_artifacts", lambda **kwargs: replaced.append(kwargs)
+        agenda_pipeline, "merge_agenda_artifacts", lambda **kwargs: replaced.append(kwargs)
+    )
+    monkeypatch.setattr(
+        agenda_pipeline,
+        "persist_agenda_health",
+        lambda health: diagnostics.append(health) or health,
     )
     try:
         with httpx.Client() as client:
@@ -166,6 +172,8 @@ def test_agenda_parser_failure_preserves_existing_revision_in_durable_mode(
         get_settings.cache_clear()
 
     assert replaced == []
+    assert diagnostics == [health]
+    assert health["records_created"] == 0
     assert health["status"] == "degraded"
     assert health["validation_errors"] == ["agenda_source_error"]
     assert private not in str(health)

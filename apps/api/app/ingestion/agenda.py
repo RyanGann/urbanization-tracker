@@ -5,8 +5,6 @@ import re
 from dataclasses import dataclass
 from typing import Any
 
-from app.phase3_store import HUNTSVILLE_CENTER
-
 PLANNING_ARCHIVE_URL = "https://www.huntsvilleal.gov/planningagendas/"
 PLANNING_AGENCY = "City of Huntsville Planning Commission"
 
@@ -42,10 +40,8 @@ def parse_agenda_items(
     checked_at: str,
 ) -> list[dict[str, Any]]:
     return [
-        staged
-        for item in _candidate_items(text)
-        if (staged := _staged_record(item, source_document=source_document, checked_at=checked_at))
-        is not None
+        _staged_record(item, source_document=source_document, checked_at=checked_at, ordinal=index)
+        for index, item in enumerate(_candidate_items(text))
     ]
 
 
@@ -61,9 +57,8 @@ def document_date_from_title(title: str, url: str) -> str | None:
         month = _month_number(month_match.group(1))
         return f"{month_match.group(3)}-{month:02d}-{int(month_match.group(2)):02d}"
 
-    numeric_match = re.search(r"/(\d{4})/(\d{2})/", url)
-    if numeric_match:
-        return f"{numeric_match.group(1)}-{numeric_match.group(2)}-01"
+    # An uploads directory is not a meeting date. Fabricating day one can
+    # accidentally coalesce unrelated packets into one logical document.
     return None
 
 
@@ -122,8 +117,11 @@ def _staged_record(
     *,
     source_document: dict[str, Any],
     checked_at: str,
+    ordinal: int,
 ) -> dict[str, Any]:
-    geometry = {"type": "Point", "coordinates": [HUNTSVILLE_CENTER[0], HUNTSVILLE_CENTER[1]]}
+    # The parser has no authoritative case/item identifier. This ordinal locates an
+    # observation within one immutable extraction; it must never identify a case.
+    geometry = None
     document_date = source_document.get("document_date")
     staged_id = _stable_id("stage-agenda", source_document["id"], item.title, item.source_status)
     public_id = _stable_id("hsv-agenda", item.title, document_date or source_document["id"])
@@ -139,6 +137,8 @@ def _staged_record(
         "location": item.location,
         "parse_confidence": item.parse_confidence,
     }
+    if source_document.get("fetch_occurrence_id"):
+        source_payload["fetch_occurrence_id"] = source_document["fetch_occurrence_id"]
     return {
         "id": staged_id,
         "title": item.title,
@@ -150,6 +150,8 @@ def _staged_record(
         "source_agency": PLANNING_AGENCY,
         "date_discovered": checked_at[:10],
         "review_status": "pending",
+        "observation_ordinal": ordinal,
+        "location_required": True,
         "record_confidence": item.parse_confidence,
         "geometry_source": "Planning Commission agenda text; reviewer must match or draw geometry",
         "geometry_confidence": "low",
@@ -178,7 +180,7 @@ def _staged_record(
             "geometry_source": "Reviewer-approved Planning Commission agenda geometry",
             "geometry_confidence": "low",
             "geometry": geometry,
-            "centroid": HUNTSVILLE_CENTER,
+            "centroid": None,
             "area_sq_m": None,
             "address": item.location,
             "parcel_ids": [],

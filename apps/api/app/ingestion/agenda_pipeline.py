@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import hashlib
+import json
 import re
 import ssl
 import subprocess
@@ -20,6 +21,7 @@ from app.ingestion.agenda import (
     extract_pdf_text,
     parse_agenda_items,
 )
+from app.ingestion.agenda_store import merge_agenda_artifacts, persist_agenda_health
 from app.ingestion.artifact_config import require_hosted_artifact_storage
 from app.ingestion.artifact_manifest import public_source_url
 from app.ingestion.artifact_service import ArtifactService
@@ -27,13 +29,11 @@ from app.ingestion.artifact_sink import ArtifactError
 from app.ingestion.artifacts import (
     ensure_data_dirs,
     iso_now,
-    read_json,
     record_artifact,
     write_staged_bytes,
     write_staged_json,
 )
 from app.ingestion.connectors.agenda import discover_agenda_links
-from app.phase3_store import build_duplicate_candidates, replace_agenda_artifacts
 
 FALLBACK_AGENDA_LINKS = [
     (
@@ -168,9 +168,8 @@ def ingest_huntsville_agendas(
                 else:
                     errors.append(f"{link.url}: {exc}")
 
-        staged_records = _dedupe(staged_records, key="id")
-        published_records = _published_records(data_dir)
-        duplicate_candidates = build_duplicate_candidates(staged_records, published_records)
+        if discovery_method == "curated_fallback":
+            errors.append("agenda_archive_fallback")
         health = {
             "key": "huntsville_planning_agendas",
             "name": "Huntsville Planning Commission Agendas",
@@ -186,20 +185,25 @@ def ingest_huntsville_agendas(
                 "document_limit": document_limit,
                 "agency": PLANNING_AGENCY,
                 "discovery_method": discovery_method,
+                "archive_coverage": "recent_documents_only",
             },
         }
+        if not source_documents:
+            health["status"] = "degraded"
+            health["validation_errors"].append("agenda_no_documents")
+            health["error_count"] = len(health["validation_errors"])
+            return persist_agenda_health(health)
         if artifact_pending:
-            return health
-        replace_agenda_artifacts(
+            health["records_created"] = 0
+            return persist_agenda_health(health)
+        return merge_agenda_artifacts(
             source_documents=source_documents,
             staged_records=staged_records,
-            duplicate_candidates=duplicate_candidates,
             health=health,
             run_id=run_id if artifact_service is not None else None,
             artifact_sink_id=artifact_service.sink_id if artifact_service is not None else None,
             required_reference_ids=tuple(required_references),
         )
-        return health
     finally:
         if owned_client:
             client.close()
@@ -217,8 +221,13 @@ def _fetch_and_parse_document(
     pdf_bytes, content_type = _fetch_pdf_bytes(client, url)
     digest = hashlib.sha256(pdf_bytes).hexdigest()
     document_id = f"agenda-{digest[:12]}"
+    document_date = document_date_from_title(title, url)
+    occurrence_id = hashlib.sha256(
+        json.dumps([url, document_date, digest], separators=(",", ":")).encode("utf-8")
+    ).hexdigest()
+    artifact_key = f"agenda-fetch-{occurrence_id}"
     run_id = checked_at.replace(":", "").replace("+", "Z")
-    raw_path = data_dir / "raw" / "planning_agendas" / f"{document_id}.pdf"
+    raw_path = data_dir / "raw" / "planning_agendas" / f"{artifact_key}.pdf"
     raw_path.parent.mkdir(parents=True, exist_ok=True)
     write_staged_bytes(data_dir, raw_path, pdf_bytes)
     raw_artifact = record_artifact(
@@ -236,16 +245,17 @@ def _fetch_and_parse_document(
             source_key="huntsville_planning_agendas",
             run_id=run_id,
             artifact_type="source_pdf",
-            logical_key=document_id,
+            logical_key=artifact_key,
             required=True,
             content_type=content_type,
             source_url=url,
         )
-        if artifact_service is not None else None
+        if artifact_service is not None
+        else None
     )
 
     extracted_text, extraction_status = extract_pdf_text(pdf_bytes)
-    text_path = data_dir / "processed" / "source_documents" / f"{document_id}.txt"
+    text_path = data_dir / "processed" / "source_documents" / f"{artifact_key}.txt"
     text_path.parent.mkdir(parents=True, exist_ok=True)
     write_staged_bytes(data_dir, text_path, extracted_text.encode("utf-8"))
     text_artifact = record_artifact(
@@ -256,7 +266,7 @@ def _fetch_and_parse_document(
         run_id=run_id,
         source_url=url,
         content_type="text/plain; charset=utf-8",
-        metadata={"source_document_id": document_id},
+        metadata={"source_document_id": document_id, "fetch_occurrence_id": occurrence_id},
     )
     text_reference = (
         artifact_service.upload_file(
@@ -264,13 +274,14 @@ def _fetch_and_parse_document(
             source_key="huntsville_planning_agendas",
             run_id=run_id,
             artifact_type="extracted_text",
-            logical_key=f"{document_id}:extract-v1",
+            logical_key=f"{artifact_key}:extract-v1",
             required=True,
             content_type="text/plain; charset=utf-8",
             source_url=url,
             parent_reference_id=pdf_reference,
         )
-        if artifact_service is not None else None
+        if artifact_service is not None
+        else None
     )
     if artifact_service is not None and pdf_reference is not None and text_reference is not None:
         artifact_service.cleanup_verified(pdf_reference, raw_path)
@@ -278,11 +289,13 @@ def _fetch_and_parse_document(
 
     source_document = {
         "id": document_id,
+        "fetch_occurrence_id": occurrence_id,
         "title": title or "Planning Commission agenda",
         "url": public_source_url(url) or "",
-        "document_date": document_date_from_title(title, url),
+        "document_date": document_date,
         "fetched_at": checked_at,
         "sha256": digest,
+        "text_sha256": hashlib.sha256(extracted_text.encode("utf-8")).hexdigest(),
         "content_type": content_type,
         "storage_uri": raw_artifact["storage_uri"],
         "extracted_text_uri": text_artifact["storage_uri"],
@@ -300,13 +313,6 @@ def _fetch_and_parse_document(
     source_document["parsed_item_count"] = len(staged_records)
     references = tuple(ref for ref in (pdf_reference, text_reference) if ref is not None)
     return source_document, staged_records, references
-
-
-def _published_records(data_dir: Path) -> list[dict[str, Any]]:
-    records = read_json(data_dir / "processed" / "development_records.json", [])
-    if not isinstance(records, list):
-        return []
-    return [record for record in records if isinstance(record, dict)]
 
 
 def _fetch_archive_html(client: httpx.Client) -> tuple[str, str]:
@@ -366,13 +372,6 @@ def _run_curl(url: str) -> bytes | None:
     except (FileNotFoundError, subprocess.CalledProcessError, subprocess.TimeoutExpired):
         return None
     return result.stdout
-
-
-def _dedupe(records: list[dict[str, Any]], *, key: str) -> list[dict[str, Any]]:
-    deduped: dict[str, dict[str, Any]] = {}
-    for record in records:
-        deduped[str(record[key])] = record
-    return list(deduped.values())
 
 
 def _excerpt(text: str) -> str | None:

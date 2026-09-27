@@ -100,6 +100,9 @@ jobs:
       - name: Check scoped original controls and last-good health
         run: node scripts/run-integration.mjs --suite api --scenario d01-scoped
 
+      - name: Check agenda revisions and retained reviewer decisions
+        run: node scripts/run-integration.mjs --suite api --scenario c04-agenda-revisions
+
       - name: Check public input limits and shared two-worker quotas
         run: node scripts/run-integration.mjs --suite api --scenario input-limits
 

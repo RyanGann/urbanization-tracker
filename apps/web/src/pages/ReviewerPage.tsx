@@ -70,6 +70,7 @@ interface MutationInput {
   id: string;
   action: ReviewAction;
   notes: string;
+  expectedRevision?: number | null;
 }
 
 function sourcePayloadRows(record: StagedDevelopmentRecord) {
@@ -222,13 +223,16 @@ function reviewerDecisionImportItem(decision: unknown): ReviewerDecisionImportIt
   return {
     staged_id: stagedId,
     review_status: reviewStatus as ReviewStatus,
-    notes: typeof notes === "string" ? notes : null
+    notes: typeof notes === "string" ? notes : null,
+    expected_revision: typeof item.state_revision === "number" ? item.state_revision : null
   };
 }
 
-function importResultMessage(result: { applied: number; missing: string[] }) {
-  if (!result.missing.length) return `Imported ${result.applied} decisions.`;
-  return `Imported ${result.applied} decisions; missing IDs: ${result.missing.join(", ")}.`;
+function importResultMessage(result: { applied: number; missing: string[]; conflicts?: string[] }) {
+  const details = [];
+  if (result.missing.length) details.push(`missing IDs: ${result.missing.join(", ")}`);
+  if (result.conflicts?.length) details.push(`revision conflicts: ${result.conflicts.join(", ")}`);
+  return `Imported ${result.applied} decisions${details.length ? `; ${details.join("; ")}` : ""}.`;
 }
 
 export function ReviewerPage() {
@@ -284,15 +288,20 @@ export function ReviewerPage() {
   });
 
   const reviewMutation = useMutation<DevelopmentRecord | StagedDevelopmentRecord, Error, MutationInput>({
-    mutationFn: ({ id, action, notes }: MutationInput) => {
-      if (action === "approve") return approveStagedRecord(id, notes);
-      if (action === "reject") return rejectStagedRecord(id, notes);
-      return markStagedRecordNeedsInfo(id, notes);
+    mutationFn: ({ id, action, notes, expectedRevision }: MutationInput) => {
+      if (action === "approve") return approveStagedRecord(id, notes, expectedRevision);
+      if (action === "reject") return rejectStagedRecord(id, notes, expectedRevision);
+      return markStagedRecordNeedsInfo(id, notes, expectedRevision);
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["reviewer", "staged-records"] });
       queryClient.invalidateQueries({ queryKey: ["reviewer", "public-submissions"] });
       queryClient.invalidateQueries({ queryKey: ["development-records"] });
+    },
+    onError: (error) => {
+      if (error instanceof ApiError && error.code === "review_revision_conflict") {
+        queryClient.invalidateQueries({ queryKey: ["reviewer", "staged-records"] });
+      }
     }
   });
 
@@ -771,11 +780,21 @@ export function ReviewerPage() {
       {stagedQuery.isError && !reviewerAccessRequired ? (
         <p className="error-text">Could not load the reviewer queue from the API.</p>
       ) : null}
+      {reviewMutation.isError ? (
+        <p className="error-text" role="alert">
+          {reviewMutation.error.message}
+          {reviewMutation.error instanceof ApiError &&
+          reviewMutation.error.code === "review_revision_conflict"
+            ? " The queue is refreshing; review the current revision before retrying."
+            : null}
+        </p>
+      ) : null}
 
       <div className="review-grid">
         {records.map((record) => {
           const notes = notesById[record.id] ?? "";
           const disabled = reviewMutation.isPending || record.review_status !== "pending";
+          const approveDisabled = disabled || record.geometry === null;
 
           return (
             <article key={record.id} className="panel review-card">
@@ -842,12 +861,15 @@ export function ReviewerPage() {
               </label>
 
               <div className="review-actions">
+                {record.location_required && record.geometry === null ? (
+                  <p className="muted">A verified location is required before publication.</p>
+                ) : null}
                 <button
                   className="primary-action"
                   type="button"
-                  disabled={disabled}
+                  disabled={approveDisabled}
                   onClick={() =>
-                    reviewMutation.mutate({ id: record.id, action: "approve", notes })
+                    reviewMutation.mutate({ id: record.id, action: "approve", notes, expectedRevision: record.state_revision })
                   }
                 >
                   <Check size={16} aria-hidden />
@@ -858,7 +880,7 @@ export function ReviewerPage() {
                   type="button"
                   disabled={disabled}
                   onClick={() =>
-                    reviewMutation.mutate({ id: record.id, action: "needs_info", notes })
+                    reviewMutation.mutate({ id: record.id, action: "needs_info", notes, expectedRevision: record.state_revision })
                   }
                 >
                   <AlertCircle size={16} aria-hidden />
@@ -869,7 +891,7 @@ export function ReviewerPage() {
                   type="button"
                   disabled={disabled}
                   onClick={() =>
-                    reviewMutation.mutate({ id: record.id, action: "reject", notes })
+                    reviewMutation.mutate({ id: record.id, action: "reject", notes, expectedRevision: record.state_revision })
                   }
                 >
                   <X size={16} aria-hidden />

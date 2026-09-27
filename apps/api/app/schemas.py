@@ -106,6 +106,12 @@ class StagedDevelopmentRecord(BaseModel):
     source_agency: str
     date_discovered: str
     review_status: ReviewStatus
+    content_revision: int | None = None
+    state_revision: int | None = None
+    review_notes: str | None = None
+    review_actor: str | None = None
+    reviewed_at: str | None = None
+    location_required: bool = False
     record_confidence: ConfidenceLevel
     geometry_source: str
     geometry_confidence: ConfidenceLevel
@@ -116,6 +122,7 @@ class StagedDevelopmentRecord(BaseModel):
 
 class ReviewDecision(BaseModel):
     notes: str | None = Field(default=None, max_length=1000)
+    expected_revision: int | None = Field(default=None, ge=0)
 
 
 class SourceDocument(BaseModel):
@@ -296,6 +303,7 @@ class PublicSourceHealthRow(BaseModel):
             "artifact_integrity", "artifact_too_large", "artifact_path",
             "artifact_configuration", "artifact_checkpoint",
             "environmental_context_unverified",
+            "agenda_identity_unresolved", "agenda_archive_fallback", "agenda_no_documents",
         }
         return [
             error if isinstance(error, str) and error in allowed else "source_error"
@@ -575,6 +583,10 @@ class ReviewerDecisionSnapshot(BaseModel):
     source_url: str
     review_status: ReviewStatus
     review_notes: str | None = None
+    content_revision: int | None = None
+    state_revision: int | None = None
+    review_actor: str | None = None
+    reviewed_at: str | None = None
     exported_at: str
 
 
@@ -582,6 +594,7 @@ class ReviewerDecisionImportItem(BaseModel):
     staged_id: str
     review_status: ReviewStatus
     notes: str | None = Field(default=None, max_length=1000)
+    expected_revision: int | None = Field(default=None, ge=0)
 
 
 class ReviewerDecisionImport(BaseModel):
@@ -591,6 +604,50 @@ class ReviewerDecisionImport(BaseModel):
 class ReviewerDecisionImportResult(BaseModel):
     applied: int
     missing: list[str] = Field(default_factory=list)
+    conflicts: list[str] = Field(default_factory=list)
+
+
+class AgendaUnresolvedObservation(BaseModel):
+    id: str
+    document_id: str
+    document_revision_id: str
+    source_excerpt: str
+    observation_revision: int
+
+
+class AgendaUnresolvedDocument(BaseModel):
+    id: str
+    url: str
+    document_date: str | None = None
+    sha256: str
+    observation_revision: int
+
+
+class AgendaDocumentResolution(BaseModel):
+    document_id: str | None = None
+    expected_observation_revision: int = Field(ge=1)
+    reason: str = Field(min_length=5, max_length=1000)
+
+    @field_validator("reason")
+    @classmethod
+    def nonblank_reason(cls, value: str) -> str:
+        if len(value.strip()) < 5:
+            raise ValueError("A specific resolution reason is required")
+        return value.strip()
+
+
+class AgendaObservationResolution(BaseModel):
+    candidate_id: str | None = None
+    expected_observation_revision: int = Field(ge=1)
+    expected_candidate_revision: int | None = Field(default=None, ge=0)
+    reason: str = Field(min_length=5, max_length=1000)
+
+    @field_validator("reason")
+    @classmethod
+    def nonblank_reason(cls, value: str) -> str:
+        if len(value.strip()) < 5:
+            raise ValueError("A specific resolution reason is required")
+        return value.strip()
 
 
 class MapLayerCoverage(BaseModel):

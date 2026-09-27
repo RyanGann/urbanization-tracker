@@ -10,6 +10,15 @@ from app.auth import require_reviewer_access
 from app.config import get_settings
 from app.data_availability import DataUnavailableError
 from app.filters import parse_record_filters
+from app.ingestion.agenda_store import (
+    AgendaIdentityConflict,
+    AgendaPublicationPending,
+    AgendaRevisionConflict,
+    list_unresolved_documents,
+    list_unresolved_observations,
+    resolve_agenda_document_alias,
+    resolve_agenda_observation,
+)
 from app.jurisdictions import connector_health, list_jurisdictions
 from app.map_layer_catalog import load_map_layer_catalog
 from app.phase3_store import (
@@ -31,6 +40,10 @@ from app.public_geometry import validate_public_geometry
 from app.public_quota import enforce_public_write_quota
 from app.public_rejections import record_public_rejection
 from app.schemas import (
+    AgendaDocumentResolution,
+    AgendaObservationResolution,
+    AgendaUnresolvedDocument,
+    AgendaUnresolvedObservation,
     Alert,
     AlertDeliveryResult,
     ChangeLogEntry,
@@ -84,6 +97,45 @@ reviewer_router = APIRouter(
 )
 
 app = FastAPI(title=settings.app_name, version="0.1.0")
+
+
+@app.exception_handler(AgendaRevisionConflict)
+def agenda_revision_conflict(_request: Request, _exc: AgendaRevisionConflict) -> JSONResponse:
+    return JSONResponse(
+        status_code=409,
+        content={
+            "detail": {
+                "code": "review_revision_conflict",
+                "message": "Agenda state changed. Reload before deciding.",
+            }
+        },
+    )
+
+
+@app.exception_handler(AgendaIdentityConflict)
+def agenda_identity_conflict(_request: Request, _exc: AgendaIdentityConflict) -> JSONResponse:
+    return JSONResponse(
+        status_code=409,
+        content={
+            "detail": {
+                "code": "agenda_identity_conflict",
+                "message": "This agenda identity needs review.",
+            }
+        },
+    )
+
+
+@app.exception_handler(AgendaPublicationPending)
+def agenda_publication_pending(_request: Request, _exc: AgendaPublicationPending) -> JSONResponse:
+    return JSONResponse(
+        status_code=409,
+        content={
+            "detail": {
+                "code": "agenda_publication_update_pending",
+                "message": "This changed agenda revision needs the publication history workflow.",
+            }
+        },
+    )
 app.add_middleware(PublicWriteBodyLimit)
 app.add_middleware(
     CORSMiddleware,
@@ -378,6 +430,66 @@ def get_reviewer_queue() -> list[StagedDevelopmentRecord]:
 
 
 @reviewer_router.get(
+    "/agenda-documents/unresolved", response_model=list[AgendaUnresolvedDocument]
+)
+def get_unresolved_agenda_documents() -> list[AgendaUnresolvedDocument]:
+    return [
+        AgendaUnresolvedDocument.model_validate(item)
+        for item in list_unresolved_documents()
+    ]
+
+
+@reviewer_router.post("/agenda-documents/{observation_id}/resolve")
+def resolve_reviewer_agenda_document(
+    observation_id: str, resolution: AgendaDocumentResolution,
+) -> dict[str, str]:
+    document = resolve_agenda_document_alias(
+        observation_id, document_id=resolution.document_id,
+        expected_observation_revision=resolution.expected_observation_revision,
+        actor="reviewer", reason=resolution.reason,
+    )
+    if document is None:
+        raise HTTPException(
+            status_code=404,
+            detail={
+                "code": "agenda_document_observation_missing",
+                "message": "Observation not found.",
+            },
+        )
+    return {"document_id": str(document["document_id"]), "status": "retry_required"}
+
+
+@reviewer_router.get(
+    "/agenda-observations/unresolved", response_model=list[AgendaUnresolvedObservation]
+)
+def get_unresolved_agenda_observations() -> list[AgendaUnresolvedObservation]:
+    return [
+        AgendaUnresolvedObservation.model_validate(item)
+        for item in list_unresolved_observations()
+    ]
+
+
+@reviewer_router.post(
+    "/agenda-observations/{observation_id}/resolve", response_model=StagedDevelopmentRecord
+)
+def resolve_reviewer_agenda_observation(
+    observation_id: str, resolution: AgendaObservationResolution,
+) -> StagedDevelopmentRecord:
+    record = resolve_agenda_observation(
+        observation_id, candidate_id=resolution.candidate_id,
+        expected_observation_revision=resolution.expected_observation_revision,
+        expected_candidate_revision=resolution.expected_candidate_revision,
+        actor="reviewer", reason=resolution.reason,
+    )
+    if record is None:
+        raise HTTPException(
+            status_code=404,
+            detail={"code": "agenda_observation_missing", "message": "Observation not found."},
+        )
+    return StagedDevelopmentRecord.model_validate(record)
+
+
+@reviewer_router.get(
     "/decisions/export",
     response_model=list[ReviewerDecisionSnapshot],
 )
@@ -401,7 +513,9 @@ def import_reviewer_decision_snapshot(
 
 @reviewer_router.post("/staged-records/{staged_id}/approve", response_model=DevelopmentRecord)
 def approve_reviewer_record(staged_id: str, decision: ReviewDecision) -> DevelopmentRecord:
-    record = approve_staged_record(staged_id, notes=decision.notes)
+    record = approve_staged_record(
+        staged_id, notes=decision.notes, expected_revision=decision.expected_revision,
+    )
     if record is None:
         raise HTTPException(status_code=404, detail="Staged record not found")
     return record
@@ -409,7 +523,10 @@ def approve_reviewer_record(staged_id: str, decision: ReviewDecision) -> Develop
 
 @reviewer_router.post("/staged-records/{staged_id}/reject", response_model=StagedDevelopmentRecord)
 def reject_reviewer_record(staged_id: str, decision: ReviewDecision) -> StagedDevelopmentRecord:
-    staged = set_staged_review_status(staged_id, "rejected", notes=decision.notes)
+    staged = set_staged_review_status(
+        staged_id, "rejected", notes=decision.notes,
+        expected_revision=decision.expected_revision,
+    )
     if staged is None:
         raise HTTPException(status_code=404, detail="Staged record not found")
     return staged
@@ -422,7 +539,10 @@ def reject_reviewer_record(staged_id: str, decision: ReviewDecision) -> StagedDe
 def mark_reviewer_record_needs_info(
     staged_id: str, decision: ReviewDecision
 ) -> StagedDevelopmentRecord:
-    staged = set_staged_review_status(staged_id, "needs_info", notes=decision.notes)
+    staged = set_staged_review_status(
+        staged_id, "needs_info", notes=decision.notes,
+        expected_revision=decision.expected_revision,
+    )
     if staged is None:
         raise HTTPException(status_code=404, detail="Staged record not found")
     return staged

@@ -5,7 +5,7 @@ Execution status: [plan.json](plan.json), entry `O03`. Guide baseline: `dbdaf099
 | Field | Assignment |
 | --- | --- |
 | Track / gate | Operations / G3 |
-| Depends on | [C08](C08-delivery-leases-retries.md), [C09](C09-manual-duplicate-resolution.md), [U03](U03-participation-location-picker.md), [D02](D02-authoritative-spatial-screening.md), [P09](P09-performance-regression-gates.md), [O02](O02-deployment-guardrails.md), [O04](O04-release-data-use-decisions.md), [D01](D01-source-scope-pagination-canaries.md) |
+| Depends on | [C08](C08-delivery-leases-retries.md), [C09](C09-manual-duplicate-resolution.md), [C10](C10-guarded-agenda-history-backfill.md), [U03](U03-participation-location-picker.md), [D02](D02-authoritative-spatial-screening.md), [P09](P09-performance-regression-gates.md), [O02](O02-deployment-guardrails.md), [O04](O04-release-data-use-decisions.md), [D01](D01-source-scope-pagination-canaries.md) |
 | Review | Lead review |
 | PR boundary | One acceptance-runbook and evidence PR; fix discovered defects in focused follow-ups. |
 
@@ -42,6 +42,7 @@ These are inspection starting points, not a requirement to put all new code in e
 ## Acceptance and verification
 
 - [ ] All G0–G2 evidence is present, with no unresolved critical correctness/security failure.
+- [ ] Satisfy the conditional C10 gate before alpha readiness: the latest retained agenda inventory has zero identity/history gaps with recorded inventory hashes and conditional satisfaction, or operator-reviewed mapping, copied-database backfill and recovery evidence is complete. This check authorizes no working-data backfill.
 - [ ] Restore proves usable application behavior, not merely pg_restore exit status; compare stable identities, source artifacts and event/outbox state.
 - [ ] Document rollback without destroying newer writes: pause writers, retain schema/data, restore only to a separate target until an explicit cutover.
 - [ ] One independent reviewer can repeat the resident/reviewer acceptance checklist from the runbook.

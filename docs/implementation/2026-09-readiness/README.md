@@ -2,9 +2,9 @@
 
 Prepared September 19, 2026 from the [project review](../../reviews/2026-09-19-project-review.md) and code at `dbdaf099f31bc0444fe202aaf2ee65b3c9268d34`.
 
-**Recommendation: finish a dependable Huntsville pilot on the current stack, with real API/PostGIS tests and bounded map delivery.** This package contains **39 PR-sized guides**, including **nine performance PRs**, shared contracts, an execution order and acceptance gates. Current implementation status, PRs and evidence are recorded only in [plan.json](plan.json). The guides describe scope and acceptance criteria; their presence does not establish completed implementation.
+**Recommendation: finish a dependable Huntsville pilot on the current stack, with real API/PostGIS tests and bounded map delivery.** This package contains **40 PR-sized guides**, including **nine performance PRs**, shared contracts, an execution order and acceptance gates. Current implementation status, PRs and evidence are recorded only in [plan.json](plan.json). The guides describe scope and acceptance criteria; their presence does not establish completed implementation.
 
-The full roadmap includes later environmental goals and an optional 3D experiment. It is not a requirement to finish all 39 PRs before seeing improvement: U00 fixes filter visibility early, and P02 removes the startup geometry download early. The user has the existing site open in the side browser; this planning task has not revalidated browser automation or changed that running preview.
+The full roadmap includes later environmental goals and an optional 3D experiment. It is not a requirement to finish all 40 PRs before seeing improvement: U00 fixes filter visibility early, and P02 removes the startup geometry download early. The user has the existing site open in the side browser; this planning task has not revalidated browser automation or changed that running preview.
 
 ## Read and dispatch
 
@@ -38,6 +38,8 @@ Use actual HTTP services and PostGIS for integration tests. Keep small live-sour
 | Optional — viewer decision | Five-day measured God’s Eye View experiment | A justified decision about optional 3D |
 
 A PR can merge before its broader gate is complete if its intermediate state is explicit and safe. P02's temporarily unavailable environmental controls do not satisfy G2. Green mocked tests, a hosting template, a liveness response or a fast empty canvas do not satisfy G3.
+
+C10's guarded historical agenda backfill is required for release only if C04's recorded inventory has gaps that exact verified replay cannot cover; retain a zero-gap inventory when no backfill is needed.
 
 ## Traceability to the review
 
@@ -79,7 +81,8 @@ A PR can merge before its broader gate is complete if its intermediate state is 
 | [C02: Introduce shared transactions and safe item mutations](C02-transactional-store-foundation.md) | T01, C01 | Lead review |
 | [C03: Preserve source identity and merge ingestion batches safely](C03-stable-source-identity.md) | C02 | Lead review |
 | [D01: Fetch a declared pilot scope completely and report source coverage](D01-source-scope-pagination-canaries.md) | C03, T01 | Lead review |
-| [C04: Retain agenda documents and reviewer decisions across refreshes](C04-agenda-revision-retention.md) | C02, C03 | Lead review |
+| [C04: Retain agenda documents and reviewer decisions across refreshes](C04-agenda-revision-retention.md) | C02, C03, O01 | Lead review |
+| [C10: Backfill historical agenda identity and decisions with reviewed mappings](C10-guarded-agenda-history-backfill.md) | C04, O01 | Lead review |
 | [C05: Make review actions explicit, durable, and revision checked](C05-review-action-policy.md) | C02, C04 | Routine with lead review |
 | [C06: Publish canonical changes and durable history in one transaction](C06-publication-events-history.md) | C03, C04, C05, S02 | Lead review |
 | [S02: Validate geometry and limit public write abuse](S02-public-input-validation.md) | C02 | Lead review |
@@ -122,7 +125,7 @@ A PR can merge before its broader gate is complete if its intermediate state is 
 | [O01: Upload and verify ingestion artifacts before activating data](O01-durable-artifact-uploads.md) | C02 | Lead review |
 | [O02: Update hosted configuration and readiness checks for the new contracts](O02-deployment-guardrails.md) | S01, C01, P05, P07, O01, S03, S04 | Lead review |
 | [O04: Prepare code-license, data-use, and public disclosure decisions](O04-release-data-use-decisions.md) | D01, P02 | Owner decision after prepared evidence |
-| [O03: Rehearse migration, recovery, and resident/reviewer workflows](O03-restricted-alpha-rehearsal.md) | C08, C09, U03, D02, P09, O02, O04, D01 | Lead review |
+| [O03: Rehearse migration, recovery, and resident/reviewer workflows](O03-restricted-alpha-rehearsal.md) | C08, C09, C10, U03, D02, P09, O02, O04, D01 | Lead review |
 
 ## Environmental goals after the pilot
 
