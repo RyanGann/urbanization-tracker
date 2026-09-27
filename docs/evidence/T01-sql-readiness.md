@@ -33,11 +33,40 @@ connection/resolver failures retry; unavailable targets fail closed. Logs contai
 UTC, elapsed/budget/remaining milliseconds, attempt number and safe error
 class/SQLSTATE, never DSNs, credentials or raw driver messages.
 
-Local checks passed Ruff, mypy for 57 application files, all 429 API tests
-(two upstream deprecations), 20 focused Python readiness cases and five Node
+Local checks passed Ruff, mypy for 57 application files, all 429 API tests before
+the final late-close/decoded-resolver guards (two upstream deprecations), then
+20 focused Python readiness cases covering the final guards and five Node
 process/deadline cases. Fake clocks cover startup-budget consumption, stalled
 connect/resolution, transient reset, clock drift and unavailable targets; process
 tests cover a single invocation, hard timeout and interruption propagation.
 No model or migration changed; the owning real proof must verify migration 0008.
 
-Real proof and exact teardown evidence will be recorded after the clean run.
+## Clean owning runtime proof
+
+`node scripts/run-integration.mjs --suite api` passed on exact clean runtime SHA
+`83f7d34c4cb95b6d72ae867248fda5721269bb53`, based on merged main
+`8b4889d6891a646c1e95246dcf355beb8570d513`.
+Run `2026-09-27T09-17-25-613Z-5f2a2e80`, project
+`urbanization_t01_3e20ae446a9b`, recorded `working_tree_dirty=false`,
+`outcome=passed`, `cleanup_result=removed` and no cleanup failure.
+Fixture SHA256: `932eacb03655a3dee1a2838abf9ddf8d5dfa44f744482408611b61a2561bbee2`.
+
+The single poller started at 09:18:03.010 UTC with 174,946ms remaining: its
+5,054ms container startup was charged to the host's 180-second readiness budget
+(Compose build/database service startup precede that budget). It produced twelve
+safe transient failures while the temporary Unix-only server was ready from
+09:18:02.782, through initialization shutdown at 09:18:12.343. Final TCP readiness
+was 09:18:14.885. Attempts 13 and 14 succeeded at 09:18:15.223 and 09:18:16.253,
+1.030 seconds apart; readiness took 13,244ms inside the poller, leaving 161,702ms.
+This successful run did not reproduce the earlier slow host startup; it proves
+the poller waited through actual Unix-only initialization instead of accepting
+that early server. Fake clocks separately exercise exhausted/stalled budgets.
+
+Actual migration output confirmed `20260924_0008 (head)`. The real API returned
+the deterministic PostgreSQL fixture, denied unauthenticated reviewer access,
+accepted the authenticated PostgreSQL-store check and retained the same fixture
+after API restart. Independent exact-project Docker queries found zero
+containers, zero volumes and zero networks after teardown. Service/command logs
+and the manifest remain under the ignored run directory above. The following
+proof-document commit changes no runtime code; final-head CI also owns all
+existing scenarios and the complete API suite.
