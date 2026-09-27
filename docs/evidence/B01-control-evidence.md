@@ -146,3 +146,8 @@ This avoids orphaning older control files behind an overwritten report and gives
 one bounded observation per destination. Operators choose a fresh output root for
 each invocation; archival/retention of separate runs remains an operator policy.
 The scoped suite passes 103 tests, Ruff and strict mypy (55 current source files).
+CLI preflight checks every selected destination before the first collection or
+health write. The recorder defensively skips destination-collision reports before
+opening any transaction, preserving previous health bytes and timestamps. The
+canary/full examples use separate output roots. Current scoped tests pass 118
+cases, including a later-source collision with zero staging/health calls.

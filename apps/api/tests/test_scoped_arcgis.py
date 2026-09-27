@@ -930,6 +930,38 @@ def test_canary_cli_global_request_cap_precedes_any_request(
     assert calls == []
 
 
+def test_cli_later_destination_collision_precedes_all_io_and_health(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _scope(tmp_path)
+    keys = list(cli.SOURCE_CONFIGS)[:2]
+    (tmp_path / "output" / keys[1]).mkdir(parents=True)
+    calls: list[str] = []
+    monkeypatch.setattr(cli, "stage_scoped_source", lambda *_args, **_kwargs: calls.append("stage"))
+    monkeypatch.setattr(cli, "record_scoped_attempts", lambda *_args: calls.append("health"))
+    monkeypatch.setattr(sys, "argv", [
+        "ingestion", "stage-scoped-arcgis", "--scope-file",
+        str(tmp_path / "reviewed-scope.json"), "--output-dir", str(tmp_path / "output"),
+        "--record-attempt", *[arg for key in keys for arg in ("--source", key)],
+    ])
+    with pytest.raises(SystemExit, match="2"):
+        cli.main()
+    assert calls == []
+
+
+def test_destination_collision_recording_never_enters_health_transaction(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from app import transactional_store
+    from app.ingestion.scoped_arcgis import record_scoped_attempts
+
+    def refuse_transaction(*_args: object, **_kwargs: object) -> None:
+        pytest.fail("local destination collision must not enter a health transaction")
+
+    monkeypatch.setattr(transactional_store, "CollectionUnitOfWork", refuse_transaction)
+    record_scoped_attempts([{"error_code": "stage_destination_exists", "requests": 0}])
+
+
 def test_large_polygon_query_uses_form_post_under_same_request_budget(tmp_path: Path) -> None:
     _scope(tmp_path)
     scope_path = tmp_path / "reviewed-scope.json"

@@ -997,6 +997,11 @@ def scoped_attempt_health(existing: dict[str, Any], report: dict[str, Any]) -> d
 
 def record_scoped_attempts(reports: list[dict[str, Any]]) -> None:
     """Short PostgreSQL write for attempt visibility; it publishes no source rows."""
+    reports = [
+        report for report in reports if report.get("error_code") != "stage_destination_exists"
+    ]
+    if not reports:
+        return
     from app.config import get_settings
     from app.db import SessionLocal
     from app.transactional_store import CollectionUnitOfWork
