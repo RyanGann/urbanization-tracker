@@ -20,7 +20,7 @@ from app.ingestion.agenda import (
     extract_pdf_text,
     parse_agenda_items,
 )
-from app.ingestion.agenda_store import merge_agenda_artifacts
+from app.ingestion.agenda_store import merge_agenda_artifacts, persist_agenda_health
 from app.ingestion.artifact_config import require_hosted_artifact_storage
 from app.ingestion.artifact_manifest import public_source_url
 from app.ingestion.artifact_service import ArtifactService
@@ -191,7 +191,7 @@ def ingest_huntsville_agendas(
             health["status"] = "degraded"
             health["validation_errors"].append("agenda_no_documents")
             health["error_count"] = len(health["validation_errors"])
-            return health
+            return persist_agenda_health(health)
         if artifact_pending:
             return health
         return merge_agenda_artifacts(
@@ -243,7 +243,8 @@ def _fetch_and_parse_document(
             content_type=content_type,
             source_url=url,
         )
-        if artifact_service is not None else None
+        if artifact_service is not None
+        else None
     )
 
     extracted_text, extraction_status = extract_pdf_text(pdf_bytes)
@@ -272,7 +273,8 @@ def _fetch_and_parse_document(
             source_url=url,
             parent_reference_id=pdf_reference,
         )
-        if artifact_service is not None else None
+        if artifact_service is not None
+        else None
     )
     if artifact_service is not None and pdf_reference is not None and text_reference is not None:
         artifact_service.cleanup_verified(pdf_reference, raw_path)

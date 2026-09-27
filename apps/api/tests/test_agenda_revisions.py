@@ -32,6 +32,12 @@ class MemoryUow:
     def upsert_phase3(self, collection: str, key: str, value: dict[str, Any]) -> None:
         self.rows[collection][key] = copy.deepcopy(value)
 
+    def delete_phase3(self, collection: str, key: str) -> None:
+        self.rows[collection].pop(key, None)
+
+    def list_processed(self, collection: str) -> list[dict[str, Any]]:
+        return copy.deepcopy(list(self.rows[f"processed:{collection}"].values()))
+
 
 def _document(sha: str, *, url: str = "https://example.test/agenda.pdf") -> dict[str, Any]:
     return {
@@ -54,6 +60,54 @@ def _records(document: dict[str, Any], *, status: str = "Layout") -> list[dict[s
         source_document=document,
         checked_at="2026-04-29T00:00:00Z",
     )
+
+
+def test_duplicate_refresh_reads_processed_public_rows_and_preserves_audited_rows() -> None:
+    from app.ingestion.agenda_store import _refresh_duplicate_suggestions
+    from app.phase3_store import _stable_id
+
+    uow = MemoryUow()
+    uow.rows["processed:development_records"]["processed-public"] = {
+        "public_id": "processed-public",
+        "title": "Sample Ridge",
+        "status": "layout",
+    }
+    uow.upsert_phase3(
+        "agenda_staged_records",
+        "candidate",
+        {
+            "id": "candidate",
+            "title": "Sample Ridge",
+            "normalized_status": "layout",
+        },
+    )
+    _refresh_duplicate_suggestions(uow, {"candidate"})
+    suggestion_id = _stable_id("duplicate", "candidate", "processed-public")
+    assert uow.get_phase3("duplicate_candidates", suggestion_id)
+    audited_id = _stable_id("duplicate", "candidate", "audited-public")
+    audited = {
+        "id": audited_id,
+        "staged_record_id": "candidate",
+        "candidate_public_id": "audited-public",
+        "review_actor": "reviewer",
+        "decision": "confirmed",
+    }
+    unrelated = {"id": "unrelated", "staged_record_id": "other"}
+    uow.upsert_phase3("duplicate_candidates", audited_id, audited)
+    uow.upsert_phase3("duplicate_candidates", "unrelated", unrelated)
+    uow.upsert_phase3(
+        "agenda_staged_records",
+        "candidate",
+        {
+            "id": "candidate",
+            "title": "Unrelated Valley",
+            "normalized_status": "layout",
+        },
+    )
+    _refresh_duplicate_suggestions(uow, {"candidate"})
+    assert uow.get_phase3("duplicate_candidates", suggestion_id) is None
+    assert uow.get_phase3("duplicate_candidates", audited_id) == audited
+    assert uow.get_phase3("duplicate_candidates", "unrelated") == unrelated
 
 
 def test_same_revision_replay_retains_rejection_and_never_fabricates_location() -> None:

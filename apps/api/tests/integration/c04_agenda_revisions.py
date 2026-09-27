@@ -16,10 +16,12 @@ from sqlalchemy import func, select
 from app.config import get_settings
 from app.db import SessionLocal
 from app.ingestion.agenda import parse_agenda_items
+from app.ingestion.agenda_pipeline import ingest_huntsville_agendas
 from app.ingestion.agenda_store import merge_agenda_artifacts
 from app.ingestion.artifact_service import ArtifactService
 from app.ingestion.artifact_sink import ArtifactError, BlobIdentity
 from app.models import Phase3CollectionItem
+from app.phase3_store import _stable_id
 from app.transactional_store import CollectionUnitOfWork
 
 SOURCE = "huntsville_planning_agendas"
@@ -28,16 +30,25 @@ URL = "https://example.test/c04/agenda.pdf"
 
 def count(collection: str) -> int:
     with SessionLocal() as session:
-        return int(session.scalar(
-            select(func.count()).select_from(Phase3CollectionItem).where(
-                Phase3CollectionItem.collection_name == collection
+        return int(
+            session.scalar(
+                select(func.count())
+                .select_from(Phase3CollectionItem)
+                .where(Phase3CollectionItem.collection_name == collection)
             )
-        ) or 0)
+            or 0
+        )
 
 
 def setup_document(
-    service: ArtifactService, root: Path, *, run_id: str, pdf: bytes,
-    text: str, pending_text: bool = False, url: str = URL,
+    service: ArtifactService,
+    root: Path,
+    *,
+    run_id: str,
+    pdf: bytes,
+    text: str,
+    pending_text: bool = False,
+    url: str = URL,
     date: str = "2026-04-28",
 ) -> tuple[dict, list[dict], tuple]:
     digest = hashlib.sha256(pdf).hexdigest()
@@ -46,71 +57,111 @@ def setup_document(
     pdf_path = root / f"{run_id}.pdf"
     pdf_path.write_bytes(pdf)
     pdf_ref = service.upload_file(
-        path=pdf_path, source_key=SOURCE, run_id=run_id,
-        artifact_type="source_pdf", logical_key="agenda-pdf", required=True,
-        content_type="application/pdf", source_url=url,
+        path=pdf_path,
+        source_key=SOURCE,
+        run_id=run_id,
+        artifact_type="source_pdf",
+        logical_key="agenda-pdf",
+        required=True,
+        content_type="application/pdf",
+        source_url=url,
     )
     text_path = root / f"{run_id}.txt"
     text_path.write_bytes(text_bytes)
     if pending_text:
         text_ref = service.manifest.reserve(
-            blob=BlobIdentity(text_digest, len(text_bytes)), sink_id=service.sink_id,
-            source_key=SOURCE, run_id=run_id, artifact_type="extracted_text",
-            logical_key="agenda-text", required=True, parent_reference_id=pdf_ref,
-            content_type="text/plain; charset=utf-8", source_url=url,
+            blob=BlobIdentity(text_digest, len(text_bytes)),
+            sink_id=service.sink_id,
+            source_key=SOURCE,
+            run_id=run_id,
+            artifact_type="extracted_text",
+            logical_key="agenda-text",
+            required=True,
+            parent_reference_id=pdf_ref,
+            content_type="text/plain; charset=utf-8",
+            source_url=url,
         )
     else:
         text_ref = service.upload_file(
-            path=text_path, source_key=SOURCE, run_id=run_id,
-            artifact_type="extracted_text", logical_key="agenda-text",
-            required=True, content_type="text/plain; charset=utf-8",
-            source_url=url, parent_reference_id=pdf_ref,
+            path=text_path,
+            source_key=SOURCE,
+            run_id=run_id,
+            artifact_type="extracted_text",
+            logical_key="agenda-text",
+            required=True,
+            content_type="text/plain; charset=utf-8",
+            source_url=url,
+            parent_reference_id=pdf_ref,
         )
     document = {
-        "id": f"agenda-{digest[:12]}", "title": "Planning Commission Agenda - April 28, 2026",
-        "url": url, "document_date": date, "fetched_at": "2026-09-24T12:00:00Z",
-        "sha256": digest, "text_sha256": text_digest,
-        "content_type": "application/pdf", "storage_uri": None,
-        "extracted_text_uri": None, "extraction_status": "extracted",
-        "pdf_reference_id": str(pdf_ref), "text_reference_id": str(text_ref),
-        "parsed_item_count": 0, "text_excerpt": text[:100],
+        "id": f"agenda-{digest[:12]}",
+        "title": "Planning Commission Agenda - April 28, 2026",
+        "url": url,
+        "document_date": date,
+        "fetched_at": "2026-09-24T12:00:00Z",
+        "sha256": digest,
+        "text_sha256": text_digest,
+        "content_type": "application/pdf",
+        "storage_uri": None,
+        "extracted_text_uri": None,
+        "extraction_status": "extracted",
+        "pdf_reference_id": str(pdf_ref),
+        "text_reference_id": str(text_ref),
+        "parsed_item_count": 0,
+        "text_excerpt": text[:100],
     }
-    records = parse_agenda_items(
-        text, source_document=document, checked_at="2026-09-24T12:00:00Z"
-    )
+    records = parse_agenda_items(text, source_document=document, checked_at="2026-09-24T12:00:00Z")
     document["parsed_item_count"] = len(records)
     return document, records, (pdf_ref, text_ref)
 
 
 def merge(document: dict, records: list[dict], refs: tuple, run_id: str, sink_id: str) -> None:
     merge_agenda_artifacts(
-        source_documents=[document], staged_records=records,
+        source_documents=[document],
+        staged_records=records,
         health={"key": SOURCE, "status": "healthy", "checked_at": "2026-09-24T12:00:00Z"},
-        run_id=run_id, artifact_sink_id=sink_id, required_reference_ids=refs,
+        run_id=run_id,
+        artifact_sink_id=sink_id,
+        required_reference_ids=refs,
     )
 
 
 def run(api_url: str, reviewer_token: str, result: Path) -> None:
     with tempfile.TemporaryDirectory(prefix="c04-integration-") as directory:
         root = Path(directory)
-        settings = get_settings().model_copy(update={
-            "data_mode": "live", "phase3_store_backend": "postgres",
-            "processed_store_backend": "postgres", "ingestion_data_dir": root,
-            "artifact_sink": "local", "artifact_local_root": root / "objects",
-            "artifact_durability_required": True,
-        })
+        settings = get_settings().model_copy(
+            update={
+                "data_mode": "live",
+                "phase3_store_backend": "postgres",
+                "processed_store_backend": "postgres",
+                "ingestion_data_dir": root,
+                "artifact_sink": "local",
+                "artifact_local_root": root / "objects",
+                "artifact_durability_required": True,
+            }
+        )
         service = ArtifactService(settings, SessionLocal)
         headers = {"Authorization": f"Bearer {reviewer_token}"}
         with patch("app.ingestion.agenda_store.get_settings", return_value=settings):
             with httpx.Client(base_url=api_url, headers=headers, timeout=15) as api:
+                processed_public = api.get("/api/development-records").json()["records"][0]
+                processed_public.update(public_id="c04-processed-duplicate", title="Sample Ridge")
+                with SessionLocal.begin() as session:
+                    with CollectionUnitOfWork(session).canonical_mutation() as uow:
+                        uow.upsert_processed(
+                            "development_records", processed_public["public_id"], processed_public
+                        )
                 first_run = "c04-first-" + uuid4().hex
                 first_text = (
-                    "1. SAMPLE RIDGE\nLayout (24 lots) Developer: Builder"
-                    "\nLocated: West of Road"
+                    "1. SAMPLE RIDGE\nLayout (24 lots) Developer: Builder\nLocated: West of Road"
                 )
                 first, first_records, first_refs = setup_document(
-                    service, root, run_id=first_run, pdf=b"synthetic PDF revision one",
-                    text=first_text, pending_text=True,
+                    service,
+                    root,
+                    run_id=first_run,
+                    pdf=b"synthetic PDF revision one",
+                    text=first_text,
+                    pending_text=True,
                 )
                 before = count("source_documents")
                 try:
@@ -126,6 +177,13 @@ def run(api_url: str, reviewer_token: str, result: Path) -> None:
                 assert queue.status_code == 200, queue.text
                 candidate = next(row for row in queue.json() if row["source_url"] == URL)
                 candidate_id = candidate["id"]
+                processed_duplicate_id = _stable_id(
+                    "duplicate", candidate_id, "c04-processed-duplicate"
+                )
+                assert any(
+                    row["id"] == processed_duplicate_id
+                    for row in api.get("/api/reviewer/duplicate-candidates").json()
+                )
                 assert candidate["geometry"] is None and candidate["state_revision"] == 1
                 reject = api.post(
                     f"/api/reviewer/staged-records/{candidate_id}/reject",
@@ -147,12 +205,15 @@ def run(api_url: str, reviewer_token: str, result: Path) -> None:
 
                 next_run = "c04-next-" + uuid4().hex
                 changed_text = (
-                    "1. SAMPLE RIDGE\nFinal (24 lots) Developer: Builder"
-                    "\nLocated: West of Road"
+                    "1. SAMPLE RIDGE\nFinal (24 lots) Developer: Builder\nLocated: West of Road"
                 )
                 changed, changed_records, changed_refs = setup_document(
-                    service, root, run_id=next_run, pdf=b"synthetic PDF revision two",
-                    text=changed_text, pending_text=True,
+                    service,
+                    root,
+                    run_id=next_run,
+                    pdf=b"synthetic PDF revision two",
+                    text=changed_text,
+                    pending_text=True,
                 )
                 try:
                     merge(changed, changed_records, changed_refs, next_run, service.sink_id)
@@ -169,14 +230,16 @@ def run(api_url: str, reviewer_token: str, result: Path) -> None:
                     row for row in unresolved.json() if row["source_excerpt"] == "Sample Ridge"
                 )
                 old_candidate = next(
-                    row for row in api.get("/api/reviewer/staged-records").json()
+                    row
+                    for row in api.get("/api/reviewer/staged-records").json()
                     if row["id"] == candidate_id
                 )
                 assert old_candidate["review_status"] == "rejected"
                 stale_link = api.post(
                     f"/api/reviewer/agenda-observations/{observation['id']}/resolve",
                     json={
-                        "candidate_id": candidate_id, "expected_observation_revision": 1,
+                        "candidate_id": candidate_id,
+                        "expected_observation_revision": 1,
                         "expected_candidate_revision": 1,
                         "reason": "Reviewed source case continuity",
                     },
@@ -185,7 +248,8 @@ def run(api_url: str, reviewer_token: str, result: Path) -> None:
                 linked = api.post(
                     f"/api/reviewer/agenda-observations/{observation['id']}/resolve",
                     json={
-                        "candidate_id": candidate_id, "expected_observation_revision": 1,
+                        "candidate_id": candidate_id,
+                        "expected_observation_revision": 1,
                         "expected_candidate_revision": 2,
                         "reason": "Reviewed source case continuity",
                     },
@@ -226,22 +290,30 @@ def run(api_url: str, reviewer_token: str, result: Path) -> None:
                     assert len(public_rows) == 1
                     persisted_public = public_rows[0].payload_json
                 current = next(
-                    row for row in api.get("/api/reviewer/staged-records").json()
+                    row
+                    for row in api.get("/api/reviewer/staged-records").json()
                     if row["id"] == candidate_id
                 )
                 latest_document = api.get("/api/source-documents").json()
                 historical_run = "c04-historical-" + uuid4().hex
                 historical, historical_records, historical_refs = setup_document(
-                    service, root, run_id=historical_run,
-                    pdf=b"synthetic PDF revision one", text=first_text,
+                    service,
+                    root,
+                    run_id=historical_run,
+                    pdf=b"synthetic PDF revision one",
+                    text=first_text,
                 )
                 before_observations = count("agenda_document_observations")
                 merge(
-                    historical, historical_records, historical_refs,
-                    historical_run, service.sink_id,
+                    historical,
+                    historical_records,
+                    historical_refs,
+                    historical_run,
+                    service.sink_id,
                 )
                 after_historical = next(
-                    row for row in api.get("/api/reviewer/staged-records").json()
+                    row
+                    for row in api.get("/api/reviewer/staged-records").json()
                     if row["id"] == candidate_id
                 )
                 assert after_historical == current
@@ -250,10 +322,12 @@ def run(api_url: str, reviewer_token: str, result: Path) -> None:
                 assert count("agenda_document_observations") == before_observations + 1
                 assert count("agenda_candidate_revisions") == 2
                 with SessionLocal() as session:
-                    historical_public = session.scalar(select(Phase3CollectionItem).where(
-                        Phase3CollectionItem.collection_name == "development_records",
-                        Phase3CollectionItem.item_id == public_id,
-                    ))
+                    historical_public = session.scalar(
+                        select(Phase3CollectionItem).where(
+                            Phase3CollectionItem.collection_name == "development_records",
+                            Phase3CollectionItem.item_id == public_id,
+                        )
+                    )
                     assert historical_public and historical_public.payload_json == persisted_public
                 same_approval = api.post(
                     f"/api/reviewer/staged-records/{candidate_id}/approve",
@@ -267,7 +341,10 @@ def run(api_url: str, reviewer_token: str, result: Path) -> None:
 
                 third_run = "c04-third-" + uuid4().hex
                 third, third_records, third_refs = setup_document(
-                    service, root, run_id=third_run, pdf=b"synthetic PDF revision three",
+                    service,
+                    root,
+                    run_id=third_run,
+                    pdf=b"synthetic PDF revision three",
                     text=(
                         "1. SAMPLE RIDGE\nPreliminary (25 lots) Developer: Builder"
                         "\nLocated: West of Road"
@@ -275,13 +352,13 @@ def run(api_url: str, reviewer_token: str, result: Path) -> None:
                 )
                 merge(third, third_records, third_refs, third_run, service.sink_id)
                 third_observation = next(
-                    row for row in api.get("/api/reviewer/agenda-observations/unresolved").json()
-                    if row["document_revision_id"] not in {
-                        observation["document_revision_id"]
-                    }
+                    row
+                    for row in api.get("/api/reviewer/agenda-observations/unresolved").json()
+                    if row["document_revision_id"] not in {observation["document_revision_id"]}
                 )
                 current = next(
-                    row for row in api.get("/api/reviewer/staged-records").json()
+                    row
+                    for row in api.get("/api/reviewer/staged-records").json()
                     if row["id"] == candidate_id
                 )
                 third_link = api.post(
@@ -313,36 +390,41 @@ def run(api_url: str, reviewer_token: str, result: Path) -> None:
                 )
                 assert changed_approval.status_code == 409, changed_approval.text
                 assert (
-                    changed_approval.json()["detail"]["code"]
-                    == "agenda_publication_update_pending"
+                    changed_approval.json()["detail"]["code"] == "agenda_publication_update_pending"
                 )
                 after_conflict = next(
-                    row for row in api.get("/api/reviewer/staged-records").json()
+                    row
+                    for row in api.get("/api/reviewer/staged-records").json()
                     if row["id"] == candidate_id
                 )
                 assert after_conflict["review_status"] == "pending"
                 with SessionLocal() as session:
-                    actual = session.scalar(select(Phase3CollectionItem).where(
-                        Phase3CollectionItem.collection_name == "development_records",
-                        Phase3CollectionItem.item_id == public_id,
-                    ))
+                    actual = session.scalar(
+                        select(Phase3CollectionItem).where(
+                            Phase3CollectionItem.collection_name == "development_records",
+                            Phase3CollectionItem.item_id == public_id,
+                        )
+                    )
                     assert actual and actual.payload_json == persisted_public
                 original_document = next(
-                    row for row in api.get("/api/source-documents").json()
-                    if row["url"] == URL
+                    row for row in api.get("/api/source-documents").json() if row["url"] == URL
                 )
                 moved_run = "c04-moved-" + uuid4().hex
                 moved_url = "https://example.test/c04/moved-agenda.pdf"
                 moved, moved_records, moved_refs = setup_document(
-                    service, root, run_id=moved_run,
-                    pdf=b"synthetic PDF changed download URL", text=changed_text,
+                    service,
+                    root,
+                    run_id=moved_run,
+                    pdf=b"synthetic PDF changed download URL",
+                    text=changed_text,
                     url=moved_url,
                 )
                 before_documents = count("source_documents")
                 merge(moved, moved_records, moved_refs, moved_run, service.sink_id)
                 assert count("source_documents") == before_documents
                 unresolved_doc = next(
-                    row for row in api.get("/api/reviewer/agenda-documents/unresolved").json()
+                    row
+                    for row in api.get("/api/reviewer/agenda-documents/unresolved").json()
                     if row["url"] == moved_url
                 )
                 stale_doc_link = api.post(
@@ -364,16 +446,20 @@ def run(api_url: str, reviewer_token: str, result: Path) -> None:
                 )
                 assert linked_doc.status_code == 200, linked_doc.text
                 assert linked_doc.json() == {
-                    "document_id": original_document["id"], "status": "retry_required"
+                    "document_id": original_document["id"],
+                    "status": "retry_required",
                 }
                 merge(moved, moved_records, moved_refs, moved_run, service.sink_id)
                 assert count("source_documents") == before_documents
                 newest_run = "c04-newest-" + uuid4().hex
                 newest, newest_records, newest_refs = setup_document(
-                    service, root, run_id=newest_run,
+                    service,
+                    root,
+                    run_id=newest_run,
                     pdf=b"synthetic unrelated May agenda",
                     text="1. OTHER RIDGE\nLayout (8 lots) Developer: Other Builder",
-                    url="https://example.test/c04/may-agenda.pdf", date="2026-05-26",
+                    url="https://example.test/c04/may-agenda.pdf",
+                    date="2026-05-26",
                 )
                 before_revisions = count("agenda_document_revisions")
                 with patch(
@@ -394,46 +480,157 @@ def run(api_url: str, reviewer_token: str, result: Path) -> None:
                 # both retained document and item issues must remain visible.
                 unresolved_moved_run = "c04-unresolved-moved-" + uuid4().hex
                 unresolved_moved, _, unresolved_moved_refs = setup_document(
-                    service, root, run_id=unresolved_moved_run,
-                    pdf=b"synthetic ambiguous URL", text=changed_text,
+                    service,
+                    root,
+                    run_id=unresolved_moved_run,
+                    pdf=b"synthetic ambiguous URL",
+                    text=changed_text,
                     url="https://example.test/c04/another-moved-agenda.pdf",
                 )
                 merge(
-                    unresolved_moved, [], unresolved_moved_refs,
-                    unresolved_moved_run, service.sink_id,
+                    unresolved_moved,
+                    [],
+                    unresolved_moved_refs,
+                    unresolved_moved_run,
+                    service.sink_id,
                 )
                 merge(newest, newest_records, newest_refs, newest_run, service.sink_id)
                 with SessionLocal() as session:
-                    stored_health = session.scalar(select(Phase3CollectionItem).where(
-                        Phase3CollectionItem.collection_name == "agenda_health",
-                        Phase3CollectionItem.item_id == SOURCE,
-                    ))
+                    stored_health = session.scalar(
+                        select(Phase3CollectionItem).where(
+                            Phase3CollectionItem.collection_name == "agenda_health",
+                            Phase3CollectionItem.item_id == SOURCE,
+                        )
+                    )
                     assert stored_health
                     assert stored_health.payload_json["status"] == "degraded"
                     assert stored_health.payload_json["identity_unresolved_count"] == 2
-                    assert "agenda_identity_unresolved" in stored_health.payload_json[
-                        "validation_errors"
-                    ]
+                    assert (
+                        "agenda_identity_unresolved"
+                        in stored_health.payload_json["validation_errors"]
+                    )
                 assert any(
                     row["id"] == original_document["id"]
                     for row in api.get("/api/source-documents").json()
                 )
-                result.write_text(json.dumps({
-                    "pending_text_rollback": True,
-                    "same_revision_decision_retained": True,
-                    "changed_unanchored_quarantined": True,
-                    "stale_decision_and_resolution_409": True,
-                    "resolved_revision_pending_then_one_publication": True,
-                    "same_approval_returns_persisted_snapshot": True,
-                    "historical_replay_preserves_latest_decision_and_publication": True,
-                    "limited_refresh_retains_unresolved_document_and_item_health": True,
-                    "changed_second_approval_defers_to_c06": True,
-                    "changed_url_requires_audited_alias": True,
-                    "mid_merge_failure_rolled_back_and_older_document_remained": True,
-                    "first_document_id": first["id"],
-                    "first_pdf_sha256": first["sha256"],
-                    "second_pdf_sha256": changed["sha256"],
-                }, indent=2))
+                # Resolve a genuinely renamed occurrence without another ingest.
+                renamed_run = "c04-renamed-" + uuid4().hex
+                renamed, renamed_records, renamed_refs = setup_document(
+                    service,
+                    root,
+                    run_id=renamed_run,
+                    pdf=b"synthetic renamed agenda",
+                    text="1. DISTINCT MEADOW\nLayout (24 lots) Developer: Builder",
+                )
+                merge(renamed, renamed_records, renamed_refs, renamed_run, service.sink_id)
+                rename_observation = next(
+                    row
+                    for row in api.get("/api/reviewer/agenda-observations/unresolved").json()
+                    if row["source_excerpt"] == "Distinct Meadow"
+                )
+                current = next(
+                    row
+                    for row in api.get("/api/reviewer/staged-records").json()
+                    if row["id"] == candidate_id
+                )
+                audited_id = _stable_id("duplicate", candidate_id, "c04-audited-public")
+                audited = {
+                    "id": audited_id,
+                    "staged_record_id": candidate_id,
+                    "staged_title": current["title"],
+                    "candidate_public_id": "c04-audited-public",
+                    "candidate_title": "Audited match",
+                    "score": 1,
+                    "reasons": [],
+                    "decision": "confirmed",
+                    "review_actor": "reviewer",
+                }
+                unrelated = {
+                    **audited,
+                    "id": "c04-unrelated-suggestion",
+                    "staged_record_id": "unrelated-candidate",
+                }
+                with SessionLocal.begin() as session:
+                    with CollectionUnitOfWork(session).canonical_mutation() as uow:
+                        uow.upsert_phase3("duplicate_candidates", audited_id, audited)
+                        uow.upsert_phase3("duplicate_candidates", unrelated["id"], unrelated)
+                renamed_response = api.post(
+                    f"/api/reviewer/agenda-observations/{rename_observation['id']}/resolve",
+                    json={
+                        "candidate_id": candidate_id,
+                        "expected_observation_revision": 1,
+                        "expected_candidate_revision": current["state_revision"],
+                        "reason": "Reviewed renamed source case continuity",
+                    },
+                )
+                assert renamed_response.status_code == 200, renamed_response.text
+                with SessionLocal() as session:
+                    uow = CollectionUnitOfWork(session)
+                    assert uow.get_phase3("duplicate_candidates", processed_duplicate_id) is None
+                    assert uow.get_phase3("duplicate_candidates", audited_id) == audited
+                    assert uow.get_phase3("duplicate_candidates", unrelated["id"]) == unrelated
+                    retained = {
+                        name: uow.list_phase3(name)
+                        for name in (
+                            "source_documents",
+                            "agenda_staged_records",
+                            "agenda_candidate_revisions",
+                            "agenda_decision_events",
+                            "development_records",
+                            "duplicate_candidates",
+                        )
+                    }
+                    previous_health = uow.get_phase3("agenda_health", SOURCE)
+                with (
+                    patch("app.ingestion.agenda_pipeline.get_settings", return_value=settings),
+                    patch(
+                        "app.ingestion.agenda_pipeline._fetch_archive_html",
+                        return_value=("<html>No documents available</html>", "httpx_archive"),
+                    ),
+                ):
+                    empty_health = ingest_huntsville_agendas(data_dir=root, client=api)
+                assert empty_health["status"] == "degraded"
+                assert "agenda_no_documents" in empty_health["validation_errors"]
+                with SessionLocal() as session:
+                    uow = CollectionUnitOfWork(session)
+                    for name, snapshot in retained.items():
+                        assert uow.list_phase3(name) == snapshot
+                    persisted = uow.get_phase3("agenda_health", SOURCE)
+                    assert persisted == empty_health
+                    assert persisted["identity_unresolved_count"] == 2
+                    assert persisted["last_success_at"] == previous_health["last_success_at"]
+                public_health = next(
+                    row
+                    for row in api.get("/api/source-health").json()["sources"]
+                    if row["key"] == SOURCE
+                )
+                assert public_health["status"] == "degraded"
+                assert "agenda_no_documents" in public_health["validation_errors"]
+                assert public_health["last_attempt_at"] == empty_health["checked_at"]
+                result.write_text(
+                    json.dumps(
+                        {
+                            "pending_text_rollback": True,
+                            "same_revision_decision_retained": True,
+                            "changed_unanchored_quarantined": True,
+                            "stale_decision_and_resolution_409": True,
+                            "resolved_revision_pending_then_one_publication": True,
+                            "same_approval_returns_persisted_snapshot": True,
+                            "historical_replay_preserves_latest_decision_and_publication": True,
+                            "limited_refresh_retains_unresolved_document_and_item_health": True,
+                            "changed_second_approval_defers_to_c06": True,
+                            "changed_url_requires_audited_alias": True,
+                            "mid_merge_failure_rolled_back_and_older_document_remained": True,
+                            "processed_public_duplicate_detected": True,
+                            "resolution_refreshes_system_duplicates_only": True,
+                            "empty_discovery_health_persisted_content_retained": True,
+                            "first_document_id": first["id"],
+                            "first_pdf_sha256": first["sha256"],
+                            "second_pdf_sha256": changed["sha256"],
+                        },
+                        indent=2,
+                    )
+                )
 
 
 if __name__ == "__main__":

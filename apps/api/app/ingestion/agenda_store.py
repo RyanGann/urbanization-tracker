@@ -53,6 +53,15 @@ class ArtifactAgendaUnitOfWork:
         self._collection(name)[key] = copy.deepcopy(value)
         self.dirty.add(name)
 
+    def delete_phase3(self, name: str, key: str) -> None:
+        self._collection(name).pop(key, None)
+        self.dirty.add(name)
+
+    def list_processed(self, name: str) -> list[dict[str, Any]]:
+        from app.processed_store import read_processed_list
+
+        return read_processed_list(name) or []
+
     def commit(self) -> None:
         from app.phase3_store import _write_collection
 
@@ -503,8 +512,6 @@ def _merge_agenda_batch(
     health: dict[str, Any],
     run_id: str | None,
 ) -> dict[str, Any]:
-    from app.phase3_store import build_duplicate_candidates
-
     by_legacy_document: dict[str, list[dict[str, Any]]] = {}
     health_out = copy.deepcopy(health)
     legacy_counts: dict[str, int] = {}
@@ -530,17 +537,74 @@ def _merge_agenda_batch(
             )
             if candidate_id:
                 affected.add(candidate_id)
-    published = uow.list_phase3("development_records")
+    _refresh_duplicate_suggestions(uow, affected)
+    return _persist_agenda_health(uow, health_out)
+
+
+def _refresh_duplicate_suggestions(uow: Any, affected: set[str]) -> None:
+    from app.phase3_store import _stable_id, build_duplicate_candidates
+
+    def system_suggestion(row: dict[str, Any]) -> bool:
+        return (
+            row.get("generated_by") in (None, "agenda_matcher")
+            and row.get("id")
+            == _stable_id("duplicate", row.get("staged_record_id"), row.get("candidate_public_id"))
+            and not any(
+                row.get(key)
+                for key in (
+                    "review_status",
+                    "decision",
+                    "resolution",
+                    "review_actor",
+                    "reviewed_at",
+                    "manually_created",
+                    "review_notes",
+                    "notes",
+                    "resolved_at",
+                    "resolution_actor",
+                )
+            )
+        )
+
+    existing = uow.list_phase3("duplicate_candidates")
+    protected = {str(row["id"]) for row in existing if not system_suggestion(row)}
+    for row in existing:
+        if str(row.get("staged_record_id")) in affected and system_suggestion(row):
+            uow.delete_phase3("duplicate_candidates", str(row["id"]))
+    published_by_id = {
+        str(row["public_id"]): row for row in uow.list_processed("development_records")
+    }
+    published_by_id.update(
+        {str(row["public_id"]): row for row in uow.list_phase3("development_records")}
+    )
     candidates = [
         row for row in uow.list_phase3("agenda_staged_records") if str(row.get("id")) in affected
     ]
-    for candidate in build_duplicate_candidates(candidates, published):
-        uow.upsert_phase3("duplicate_candidates", str(candidate["id"]), candidate)
+    for candidate in build_duplicate_candidates(candidates, list(published_by_id.values())):
+        if str(candidate["id"]) not in protected:
+            uow.upsert_phase3(
+                "duplicate_candidates",
+                str(candidate["id"]),
+                {
+                    **candidate,
+                    "generated_by": "agenda_matcher",
+                },
+            )
+
+
+def _persist_agenda_health(uow: Any, health: dict[str, Any]) -> dict[str, Any]:
+    health_out = copy.deepcopy(health)
+    previous = uow.get_phase3("agenda_health", SOURCE_KEY) or {}
+    health_out["last_attempt_at"] = health_out.get("checked_at")
+    health_out["last_success_at"] = previous.get("last_success_at") or (
+        previous.get("checked_at") if previous.get("status") == "healthy" else None
+    )
     unresolved_count = sum(
         row.get("status") == "identity_unresolved"
         for name in ("agenda_unresolved_documents", "agenda_observations")
         for row in uow.list_phase3(name)
     )
+    health_out["identity_unresolved_count"] = unresolved_count
     if unresolved_count:
         health_out["status"] = "degraded"
         health_out["identity_unresolved_count"] = unresolved_count
@@ -548,8 +612,16 @@ def _merge_agenda_batch(
         errors.append("agenda_identity_unresolved")
         health_out["validation_errors"] = errors
         health_out["error_count"] = len(errors)
+    elif health_out.get("status") == "healthy":
+        health_out["last_success_at"] = health_out.get("checked_at")
     uow.upsert_phase3("agenda_health", SOURCE_KEY, health_out)
     return health_out
+
+
+def persist_agenda_health(health: dict[str, Any]) -> dict[str, Any]:
+    """Persist a failed discovery attempt without activating document/artifact state."""
+    with _agenda_mutation() as uow:
+        return _persist_agenda_health(uow, health)
 
 
 class AgendaRevisionConflict(RuntimeError):
@@ -731,6 +803,7 @@ def resolve_agenda_observation(
         if current is not None and result["state_revision"] == current["state_revision"]:
             result["state_revision"] += 1
             uow.upsert_phase3("agenda_staged_records", resolved_id, result)
+        _refresh_duplicate_suggestions(uow, {resolved_id})
         return cast(dict[str, Any], result)
 
 
