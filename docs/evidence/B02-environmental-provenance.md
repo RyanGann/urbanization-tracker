@@ -61,6 +61,15 @@ P03 coverage stays unknown. This attestation binds retained observations to exac
 P03 content; it is neither an upstream cryptographic signature nor legal clearance.
 P04b activation and O04 owner/use decisions remain separate gates.
 
+Capture and attestation trust includes the controlled collector/CLI/verifier and
+the principals allowed to write proof rows. SQL immutability guards protect
+existing bound content; they do not authenticate an arbitrary proof INSERT by a
+malicious DB writer using the same app role. The DB-only activation gate assumes
+its recorded proof was created by the trusted verifier. Restricted operator and
+DB-writer access is part of this contract, independently of the exclusion for
+superusers disabling triggers. The gate still requires the caller's explicitly
+selected provider identity.
+
 ## Honest diagnostics and representations
 
 Two preceding owning attempts did not pass. The

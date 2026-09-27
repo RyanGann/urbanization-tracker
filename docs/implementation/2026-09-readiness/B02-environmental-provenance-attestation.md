@@ -140,6 +140,12 @@ Technical attestation establishes independent consistency/completeness binding o
 retained observations to exact P03 bytes/version. It is not an upstream signature
 or legal clearance. Fixed production source/collector/sink allowlists and restricted
 operator access establish capture trust; injected transports are fixtures only.
+Trust also includes the controlled CLI/verifier and DB principals permitted to
+INSERT proof rows. Normal-role immutability guards preserve existing bound
+content; they do not authenticate arbitrary proof INSERTs by a malicious writer
+with the same app role. The DB-only gate assumes recorded proof came from the
+trusted verifier. This trust boundary is broader than superusers disabling
+triggers, and requires controlled DB-writer access as well as capture access.
 
 ## Outside this PR
 

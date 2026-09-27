@@ -710,7 +710,7 @@
       ],
       "review": "Lead review",
       "pr_boundary": "One additive shadow-only provenance bridge PR.",
-      "implementation_pr": null,
+      "implementation_pr": "https://github.com/RyanGann/urbanization-tracker/pull/39",
       "evidence": "../../evidence/B02-environmental-provenance.md",
       "status_note": "Shadow-only durable controls/pages to exact P03 input/version proof implemented; clean 9329881 owning run passed actual 0009, normal-role fences, empty/nonempty CLI replay and separate full copied restore. Awaiting exact-head Codex review and green CI; P04b/O04 activation and owner/use rights remain separate."
     }
