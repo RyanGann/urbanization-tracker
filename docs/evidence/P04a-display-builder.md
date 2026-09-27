@@ -7,6 +7,12 @@ suite passed (334 tests), along with Ruff and mypy. This changes no recipe,
 geometry or successful output. The final source-fence proof includes this
 classifier expansion. The owning CI scenario verifies the final PR head.
 
+The final metadata integrity guard also refuses a band labeled validated when
+authenticated feature results contain failures. The owning projection-failure
+scenario changes only build/band status fields and expects refusal while
+preserving all failed outcomes and checkpoint fields. This guard postdates the
+clean local source-fence proof; final-head CI verifies that case.
+
 ## Final source-fence proof
 
 Clean code head `2c67dc3f99bfe2e182fd6be54826719dd06561f2` passed run

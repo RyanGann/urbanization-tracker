@@ -733,6 +733,31 @@ def run(output: Path) -> dict:
         band["invalid"] == 1 for band in bad["bands"]
     )
     assert _canonical_hash(bad_id) == bad_hash
+    bad_build_id = _build_id(bad_id)
+    failed_checkpoint = _checkpoint_snapshot(bad_build_id)
+    with SessionLocal.begin() as session:
+        session.execute(text("""
+            UPDATE environmental_display_builds SET status = 'validated' WHERE id = :id
+        """), {"id": bad_build_id})
+        session.execute(text("""
+            UPDATE environmental_display_bands SET status = 'validated' WHERE build_id = :id
+        """), {"id": bad_build_id})
+    try:
+        try:
+            build_environmental_display(out_of_domain, "c" * 64)
+        except DisplayBuildError as exc:
+            assert str(exc) == "validated_band_contains_failed_results"
+        else:
+            raise AssertionError("status-only promotion concealed failed feature results")
+    finally:
+        with SessionLocal.begin() as session:
+            session.execute(text("""
+                UPDATE environmental_display_builds SET status = 'failed' WHERE id = :id
+            """), {"id": bad_build_id})
+            session.execute(text("""
+                UPDATE environmental_display_bands SET status = 'failed' WHERE build_id = :id
+            """), {"id": bad_build_id})
+    assert _checkpoint_snapshot(bad_build_id) == failed_checkpoint
     selective_plan = _selective_plan(build_id)
     # Simulate a database copy that allocates feature IDs in the reverse order.
     # Rename the first fixture layer only after all of its replay checks; its
@@ -766,6 +791,7 @@ def run(output: Path) -> dict:
         "inflight_canonical_mutation_prevents_validation": True,
         "final_snapshot_blocks_noncooperating_writer": True,
         "final_snapshot_blocks_unmanaged_to_managed_toggle": True,
+        "status_only_promotion_of_failed_build_refused": True,
         "unprocessed_geometry_mutation_changes_identity": True,
         "postgis_execution_version": first["postgis_execution_version"],
         "bands": first["bands"],

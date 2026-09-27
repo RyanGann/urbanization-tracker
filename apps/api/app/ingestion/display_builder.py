@@ -556,6 +556,8 @@ def _validate_checkpoint(
         raise DisplayBuildError("checkpoint_collapse_count_mismatch")
     if failed_count != band.invalid_count:
         raise DisplayBuildError("checkpoint_failure_count_mismatch")
+    if band.status == "validated" and failed_count:
+        raise DisplayBuildError("validated_band_contains_failed_results")
     joined = session.execute(text("""
         SELECT r.environmental_feature_id, r.status, r.part_count,
                r.collapsed, r.error_code, r.source_holes, r.display_holes,
