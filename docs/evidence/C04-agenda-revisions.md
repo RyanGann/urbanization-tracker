@@ -1,6 +1,14 @@
 # C04 agenda identity and decision retention
 
-## Combined occurrence and resolution-health verification
+## Final mapped-alias fetch observation verification
+
+Clean application head `7f95dcbaf10b2e08f1838baa2bd62a470ac47245` on actual merged T01 main passed all 25 owning assertions. Run `2026-09-27T10-03-17-106Z-386d09f5`, exact project `urbanization_t01_7961347f8f9f`, command `node scripts/run-integration.mjs --suite api --scenario c04-agenda-revisions`. Result SHA-256 `85ac040ea1a683996c40aa6cff7a37a7afe19d9260e10dd861c6e950944b7ece`; baseline fixture SHA is unchanged. Manifest records passed, clean and removed; independent exact-label queries found zero containers, volumes and networks before releasing the slot.
+
+Document observations now use a `document-fetch-v2` namespace with logical revision, run and fetched occurrence, without rewriting historical rows. Explicit occurrence is primary; a legacy PDF/text pair identifies the verified fetch when present, otherwise URL/date/full checksum does. Partial pairs refuse. The real fixture explicitly maps the second URL through the authenticated API, rejects the seed candidate with CAS/notes, then fetches both mapped aliases in one run through the pipeline and real O01 local service. Four verified references retain their own text/PDF parents, two append-only document observations share one logical revision, and the candidate's actual decision/notes/revision remain unchanged. Exact replay adds no observations; a mismatched pair refuses with all retained content/health unchanged. Logical revision identity and candidate ordinal mapping are unchanged.
+
+All 466 locked API tests, 34 focused agenda tests, Ruff and mypy (59 files) pass. Focused tests include explicit occurrence, pair and legacy fallback identities, immutable evidence conflict and partial-pair persisted-byte rollback. This remains synthetic extraction plus real local upload/seal and PostgreSQL/API behavior; no live-source, Garage or dedicated reviewer-browser claim is added. Final evidence commit changes documentation only; fresh exact-head review and CI remain required.
+
+## Earlier combined occurrence and resolution-health verification
 
 Clean application head `72ff1b014afab3369ab6cdf241442762e562b5c7` passed all 24 owning scenario assertions on exact reviewed T01 dependency `f8cc42ec7176a66bf59124dcc4a7900c622fe9aa` (before its actual merge). Run `2026-09-27T09-34-05-019Z-6bc8ddf3`, exact project `urbanization_t01_53c26fa89f3e`, command `node scripts/run-integration.mjs --suite api --scenario c04-agenda-revisions`. Result SHA-256 `53d423177b683c6070ddca5c26e34f4f6c8e2891f045c2e37c4805fc8b6e88d5`; baseline fixture SHA remains unchanged. Manifest records passed, clean and removed. Independent exact-label queries found zero containers, volumes and networks before releasing the slot.
 
