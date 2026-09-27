@@ -13,6 +13,12 @@ scenario changes only build/band status fields and expects refusal while
 preserving all failed outcomes and checkpoint fields. This guard postdates the
 clean local source-fence proof; final-head CI verifies that case.
 
+A subsequent derived-metadata guard reconstructs each band's error-code counts
+and capped source-ID/code samples in checkpoint traversal order, refusing any
+missing, extra or altered diagnostic fields. The owning failed-projection
+fixture tests count removal and misleading sample insertion. This guard also
+postdates the local proof and changes no geometry recipe; final CI owns it.
+
 ## Final source-fence proof
 
 Clean code head `2c67dc3f99bfe2e182fd6be54826719dd06561f2` passed run

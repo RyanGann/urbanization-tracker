@@ -349,7 +349,32 @@ def run(output: Path) -> dict:
         else:
             raise AssertionError("database system failure became a permanent feature verdict")
     assert _checkpoint_snapshot(_build_id(layer_id)) == checkpoint_before
-    first = build_environmental_display(LAYER, VERSION, batch_size=3)
+    derivation_lock_probed = False
+
+    def probe_derivation_lock(session, feature_id, tolerance):
+        nonlocal derivation_lock_probed
+        if not derivation_lock_probed:
+            try:
+                with SessionLocal.begin() as writer:
+                    writer.execute(text("SET LOCAL lock_timeout = '100ms'"))
+                    writer.execute(text("""
+                        UPDATE environmental_features SET geometry = ST_Translate(geometry, 1, 0)
+                        WHERE id = :id
+                    """), {"id": feature_id})
+                    writer.execute(text("""
+                        UPDATE environmental_features SET geometry = ST_Translate(geometry, -1, 0)
+                        WHERE id = :id
+                    """), {"id": feature_id})
+            except DBAPIError as exc:
+                assert getattr(exc.orig, "sqlstate", None) == "55P03"
+                derivation_lock_probed = True
+            else:
+                raise AssertionError("writer could edit/restore between hash and derivation")
+        return original_project(session, feature_id, tolerance)
+
+    with patch.object(display_builder, "_simplified", probe_derivation_lock):
+        first = build_environmental_display(LAYER, VERSION, batch_size=3)
+    assert derivation_lock_probed
     assert first["display_status"] == "validated" and not first["publicly_active"]
     assert first["coverage_status"] == "unknown"
     assert all(band["status"] == "validated" for band in first["bands"])
@@ -758,6 +783,37 @@ def run(output: Path) -> dict:
                 UPDATE environmental_display_bands SET status = 'failed' WHERE build_id = :id
             """), {"id": bad_build_id})
     assert _checkpoint_snapshot(bad_build_id) == failed_checkpoint
+    with SessionLocal() as session:
+        diagnostic_band_id, original_diagnostics = session.execute(text("""
+            SELECT id, diagnostics_json FROM environmental_display_bands
+            WHERE build_id = :id ORDER BY band_key LIMIT 1
+        """), {"id": bad_build_id}).one()
+    corrupt_diagnostics = (
+        {"samples": original_diagnostics["samples"]},  # removed failure count
+        {**original_diagnostics, "samples": [
+            {"source_feature_id": "unrelated-source", "code": "invented-code"},
+        ]},
+    )
+    for diagnostic in corrupt_diagnostics:
+        with SessionLocal.begin() as session:
+            session.execute(text("""
+                UPDATE environmental_display_bands
+                SET diagnostics_json = CAST(:diagnostic AS json) WHERE id = :id
+            """), {"id": diagnostic_band_id, "diagnostic": json.dumps(diagnostic)})
+        try:
+            try:
+                build_environmental_display(out_of_domain, "c" * 64)
+            except DisplayBuildError as exc:
+                assert str(exc) == "checkpoint_diagnostics_mismatch"
+            else:
+                raise AssertionError("diagnostic count/sample tamper passed replay")
+        finally:
+            with SessionLocal.begin() as session:
+                session.execute(text("""
+                    UPDATE environmental_display_bands
+                    SET diagnostics_json = CAST(:diagnostic AS json) WHERE id = :id
+                """), {"id": diagnostic_band_id,
+                       "diagnostic": json.dumps(original_diagnostics)})
     selective_plan = _selective_plan(build_id)
     # Simulate a database copy that allocates feature IDs in the reverse order.
     # Rename the first fixture layer only after all of its replay checks; its
@@ -792,6 +848,8 @@ def run(output: Path) -> dict:
         "final_snapshot_blocks_noncooperating_writer": True,
         "final_snapshot_blocks_unmanaged_to_managed_toggle": True,
         "status_only_promotion_of_failed_build_refused": True,
+        "diagnostic_count_and_sample_tamper_refused": True,
+        "batch_lock_blocks_hash_to_derivation_edit_restore": True,
         "unprocessed_geometry_mutation_changes_identity": True,
         "postgis_execution_version": first["postgis_execution_version"],
         "bands": first["bands"],

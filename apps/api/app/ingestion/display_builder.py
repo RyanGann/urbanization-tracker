@@ -239,6 +239,10 @@ def _ensure_build(
 def _next_features(
     session: Session, layer_id: int, checkpoint: int, batch_size: int
 ) -> list[dict[str, Any]]:
+    # Preserve the exact inputs from metadata/hash reads through derivation and
+    # the durable batch commit, including writers bypassing the advisory lock.
+    session.execute(text("SET LOCAL lock_timeout = '5s'"))
+    session.execute(text("SET LOCAL statement_timeout = '60s'"))
     return [dict(row) for row in session.execute(text("""
         SELECT id, source_feature_id, import_fingerprint,
                octet_length(ST_AsEWKB(geometry)) AS input_bytes,
@@ -252,7 +256,7 @@ def _next_features(
         FROM environmental_features
         WHERE environmental_layer_id = :layer_id AND import_managed IS TRUE
           AND id > :checkpoint
-        ORDER BY id LIMIT :batch_size
+        ORDER BY id LIMIT :batch_size FOR SHARE
     """), {
         "layer_id": layer_id, "checkpoint": checkpoint, "batch_size": batch_size,
     }).mappings().all()]
@@ -537,6 +541,7 @@ def _validate_checkpoint(
     expected_parts = 0
     collapsed_count = 0
     failed_count = 0
+    expected_diagnostics: dict[str, Any] = {"samples": []}
     for result in results:
         chain = _next_checksum(chain, result.output_sha256)
         result_count += 1
@@ -544,6 +549,16 @@ def _validate_checkpoint(
         expected_parts += result.part_count
         collapsed_count += int(result.collapsed)
         failed_count += int(result.status == "failed")
+        if result.error_code:
+            samples = expected_diagnostics["samples"]
+            if len(samples) < MAX_DIAGNOSTIC_SAMPLES:
+                samples.append({
+                    "source_feature_id": result.source_feature_id[:100],
+                    "code": result.error_code,
+                })
+            expected_diagnostics[result.error_code] = (
+                expected_diagnostics.get(result.error_code, 0) + 1
+            )
     if result_count != band.processed_count:
         raise DisplayBuildError("checkpoint_result_count_mismatch")
     if last_feature_id != band.checkpoint_feature_id:
@@ -558,6 +573,8 @@ def _validate_checkpoint(
         raise DisplayBuildError("checkpoint_failure_count_mismatch")
     if band.status == "validated" and failed_count:
         raise DisplayBuildError("validated_band_contains_failed_results")
+    if band.diagnostics_json != expected_diagnostics:
+        raise DisplayBuildError("checkpoint_diagnostics_mismatch")
     joined = session.execute(text("""
         SELECT r.environmental_feature_id, r.status, r.part_count,
                r.collapsed, r.error_code, r.source_holes, r.display_holes,
