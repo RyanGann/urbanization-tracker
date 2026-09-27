@@ -946,10 +946,169 @@ def run(api_url: str, reviewer_token: str, result: Path) -> None:
                         (row["source_url"], row["publish_record"]["application_date"])
                         for row in occurrences
                     } == {(doc["url"], doc["document_date"]) for doc in occurrence_documents}
+                # Explicitly mapped aliases share a logical revision/candidate,
+                # but retain both verified fetch pairs in the same run.
+                alias_text = "1. ALIAS RIDGE\nLayout (6 lots) Developer: Builder"
+                alias_pdf = b"C04 mapped aliases identical PDF"
+                alias_urls = [
+                    "https://example.test/mapped-first.pdf",
+                    "https://example.test/mapped-second.pdf",
+                ]
+                seed, seed_records, seed_refs = setup_document(
+                    service,
+                    root,
+                    run_id="alias-seed-" + uuid4().hex,
+                    pdf=alias_pdf,
+                    text=alias_text,
+                    url=alias_urls[0],
+                    date="2026-09-22",
+                )
+                # setup_document run ID is independently captured by its PDF reference.
+                with SessionLocal() as session:
+                    seed_run = session.get(ArtifactReference, seed_refs[0]).run_id
+                merge(seed, seed_records, seed_refs, seed_run, service.sink_id)
+                alias_candidate = next(
+                    row
+                    for row in api.get("/api/reviewer/staged-records").json()
+                    if row["title"] == "Alias Ridge"
+                )
+                rejected_alias = api.post(
+                    f"/api/reviewer/staged-records/{alias_candidate['id']}/reject",
+                    json={
+                        "notes": "Retain mapped alias review decision",
+                        "expected_revision": alias_candidate["state_revision"],
+                    },
+                )
+                assert rejected_alias.status_code == 200, rejected_alias.text
+                with (
+                    patch(
+                        "app.ingestion.agenda_pipeline.extract_pdf_text",
+                        return_value=(alias_text, "extracted"),
+                    ),
+                    httpx.Client(
+                        transport=httpx.MockTransport(
+                            lambda _: httpx.Response(200, content=alias_pdf)
+                        )
+                    ) as fetch_client,
+                ):
+                    moved_alias, moved_records, moved_refs = _fetch_and_parse_document(
+                        client=fetch_client,
+                        data_dir=root,
+                        title="Planning agenda September 22, 2026",
+                        url=alias_urls[1],
+                        checked_at="2026-09-27T10:00:00Z",
+                        artifact_service=service,
+                    )
+                    merge(
+                        moved_alias,
+                        moved_records,
+                        moved_refs,
+                        "2026-09-27T100000Z",
+                        service.sink_id,
+                    )
+                    unresolved_alias = next(
+                        row
+                        for row in api.get("/api/reviewer/agenda-documents/unresolved").json()
+                        if row["url"] == alias_urls[1]
+                    )
+                    response = api.post(
+                        f"/api/reviewer/agenda-documents/{unresolved_alias['id']}/resolve",
+                        json={
+                            "document_id": alias_candidate["source_payload"]["source_document_id"],
+                            "expected_observation_revision": 1,
+                            "reason": "Reviewed explicit identical packet alias",
+                        },
+                    )
+                    assert response.status_code == 200, response.text
+                    alias_documents, alias_records, alias_refs = [], [], []
+                    for url in alias_urls:
+                        document, records, refs = _fetch_and_parse_document(
+                            client=fetch_client,
+                            data_dir=root,
+                            title="Planning agenda September 22, 2026",
+                            url=url,
+                            checked_at="2026-09-27T11:00:00Z",
+                            artifact_service=service,
+                        )
+                        alias_documents.append(document)
+                        alias_records.extend(records)
+                        alias_refs.extend(refs)
+                assert len(set(alias_refs)) == 4
+                with SessionLocal() as session:
+                    uow = CollectionUnitOfWork(session)
+                    before_alias_candidate = next(
+                        row
+                        for row in uow.list_phase3("agenda_staged_records")
+                        if row["title"] == "Alias Ridge"
+                    )
+
+                def apply_alias_batch(documents):
+                    return merge_agenda_artifacts(
+                        source_documents=documents,
+                        staged_records=alias_records,
+                        health={
+                            "key": SOURCE,
+                            "status": "healthy",
+                            "checked_at": "2026-09-27T11:00:00Z",
+                        },
+                        run_id="2026-09-27T110000Z",
+                        artifact_sink_id=service.sink_id,
+                        required_reference_ids=tuple(alias_refs),
+                    )
+
+                apply_alias_batch(alias_documents)
+                with SessionLocal() as session:
+                    uow = CollectionUnitOfWork(session)
+                    aliases = [
+                        row
+                        for row in uow.list_phase3("agenda_document_observations")
+                        if row["run_id"] == "2026-09-27T110000Z"
+                    ]
+                    assert len(aliases) == 2
+                    assert len({row["document_revision_id"] for row in aliases}) == 1
+                    assert {row["pdf_reference_id"] for row in aliases} == {
+                        str(alias_refs[0]),
+                        str(alias_refs[2]),
+                    }
+                    for document in alias_documents:
+                        text_reference = session.get(
+                            ArtifactReference, UUID(document["text_reference_id"])
+                        )
+                        assert text_reference.parent_reference_id == UUID(
+                            document["pdf_reference_id"]
+                        )
+                    assert (
+                        uow.get_phase3("agenda_staged_records", before_alias_candidate["id"])
+                        == before_alias_candidate
+                    )
+                    before_alias_state = {
+                        name: uow.list_phase3(name)
+                        for name in (
+                            "source_documents",
+                            "agenda_document_observations",
+                            "agenda_staged_records",
+                            "agenda_health",
+                        )
+                    }
+                apply_alias_batch(alias_documents)
+                invalid_alias_documents = copy.deepcopy(alias_documents)
+                invalid_alias_documents[1]["text_reference_id"] = alias_documents[0][
+                    "text_reference_id"
+                ]
+                try:
+                    apply_alias_batch(invalid_alias_documents)
+                    raise AssertionError("mismatched pair must refuse")
+                except ArtifactError:
+                    pass
+                with SessionLocal() as session:
+                    uow = CollectionUnitOfWork(session)
+                    for name, snapshot in before_alias_state.items():
+                        assert uow.list_phase3(name) == snapshot
                 result.write_text(
                     json.dumps(
                         {
                             "pending_text_rollback": True,
+                            "same_logical_revision_alias_fetch_pairs_retained": True,
                             "identity_resolution_refreshes_health_without_fetch": True,
                             "same_bytes_same_run_durable_pairs_keep_fetched_context": True,
                             "same_revision_decision_retained": True,

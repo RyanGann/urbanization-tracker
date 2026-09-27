@@ -270,7 +270,24 @@ def _merge_document(
         for key in ("document_id", "sha256", "text_sha256", "extraction_status", "parser_version"):
             if previous.get(key) != revision[key]:
                 raise AgendaIdentityConflict("document revision collision")
-    run_key = _digest([revision_id, run_id or incoming.get("fetched_at")])
+    pdf_ref, text_ref = incoming.get("pdf_reference_id"), incoming.get("text_reference_id")
+    if bool(pdf_ref) != bool(text_ref):
+        raise ArtifactError("artifact_integrity")
+    fetch_occurrence = incoming.get("fetch_occurrence_id")
+    if not fetch_occurrence:
+        fetch_occurrence = _digest(
+            ["verified_pair", pdf_ref, text_ref]
+            if pdf_ref and text_ref
+            else [
+                "legacy_fetch",
+                incoming.get("url"),
+                incoming.get("document_date"),
+                incoming.get("sha256"),
+            ]
+        )
+    run_key = _digest(
+        ["document-fetch-v2", revision_id, run_id or incoming.get("fetched_at"), fetch_occurrence]
+    )
     _immutable(
         uow,
         "agenda_document_observations",
@@ -280,6 +297,9 @@ def _merge_document(
             "document_id": document_id,
             "document_revision_id": revision_id,
             "run_id": run_id,
+            "fetch_occurrence_id": fetch_occurrence,
+            "source_url": incoming.get("url"),
+            "document_date": incoming.get("document_date"),
             "fetched_at": incoming.get("fetched_at"),
             "pdf_reference_id": incoming.get("pdf_reference_id"),
             "text_reference_id": incoming.get("text_reference_id"),

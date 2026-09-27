@@ -640,6 +640,45 @@ def test_pipeline_same_bytes_keep_distinct_fetched_contexts(
     assert not any(untouched.rows.values())
 
 
+@pytest.mark.parametrize("identity", ["explicit", "reference_pair", "legacy"])
+def test_same_run_mapped_aliases_retain_each_document_fetch(identity: str) -> None:
+    from app.ingestion.agenda_store import SOURCE_KEY, AgendaIdentityConflict, _digest
+
+    uow = MemoryUow()
+    first = _document("a" * 64)
+    second = copy.deepcopy(first)
+    second["url"] = "https://example.test/explicit-alias.pdf"
+    for index, document in enumerate((first, second)):
+        if identity == "explicit":
+            document["fetch_occurrence_id"] = f"fetch-{index}"
+        if identity != "legacy":
+            document["pdf_reference_id"] = f"pdf-{index}"
+            document["text_reference_id"] = f"text-{index}"
+        alias = _digest([SOURCE_KEY, document["url"], document["document_date"]])
+        uow.upsert_phase3(
+            "agenda_document_aliases",
+            alias,
+            {
+                "id": alias,
+                "document_id": first["id"],
+                "url": document["url"],
+                "document_date": document["document_date"],
+            },
+        )
+    assert _merge_document(uow, first, "same-run") == _merge_document(uow, second, "same-run")
+    observations = uow.list_phase3("agenda_document_observations")
+    assert len(observations) == 2
+    assert {row["source_url"] for row in observations} == {first["url"], second["url"]}
+    assert len(uow.list_phase3("agenda_document_revisions")) == 1
+    _merge_document(uow, first, "same-run")
+    assert uow.list_phase3("agenda_document_observations") == observations
+    if identity == "explicit":
+        conflicting = copy.deepcopy(first)
+        conflicting["pdf_reference_id"] = "different-pdf"
+        with pytest.raises(AgendaIdentityConflict, match="immutable agenda_document_observations"):
+            _merge_document(uow, conflicting, "same-run")
+
+
 def test_changed_date_observations_with_same_pdf_remain_distinct() -> None:
     uow = MemoryUow()
     original = _document("a" * 64)
@@ -894,6 +933,19 @@ def test_artifact_decision_round_trip_and_failed_validation(
             run_id="a",
         )
         candidate = _read_collection("agenda_staged_records")[0]
+        from app.ingestion.artifact_sink import ArtifactError
+
+        before_partial = {str(path): path.read_bytes() for path in tmp_path.rglob("*.json")}
+        partial_pair = copy.deepcopy(old)
+        partial_pair["pdf_reference_id"] = "partial-pdf"
+        with pytest.raises(ArtifactError):
+            merge_agenda_artifacts(
+                source_documents=[partial_pair],
+                staged_records=[],
+                health={"status": "healthy"},
+                run_id="partial-pair",
+            )
+        assert before_partial == {str(path): path.read_bytes() for path in tmp_path.rglob("*.json")}
         rejected = set_phase3_staged_review_status(
             candidate["id"], "rejected", notes="Retain private note", expected_revision=1
         )
