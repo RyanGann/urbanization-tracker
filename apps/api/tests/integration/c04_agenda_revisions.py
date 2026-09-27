@@ -799,6 +799,7 @@ def run(api_url: str, reviewer_token: str, result: Path) -> None:
                                 fixture.update(
                                     id=staged_id, state_revision=1, review_status="pending"
                                 )
+                                fixture["title"] = snapshot["title"]
                                 fixture["publish_record"] = copy.deepcopy(snapshot)
                                 for key in (
                                     "geometry",
