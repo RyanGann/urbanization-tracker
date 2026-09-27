@@ -684,7 +684,6 @@ def stage_scoped_source(
     client = client or httpx.Client(
         timeout=httpx.Timeout(20.0, connect=5.0), follow_redirects=False
     )
-    destination.mkdir(parents=True, exist_ok=True)
     run_id = str(uuid4())
     base = _base_query(config, scope)
     controls = ControlArtifacts(destination, {
@@ -723,7 +722,13 @@ def stage_scoped_source(
         "canary": canary,
         "control_artifacts": controls.descriptors,
     }
+    owns_destination = False
     try:
+        try:
+            destination.mkdir(parents=True, exist_ok=False)
+        except FileExistsError:
+            raise ScopeError("stage_destination_exists") from None
+        owns_destination = True
         metadata = session.get(config.layer_url, {"f": "json"},
                                control_role="initial_metadata")
         fields = metadata.get("fields")
@@ -805,7 +810,8 @@ def stage_scoped_source(
         report["retries"] = session.retries
         report["response_bytes"] = session.staged_bytes
         report["request_log"] = session.request_log
-        (destination / "report.json").write_bytes(_canonical(report) + b"\n")
+        if owns_destination:
+            (destination / "report.json").write_bytes(_canonical(report) + b"\n")
         if owned_client:
             client.close()
     return report

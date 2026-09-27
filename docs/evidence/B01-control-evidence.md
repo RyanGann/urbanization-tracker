@@ -129,3 +129,11 @@ production default client is unchanged. Test transport injection supplies fixtur
 bytes; arbitrary Python transports are not a claim of server authenticity.
 The clean `90571c8` real run above predates this unsupported-client guard. The
 owning CI scenario checks the current default-client path.
+
+Repeated collection now exclusively creates a fresh source destination. Existing
+directories (including empty ones) return `stage_destination_exists` with zero
+requests and no writes; prior reports, pages and controls remain byte-identical.
+This avoids orphaning older control files behind an overwritten report and gives
+one bounded observation per destination. Operators choose a fresh output root for
+each invocation; archival/retention of separate runs remains an operator policy.
+The scoped suite passes 103 tests, Ruff and strict mypy (55 current source files).

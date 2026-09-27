@@ -161,11 +161,12 @@ def _fixture(
 
 
 def _run(
-    tmp_path: Path, transport: httpx.MockTransport, *, canary: bool = False
+    tmp_path: Path, transport: httpx.MockTransport, *, canary: bool = False,
+    destination_name: str = "stage",
 ) -> dict[str, object]:
     with httpx.Client(transport=transport) as client:
         return stage_scoped_source(
-            CONFIG, _scope(tmp_path), tmp_path / "stage", client=client, canary=canary,
+            CONFIG, _scope(tmp_path), tmp_path / destination_name, client=client, canary=canary,
             budget=CollectionBudget(
                 max_requests=4 if canary else 1000, max_attempts=1 if canary else 3,
                 min_interval_seconds=0,
@@ -231,7 +232,15 @@ def test_control_evidence_is_observation_specific_and_canary_stays_bounded(tmp_p
         item["path"]: (tmp_path / "stage" / item["path"]).read_bytes()
         for item in first["control_artifacts"]
     }
-    second = _run(tmp_path, transport, canary=True)
+    previous_report = (tmp_path / "stage" / "report.json").read_bytes()
+    refused = _run(tmp_path, transport, canary=True)
+    assert refused["error_code"] == "stage_destination_exists"
+    assert refused["requests"] == 0 and refused["control_artifacts"] == []
+    assert (tmp_path / "stage" / "report.json").read_bytes() == previous_report
+    with httpx.Client(transport=transport) as client:
+        second = stage_scoped_source(CONFIG, _scope(tmp_path), tmp_path / "fresh-canary",
+                                     client=client, canary=True,
+                                     budget=CollectionBudget(min_interval_seconds=0))
     assert first["run_id"] != second["run_id"]
     assert second["coverage"] == "unknown" and second["requests"] == 4
     assert len(requests) == 9
@@ -596,7 +605,7 @@ def test_upstream_change_and_rejected_geometry(tmp_path: Path) -> None:
     assert changed["error_code"] == "upstream_ids_changed"
     assert changed["coverage"] == "partial"
     transport, _ = _fixture([1], batch_override=[_feature(1, valid=False)])
-    invalid = _run(tmp_path, transport)
+    invalid = _run(tmp_path, transport, destination_name="invalid")
     assert invalid["coverage"] == "partial"
     assert invalid["rejected"] == 1
 
@@ -795,7 +804,7 @@ def test_empty_scope_and_canary_are_distinct(tmp_path: Path) -> None:
     empty = _run(tmp_path, transport)
     assert empty["coverage"] == "complete" and empty["expected"] == 0
     transport, requests = _fixture(list(range(100)))
-    canary = _run(tmp_path, transport, canary=True)
+    canary = _run(tmp_path, transport, canary=True, destination_name="canary")
     assert canary["coverage"] == "unknown"
     assert canary["fetched"] == 25 and canary["requests"] == 4
     assert len(requests) == 4
@@ -941,7 +950,7 @@ def test_timeout_retry_and_metadata_drift(tmp_path: Path, monkeypatch: pytest.Mo
             return httpx.Response(200, json=payload)
         return response
 
-    drifted = _run(tmp_path, httpx.MockTransport(wrong_crs))
+    drifted = _run(tmp_path, httpx.MockTransport(wrong_crs), destination_name="drifted")
     assert drifted["coverage"] == "failed"
     assert drifted["error_code"] == "source_crs_drift"
 
