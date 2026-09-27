@@ -94,6 +94,14 @@ def test_container_startup_consumes_host_budget_and_unavailable_database_fails()
     assert logs[-1]["status"] == "timeout"
 
 
+def test_tcp_startup_beyond_old_sixty_second_window_still_needs_two_successes():
+    ready, calls, logs = probe(["fail"] * 70 + ["success", "success"])
+    assert ready
+    assert calls[-2][0] == 70 and calls[-1][0] == 71
+    assert logs[-1]["elapsed_ms"] == 71000
+    assert logs[-1]["consecutive_successes"] == 2
+
+
 @pytest.mark.parametrize("startup", [177, 180, 190])
 def test_insufficient_remaining_libpq_budget_starts_no_attempt(startup):
     ready, calls, _ = probe(["success", "success"], startup=startup)

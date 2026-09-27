@@ -35,9 +35,10 @@ class/SQLSTATE, never DSNs, credentials or raw driver messages.
 
 Local checks passed Ruff, mypy for 57 application files, all 429 API tests before
 the final late-close/decoded-resolver guards (two upstream deprecations), then
-20 focused Python readiness cases covering the final guards and five Node
+21 focused Python readiness cases covering the final guards and five Node
 process/deadline cases. Fake clocks cover startup-budget consumption, stalled
-connect/resolution, transient reset, clock drift and unavailable targets; process
+connect/resolution, transient reset, clock drift, unavailable targets and TCP
+startup after 70 seconds (past the old 60-second window); process
 tests cover a single invocation, hard timeout and interruption propagation.
 No model or migration changed; the owning real proof must verify migration 0008.
 
