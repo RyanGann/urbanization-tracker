@@ -57,6 +57,7 @@ def upgrade() -> None:
         sa.Column("collapsed_count", sa.Integer(), nullable=False),
         sa.Column("invalid_count", sa.Integer(), nullable=False),
         sa.Column("diagnostics_json", sa.JSON(), nullable=False),
+        sa.Column("checkpoint_sha256", sa.String(64)),
         sa.Column("parts_sha256", sa.String(64)),
         sa.Column("finished_at", sa.DateTime(timezone=True)),
         sa.ForeignKeyConstraint(["build_id"], ["environmental_display_builds.id"],

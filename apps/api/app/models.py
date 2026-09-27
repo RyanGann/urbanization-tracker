@@ -328,6 +328,7 @@ class EnvironmentalDisplayBand(Base):
     collapsed_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     invalid_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     diagnostics_json: Mapped[dict[str, Any]] = mapped_column(JSON, nullable=False, default=dict)
+    checkpoint_sha256: Mapped[str | None] = mapped_column(String(64))
     parts_sha256: Mapped[str | None] = mapped_column(String(64))
     finished_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
 

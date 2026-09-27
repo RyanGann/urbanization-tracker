@@ -7,8 +7,12 @@ import json
 from dataclasses import dataclass
 from typing import Any
 
-ALGORITHM_VERSION = "p04a-transform-simplify-subdivide-validate-v1"
+ALGORITHM_VERSION = "p04a-transform-simplify-subdivide-validate-v2"
 MAX_VERTICES = 256
+MAX_INPUT_BYTES = 32 * 1024 * 1024
+MAX_INPUT_VERTICES = 1_000_000
+MAX_PART_BYTES = 64 * 1024 * 1024
+MAX_PARTS_PER_FEATURE = 8192
 MAX_WEB_MERCATOR_LAT = 85.05112878
 
 
@@ -47,6 +51,12 @@ def recipe() -> dict[str, Any]:
             "transform_full_feature", "simplify_preserve_topology_full_feature", "subdivide",
         ],
         "max_vertices": MAX_VERTICES,
+        "bounds": {
+            "max_input_bytes": MAX_INPUT_BYTES,
+            "max_input_vertices": MAX_INPUT_VERTICES,
+            "max_part_bytes": MAX_PART_BYTES,
+            "max_parts_per_feature": MAX_PARTS_PER_FEATURE,
+        },
         "max_web_mercator_lat": MAX_WEB_MERCATOR_LAT,
         "bands": [
             {"key": band.key, "minzoom": band.minzoom, "maxzoom": band.maxzoom,
@@ -54,6 +64,7 @@ def recipe() -> dict[str, Any]:
             for band in BANDS
         ],
         "validation": "per_feature_topology_holes_components_finite_extent_v1",
+        "band_checksum": "source_id_c_order_output_sha256_v1",
     }
 
 

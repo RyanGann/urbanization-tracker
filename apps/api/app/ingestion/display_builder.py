@@ -17,6 +17,10 @@ from sqlalchemy.orm import Session
 
 from app.ingestion.display_config import (
     BANDS,
+    MAX_INPUT_BYTES,
+    MAX_INPUT_VERTICES,
+    MAX_PART_BYTES,
+    MAX_PARTS_PER_FEATURE,
     MAX_VERTICES,
     MAX_WEB_MERCATOR_LAT,
     DisplayBand,
@@ -34,9 +38,6 @@ from app.models import (
     EnvironmentalLayer,
 )
 
-MAX_INPUT_BYTES = 32 * 1024 * 1024
-MAX_PART_BYTES = 64 * 1024 * 1024
-MAX_PARTS_PER_FEATURE = 8192
 MAX_DIAGNOSTIC_SAMPLES = 25
 EMPTY_SHA = "0" * 64
 
@@ -82,6 +83,7 @@ def _report(
                 "collapsed": band.collapsed_count,
                 "invalid": band.invalid_count,
                 "parts_sha256": band.parts_sha256,
+                "checkpoint_sha256": band.checkpoint_sha256,
                 "diagnostics": band.diagnostics_json,
             }
             for band in bands
@@ -130,7 +132,7 @@ def _source_snapshot(session: Session, layer: EnvironmentalLayer) -> str:
         SELECT source_feature_id, import_fingerprint
         FROM environmental_features
         WHERE environmental_layer_id = :layer_id AND import_managed IS TRUE
-        ORDER BY source_feature_id
+        ORDER BY source_feature_id COLLATE "C"
     """).execution_options(yield_per=128), {"layer_id": layer.id})
     for source_id, fingerprint in rows:
         digest.update(canonical_bytes([source_id, fingerprint]) + b"\n")
@@ -327,7 +329,7 @@ def _build_feature(
         error = "source_identity_or_fingerprint_missing"
     elif feature["input_bytes"] > MAX_INPUT_BYTES:
         error = "input_feature_byte_budget_exceeded"
-    elif feature["input_vertices"] > 1_000_000:
+    elif feature["input_vertices"] > MAX_INPUT_VERTICES:
         error = "input_feature_vertex_budget_exceeded"
     elif feature["input_srid"] != 4326 or not feature["input_valid"] or feature["input_empty"]:
         error = "invalid_canonical_geometry"
@@ -432,7 +434,7 @@ def _store_feature(
     band.part_count += len(parts)
     band.collapsed_count += int(result.collapsed)
     band.invalid_count += int(result.status == "failed")
-    band.parts_sha256 = _next_checksum(band.parts_sha256, result.output_sha256)
+    band.checkpoint_sha256 = _next_checksum(band.checkpoint_sha256, result.output_sha256)
     if result.error_code:
         diagnostics = dict(band.diagnostics_json or {"samples": []})
         samples = list(diagnostics.get("samples", []))
@@ -444,6 +446,22 @@ def _store_feature(
         diagnostics["samples"] = samples
         diagnostics[result.error_code] = int(diagnostics.get(result.error_code, 0)) + 1
         band.diagnostics_json = diagnostics
+
+
+def _stable_band_checksum(session: Session, build_id: int, band_key: str) -> str:
+    """Hash source identities and outputs independently of local surrogate IDs."""
+    digest = hashlib.sha256()
+    rows = session.execute(text("""
+        SELECT source_feature_id, output_sha256
+        FROM environmental_display_feature_results
+        WHERE build_id = :build_id AND band_key = :band_key
+        ORDER BY source_feature_id COLLATE "C"
+    """).execution_options(yield_per=128), {
+        "build_id": build_id, "band_key": band_key,
+    })
+    for source_id, output_sha in rows:
+        digest.update(canonical_bytes([source_id, output_sha]) + b"\n")
+    return digest.hexdigest()
 
 
 def _validate_checkpoint(
@@ -472,7 +490,7 @@ def _validate_checkpoint(
         raise DisplayBuildError("checkpoint_result_count_mismatch")
     if last_feature_id != band.checkpoint_feature_id:
         raise DisplayBuildError("checkpoint_feature_id_mismatch")
-    if chain != band.parts_sha256:
+    if chain != band.checkpoint_sha256:
         raise DisplayBuildError("checkpoint_checksum_mismatch")
     if expected_parts != band.part_count:
         raise DisplayBuildError("checkpoint_part_count_mismatch")
@@ -544,6 +562,7 @@ def _validate_checkpoint(
     originals = session.execute(text("""
         SELECT r.environmental_feature_id, r.input_geometry_sha256,
                r.input_fingerprint, f.import_fingerprint,
+               r.source_feature_id AS result_source_id, f.source_feature_id,
                CASE WHEN r.error_code = 'input_feature_byte_budget_exceeded'
                     THEN NULL ELSE ST_AsEWKB(f.geometry) END AS ewkb,
                octet_length(ST_AsEWKB(f.geometry)) AS input_bytes,
@@ -567,12 +586,19 @@ def _validate_checkpoint(
         )
         if (
             not digest_matches
+            or row["result_source_id"] != row["source_feature_id"]
             or row["input_fingerprint"] != (row["import_fingerprint"] or EMPTY_SHA)
         ):
             raise DisplayBuildError("canonical_geometry_changed_since_checkpoint")
         checked += 1
     if checked != band.processed_count:
         raise DisplayBuildError("checkpoint_canonical_count_mismatch")
+    if band.parts_sha256 is not None and band.parts_sha256 != _stable_band_checksum(
+        session, build.id, band.band_key
+    ):
+        raise DisplayBuildError("stable_band_checksum_mismatch")
+    if band.status == "validated" and band.parts_sha256 is None:
+        raise DisplayBuildError("validated_band_checksum_missing")
     if require_complete:
         expected = _feature_count(session, layer.id)
         if band.processed_count != expected:
@@ -624,6 +650,7 @@ def build_environmental_display(
                 if fail_after_batches == completed_batches:
                     raise RuntimeError("injected_after_display_checkpoint")
             _validate_checkpoint(session, layer, build, band, require_complete=True)
+            band.parts_sha256 = _stable_band_checksum(session, build.id, band.band_key)
             band.status = "failed" if band.invalid_count else "validated"
             band.finished_at = datetime.now(UTC)
             session.commit()

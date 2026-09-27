@@ -125,10 +125,10 @@ def _screening(layer_id: int) -> int:
 def _part_hash(build_id: int) -> str:
     with SessionLocal() as session:
         rows = session.execute(text("""
-            SELECT band_key, environmental_feature_id, part_number,
+            SELECT band_key, source_feature_id, part_number,
                    geometry_sha256, ST_AsEWKB(geometry)
             FROM environmental_display_parts WHERE build_id = :id
-            ORDER BY band_key, environmental_feature_id, part_number
+            ORDER BY band_key, source_feature_id COLLATE "C", part_number
         """), {"id": build_id})
         digest = hashlib.sha256()
         for band, feature_id, number, part_sha, ewkb in rows:
@@ -378,6 +378,22 @@ def run(output: Path) -> dict:
         band["invalid"] == 1 for band in bad["bands"]
     )
     assert _canonical_hash(bad_id) == bad_hash
+    # Simulate a database copy that allocates feature IDs in the reverse order.
+    # Rename the first fixture layer only after all of its replay checks; its
+    # retained display bytes are untouched and no production writer is involved.
+    with SessionLocal.begin() as session:
+        session.execute(text("""
+            UPDATE environmental_layers SET layer_key = :archived WHERE id = :id
+        """), {"archived": LAYER + "_original", "id": layer_id})
+    replica_id = _seed_layer(LAYER, VERSION, list(reversed(fixture)))
+    replica = build_environmental_display(LAYER, VERSION, batch_size=1)
+    assert replica["display_version"] == first["display_version"]
+    assert replica["source_snapshot_sha256"] == first["source_snapshot_sha256"]
+    assert [band["parts_sha256"] for band in replica["bands"]] == [
+        band["parts_sha256"] for band in first["bands"]
+    ]
+    assert _part_hash(_build_id(replica_id)) == first_part_hash
+    assert build_environmental_display(LAYER, VERSION)["replayed"]
     result = {
         "fixture_sha256": _digest(fixture),
         "original_geometry_sha256": original_hash,
@@ -385,6 +401,7 @@ def run(output: Path) -> dict:
         "display_version": first["display_version"],
         "config_sha256": first["config_sha256"],
         "part_sha256": first_part_hash,
+        "reverse_insertion_order_checksums_match": True,
         "bands": first["bands"],
         "hole_counts": list(hole), "multipart_components": list(multipart),
         "dense_parts": dense_parts, "maximum_part_vertices": maximum_vertices,
