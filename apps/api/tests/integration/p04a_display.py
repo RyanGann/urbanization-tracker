@@ -13,8 +13,10 @@ from pathlib import Path
 from unittest.mock import patch
 
 from sqlalchemy import text
+from sqlalchemy.engine import make_url
 from sqlalchemy.exc import DBAPIError
 
+from app.config import get_settings
 from app.db import SessionLocal
 from app.ingestion import display_builder
 from app.ingestion.display_builder import DisplayBuildError, build_environmental_display
@@ -286,7 +288,38 @@ build_environmental_display(sys.argv[2], sys.argv[3], batch_size=2, after_checkp
             child.wait(timeout=10)
 
 
-def run(output: Path) -> dict:
+def run_replica(output: Path) -> dict:
+    """Same immutable source identity in a runner-owned separate fresh database."""
+    assert make_url(get_settings().sqlalchemy_database_url).database == "p04a_replica"
+    output.mkdir(parents=True, exist_ok=True)
+    fixture = _fixture()
+    layer_id = _seed_layer(LAYER, VERSION, list(reversed(fixture)))
+    first = build_environmental_display(LAYER, VERSION, batch_size=1)
+    assert build_environmental_display(LAYER, VERSION)["replayed"]
+    with SessionLocal() as session:
+        order = list(session.scalars(text("SELECT source_feature_id FROM environmental_features "
+                                          "WHERE environmental_layer_id=:id ORDER BY id"),
+                                    {"id": layer_id}))
+    assert order == [source_id for source_id, _ in reversed(fixture)]
+    result = {
+        "database": "p04a_replica",
+        "layer_key": LAYER,
+        "data_version": VERSION,
+        "source_order": order,
+        "postgis_execution_version": first["postgis_execution_version"],
+        "band_keys": [band["key"] for band in first["bands"]],
+        "fixture_sha256": _digest(fixture),
+        "display_version": first["display_version"],
+        "source_snapshot_sha256": first["source_snapshot_sha256"],
+        "band_parts_sha256": [band["parts_sha256"] for band in first["bands"]],
+        "part_sha256": _part_hash(_build_id(layer_id)),
+        "replayed": True,
+    }
+    (output / "replica.json").write_text(json.dumps(result, indent=2, sort_keys=True) + "\n")
+    return result
+
+
+def run(output: Path, replica_result: Path) -> dict:
     output.mkdir(parents=True, exist_ok=True)
     fixture = _fixture()
     layer_id = _seed_layer(LAYER, VERSION, fixture)
@@ -863,21 +896,33 @@ def run(output: Path) -> dict:
                 """), {"id": diagnostic_band_id,
                        "diagnostic": json.dumps(original_diagnostics)})
     selective_plan = _selective_plan(build_id)
-    # Simulate a database copy that allocates feature IDs in the reverse order.
-    # Rename the first fixture layer only after all of its replay checks; its
-    # retained display bytes are untouched and no production writer is involved.
-    with SessionLocal.begin() as session:
-        session.execute(text("""
-            UPDATE environmental_layers SET layer_key = :archived WHERE id = :id
-        """), {"archived": LAYER + "_original", "id": layer_id})
-    replica_id = _seed_layer(LAYER, VERSION, list(reversed(fixture)))
-    replica = build_environmental_display(LAYER, VERSION, batch_size=1)
+    # The runner migrated and built the reverse-order replica in a separate DB.
+    # Keep this original versioned parent identity and canonical content intact.
+    with replica_result.open("rb") as stream:
+        raw_replica = stream.read(65537)
+    assert len(raw_replica) <= 65536
+    replica = json.loads(raw_replica)
+    assert isinstance(replica, dict) and len(replica) <= 16
+    assert replica["database"] == "p04a_replica" and replica["replayed"] is True
+    assert replica["layer_key"] == LAYER and replica["data_version"] == VERSION
+    assert replica["postgis_execution_version"] == first["postgis_execution_version"]
+    assert replica["band_keys"] == [band["key"] for band in first["bands"]]
+    assert replica["source_order"] == [source_id for source_id, _ in reversed(fixture)]
+    assert replica["fixture_sha256"] == _digest(fixture)
     assert replica["display_version"] == first["display_version"]
     assert replica["source_snapshot_sha256"] == first["source_snapshot_sha256"]
-    assert [band["parts_sha256"] for band in replica["bands"]] == [
+    assert replica["band_parts_sha256"] == [
         band["parts_sha256"] for band in first["bands"]
     ]
-    assert _part_hash(_build_id(replica_id)) == first_part_hash
+    assert replica["part_sha256"] == first_part_hash
+    assert _canonical_hash(layer_id) == original_hash
+    assert _screening(layer_id) == original_screening
+    with SessionLocal() as session:
+        assert session.scalar(text("SELECT layer_key FROM environmental_layers WHERE id=:id"),
+                              {"id": layer_id}) == LAYER
+        assert list(session.scalars(text("SELECT source_feature_id FROM environmental_features "
+                                         "WHERE environmental_layer_id=:id ORDER BY id"),
+                                    {"id": layer_id})) == [source_id for source_id, _ in fixture]
     assert build_environmental_display(LAYER, VERSION)["replayed"]
     result = {
         "fixture_sha256": _digest(fixture),
@@ -887,6 +932,8 @@ def run(output: Path) -> dict:
         "config_sha256": first["config_sha256"],
         "part_sha256": first_part_hash,
         "reverse_insertion_order_checksums_match": True,
+        "replica_separate_migrated_database": True,
+        "original_source_identity_unchanged": True,
         "metadata_only_input_batches": True,
         "enlarged_canonical_replay_refused": True,
         "statement_timeout_preserves_committed_checkpoint": True,
@@ -921,6 +968,15 @@ def run(output: Path) -> dict:
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("--output", type=Path, required=True)
+    parser.add_argument("--replica-only", action="store_true")
+    parser.add_argument("--replica-result", type=Path)
     arguments = parser.parse_args()
-    result = run(arguments.output)
+    if arguments.replica_only:
+        if arguments.replica_result is not None:
+            parser.error("replica-only forbids replica-result")
+        result = run_replica(arguments.output)
+    else:
+        if arguments.replica_result is None:
+            parser.error("full scenario requires replica-result")
+        result = run(arguments.output, arguments.replica_result)
     print(json.dumps({"status": "passed", "result_sha256": _digest(result)}, sort_keys=True))

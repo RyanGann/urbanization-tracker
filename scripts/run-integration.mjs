@@ -33,7 +33,7 @@ for (const signal of ["SIGINT", "SIGTERM"]) {
 
 function usage(message) {
   if (message) console.error(`Error: ${message}`);
-  console.error("Usage: node scripts/run-integration.mjs --suite api|live|concurrency|performance [--scenario functional|representative|snapshot|catalog-development|c01-data-modes|u00-filters|c03-source-identity|c04-agenda-revisions|input-limits|layer-import|d01-scoped|display-builder|o01-artifacts] [--snapshot-dir DISPOSABLE_COPY] [--profile desktop|mobile] [--smoke] [--keep-on-failure]");
+  console.error("Usage: node scripts/run-integration.mjs --suite api|live|concurrency|performance [--scenario functional|representative|snapshot|catalog-development|c01-data-modes|u00-filters|c03-source-identity|c04-agenda-revisions|input-limits|layer-import|d01-scoped|display-builder|o01-artifacts|b02-provenance] [--snapshot-dir DISPOSABLE_COPY] [--profile desktop|mobile] [--smoke] [--keep-on-failure]");
   process.exitCode = 2;
 }
 
@@ -682,13 +682,25 @@ async function runSuite(options) {
   };
 
   const runP04aDisplay = async () => {
-    await run("docker", [
+    const invoke = async (args, replica = false) => run("docker", [
       ...compose, "run", "--rm", "--no-deps",
       "--volume", `${join(root, "apps", "api", "tests", "integration").replaceAll("\\", "/")}:/integration:ro`,
       "--volume", `${artifactDir.replaceAll("\\", "/")}:/p04a-artifacts`,
-      "api", "python", "/integration/p04a_display.py", "--output", "/p04a-artifacts/p04a"
+      ...(replica ? ["--env", "DATABASE_URL=postgresql+psycopg://integration:integration@db:5432/p04a_replica"] : []),
+      "api", ...args
     ], { log, timeoutMs: 600_000 });
-    scenarioArtifacts.p04a = "p04a/results.json";
+    try {
+      await run("docker", [...compose, "exec", "-T", "db", "createdb", "-U", "integration", "p04a_replica"], { log, timeoutMs: 30_000 });
+      await invoke(["alembic", "upgrade", "head"], true);
+      await invoke(["python", "/integration/p04a_display.py", "--replica-only", "--output", "/p04a-artifacts/p04a"], true);
+      scenarioArtifacts.p04a_replica_sha256 = createHash("sha256")
+        .update(await readFile(join(artifactDir, "p04a", "replica.json"))).digest("hex");
+      await invoke(["python", "/integration/p04a_display.py", "--output", "/p04a-artifacts/p04a", "--replica-result", "/p04a-artifacts/p04a/replica.json"]);
+      scenarioArtifacts.p04a = "p04a/results.json";
+      scenarioArtifacts.p04a_replica_migrated_separately = true;
+    } finally {
+      await run("docker", [...compose, "exec", "-T", "db", "dropdb", "--if-exists", "-U", "integration", "p04a_replica"], { log, timeoutMs: 30_000, allowFailure: true, ignoreInterrupt: true });
+    }
   };
 
   const runO01Artifacts = async () => {
