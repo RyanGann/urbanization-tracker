@@ -1,5 +1,34 @@
 # P04a shadow display builder — real PostGIS evidence
 
+## Final transient-failure proof
+
+The final runtime change passed the same real scenario on clean code head
+`e38d0b5e774524f55e203d02f8e2d086970549a3`, run
+`2026-09-27T07-12-26-125Z-33254933`. After a durable two-feature checkpoint,
+the scenario injected a real PostgreSQL statement timeout in the next batch.
+The exception rolled back the entire uncommitted batch: checkpoint fields,
+result count and part digest stayed unchanged. An explicit subsequent resume
+completed the same display version. Permanent geometry failures still produce
+accounted diagnostics; transient database errors do not poison immutable results.
+
+`statement_timeout_preserves_committed_checkpoint` is true. The display version,
+configuration, original geometry, source-based part-set and SVG hashes match
+the earlier clean proof below, so its accepted visual QA remains applicable.
+The selective default plan again used the projected GiST bitmap index, returned
+one row and touched seven shared-hit blocks (single execution 0.077 ms).
+Final `results.json` SHA-256 is
+`5f8a4ced63b33108e48e3f904fb471f15bf1e06133d8ef76323a6c060309c5bc`.
+The run removed exact project `urbanization_t01_f6a29bde067c`; independent
+label checks found zero containers and zero volumes. Ruff, mypy (56 application
+files), and all 323 API tests passed in the pinned no-network check image.
+
+Only the P04a commits were subsequently rebased onto merged O01 main
+`8b095973e21cc9237621d84681310eb1997ea208`, producing
+`79cf194f754e65e16a49a38829736973f04ce521`. A complete Git tree diff against
+the real-tested code head is empty; the parent replacement changed no files.
+Machine-readable artifacts remain under
+`tmp/agents/p04a/tmp/integration/2026-09-27T07-12-26-125Z-33254933/`.
+
 ## September 27 clean committed-head proof
 
 The isolated builder was rebased onto exact O01 head
