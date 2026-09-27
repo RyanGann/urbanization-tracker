@@ -76,6 +76,40 @@ def test_first_checkpoint_failure_aborts_unrecorded_upload(tmp_path: Path) -> No
     assert not (tmp_path / ".pending" / blob.sha256 / created[0]).exists()
 
 
+@pytest.mark.parametrize("abort_fails", [False, True])
+def test_existing_valid_object_aborts_checkpointed_upload(
+    tmp_path: Path, abort_fails: bool,
+) -> None:
+    data = b"already durable bytes"
+    blob = hash_stream(io.BytesIO(data))
+    aborted: list[str] = []
+
+    class RecordingSink(LocalArtifactSink):
+        def abort(self, identity: BlobIdentity, upload_id: str) -> None:
+            aborted.append(upload_id)
+            if abort_fails:
+                raise ArtifactError("artifact_unavailable")
+            super().abort(identity, upload_id)
+
+    initial = LocalArtifactSink(tmp_path)
+    completed = initial.begin(blob)
+    part = initial.upload_part(blob, completed, 1, data)
+    initial.complete(blob, completed, (part,))
+    sink = RecordingSink(tmp_path)
+    stale_upload = sink.begin(blob)
+    stale_part = sink.upload_part(blob, stale_upload, 1, data)
+    upload(
+        sink=sink, source=io.BytesIO(data), blob=blob,
+        upload_id=stale_upload, parts=(stale_part,),
+        checkpoint=lambda *_: pytest.fail("valid object must not upload again"),
+        assert_lease=lambda: None,
+    )
+    assert aborted == [stale_upload]
+    verify(sink, blob)
+    if not abort_fails:
+        assert not (tmp_path / ".pending" / blob.sha256 / stale_upload).exists()
+
+
 def test_lost_local_pending_directory_requires_fresh_checkpoint(tmp_path: Path) -> None:
     data = b"retryable local bytes"
     blob = hash_stream(io.BytesIO(data))
@@ -104,6 +138,25 @@ def test_lost_local_pending_directory_requires_fresh_checkpoint(tmp_path: Path) 
         assert_lease=lambda: None,
     )
     verify(sink, blob)
+
+
+@pytest.mark.parametrize("field", ["number", "sha256", "byte_size"])
+def test_malformed_persisted_part_metadata_requires_fresh_checkpoint(
+    tmp_path: Path, field: str,
+) -> None:
+    data = b"intact source with invalid checkpoint"
+    blob = hash_stream(io.BytesIO(data))
+    sink = LocalArtifactSink(tmp_path)
+    upload_id = sink.begin(blob)
+    values = dict(number=1, etag="stored", sha256=blob.sha256, byte_size=len(data))
+    values[field] = {"number": 2, "sha256": "0" * 64, "byte_size": len(data) + 1}[field]
+    malformed = UploadedPart(**values)
+    with pytest.raises(ArtifactError, match="artifact_checkpoint"):
+        upload(
+            sink=sink, source=io.BytesIO(data), blob=blob,
+            upload_id=upload_id, parts=(malformed,),
+            checkpoint=lambda *_: None, assert_lease=lambda: None,
+        )
 
 
 @pytest.mark.parametrize("missing", ["directory", "part"])

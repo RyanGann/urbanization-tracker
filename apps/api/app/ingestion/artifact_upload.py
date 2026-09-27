@@ -66,8 +66,18 @@ def upload(
     then restricted to the same bytes per part, even if its local source changes.
     """
     plan = plan_parts(source, blob, progress=progress)
-    if len(parts) > len(plan) or (parts and upload_id is None):
+
+    def invalid_checkpoint() -> None:
+        if upload_id is not None:
+            assert_lease()
+            try:
+                sink.abort(blob, upload_id)
+            except (ArtifactError, OSError):
+                pass
         raise ArtifactError("artifact_checkpoint")
+
+    if len(parts) > len(plan) or (parts and upload_id is None):
+        invalid_checkpoint()
     for index, part in enumerate(parts):
         expected = plan[index]
         if (
@@ -75,7 +85,9 @@ def upload(
             or part.sha256 != expected.sha256
             or part.byte_size != expected.byte_size
         ):
-            raise ArtifactError("artifact_integrity")
+            # The intact local source was verified by plan_parts; only the
+            # persisted remote checkpoint metadata is inconsistent here.
+            invalid_checkpoint()
     assert_lease()
     try:
         verify(sink, blob, progress=progress)
@@ -84,6 +96,13 @@ def upload(
             raise
     else:
         # A previous attempt may have completed remotely before its DB commit.
+        # A stale worker may also have left a different multipart upload open.
+        if upload_id is not None:
+            assert_lease()
+            try:
+                sink.abort(blob, upload_id)
+            except (ArtifactError, OSError):
+                pass
         return
     if upload_id is None:
         upload_id = sink.begin(blob)

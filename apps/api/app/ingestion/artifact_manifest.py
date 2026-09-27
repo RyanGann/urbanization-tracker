@@ -199,6 +199,15 @@ class ArtifactManifest:
             blob = session.get(ArtifactBlob, reference.blob_id)
             assert blob is not None
             condition = [] if audit else [ArtifactCopy.state != "verified"]
+            # Revoke verification under the canonical lock before auditing
+            # remote bytes. A crash or expired lease must remain fail-closed.
+            claim_values: dict[str, object] = {
+                "lease_token": token,
+                "lease_expires_at": func.clock_timestamp() + timedelta(seconds=LEASE_SECONDS),
+                "attempts": ArtifactCopy.attempts + 1,
+            }
+            if audit:
+                claim_values["state"] = "uploaded"
             row = session.scalar(
                 update(ArtifactCopy)
                 .where(
@@ -214,11 +223,7 @@ class ArtifactManifest:
                     ),
                     *condition,
                 )
-                .values(
-                    lease_token=token,
-                    lease_expires_at=func.clock_timestamp() + timedelta(seconds=LEASE_SECONDS),
-                    attempts=ArtifactCopy.attempts + 1,
-                )
+                .values(**claim_values)
                 .returning(ArtifactCopy)
             )
             if row is None:
@@ -276,6 +281,21 @@ class ArtifactManifest:
             row = self._leased(session, lease)
             row.state = "uploaded"
             row.uploaded_at = _now(session)
+
+    @contextmanager
+    def verified_cleanup(self, reference_id: UUID, sink_id: str) -> Iterator[BlobIdentity]:
+        """Authorize only a quick local unlink while audit claims are excluded."""
+        with self._transaction(canonical=True) as session:
+            row = session.execute(
+                select(ArtifactBlob, ArtifactCopy)
+                .join(ArtifactReference, ArtifactReference.blob_id == ArtifactBlob.id)
+                .join(ArtifactCopy, ArtifactCopy.blob_id == ArtifactBlob.id)
+                .where(ArtifactReference.id == reference_id, ArtifactCopy.sink_id == sink_id)
+                .with_for_update(of=ArtifactCopy)
+            ).one_or_none()
+            if row is None or row.ArtifactCopy.state != "verified":
+                raise ArtifactError("artifact_unavailable")
+            yield BlobIdentity(row.ArtifactBlob.sha256, row.ArtifactBlob.byte_size)
 
     def checkpoint(
         self,

@@ -9,7 +9,7 @@ from concurrent.futures import ThreadPoolExecutor
 from copy import deepcopy
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
-from threading import Barrier
+from threading import Barrier, Event
 from typing import Any, cast
 from unittest.mock import patch
 from uuid import UUID, uuid4
@@ -24,7 +24,7 @@ from app.ingestion.artifact_manifest import (
     require_verified_references,
 )
 from app.ingestion.artifact_service import ArtifactService
-from app.ingestion.artifact_sink import ArtifactError, BlobIdentity, verify
+from app.ingestion.artifact_sink import ArtifactError, BlobIdentity, hash_stream, verify
 from app.ingestion.artifact_upload import upload
 from app.ingestion.connectors.arcgis import ArcGISLayerConfig, ArcGISRestConnector
 from app.ingestion.pipeline import ingest_huntsville
@@ -146,6 +146,89 @@ def run_manifest_checks() -> dict[str, object]:
                     run_id="run-one",
                     sink_id=service.sink_id,
                 )
+        def require_first_reference() -> None:
+            with SessionLocal.begin() as session:
+                with CollectionUnitOfWork(session).canonical_mutation():
+                    require_verified_references(
+                        session, reference_ids=(reference_one,), source_key=source,
+                        run_id="run-one", sink_id=service.sink_id,
+                    )
+
+        def assert_first_reference_blocked() -> None:
+            try:
+                require_first_reference()
+            except ArtifactError as error:
+                assert error.code == "artifact_unavailable"
+            else:
+                raise AssertionError("publication accepted an unverified audit copy")
+
+        audit_started = Barrier(2)
+        audit_release = Event()
+
+        def paused_verify(sink, identity, *, progress) -> None:
+            audit_started.wait(timeout=10)
+            assert audit_release.wait(timeout=10)
+            verify(sink, identity, progress=progress)
+
+        # The auditor has committed its claim and released C02 before object I/O.
+        # A second session must refuse publication even after its lease expires.
+        with patch("app.ingestion.artifact_service.verify", paused_verify):
+            with ThreadPoolExecutor(max_workers=1) as workers:
+                audit_future = workers.submit(service.audit, reference_one)
+                try:
+                    audit_started.wait(timeout=10)
+                    assert_first_reference_blocked()
+                    with SessionLocal.begin() as session:
+                        session.execute(
+                            update(ArtifactCopy)
+                            .where(ArtifactCopy.blob_id == new_lease.blob_id,
+                                   ArtifactCopy.sink_id == service.sink_id)
+                            .values(lease_expires_at=datetime.now(UTC) - timedelta(seconds=1))
+                        )
+                    assert_first_reference_blocked()
+                finally:
+                    audit_release.set()
+                try:
+                    audit_future.result(timeout=10)
+                except ArtifactLeaseLost:
+                    pass
+                else:
+                    raise AssertionError("expired audit worker restored verification")
+        assert_first_reference_blocked()
+        service.audit(reference_one)
+        require_first_reference()
+
+        hashed = Barrier(2)
+        cleanup_release = Event()
+
+        def paused_hash(source_file, *, max_bytes):
+            result = hash_stream(source_file, max_bytes=max_bytes)
+            hashed.wait(timeout=10)
+            assert cleanup_release.wait(timeout=10)
+            return result
+
+        # Cleanup first observes verified and hashes the intact local copy;
+        # an audit revokes verification before cleanup authorizes its unlink.
+        with patch("app.ingestion.artifact_service.hash_stream", paused_hash):
+            with ThreadPoolExecutor(max_workers=1) as workers:
+                cleanup_future = workers.submit(service.cleanup_verified, reference_one, path)
+                try:
+                    hashed.wait(timeout=10)
+                    cleanup_audit = manifest.claim(reference_one, service.sink_id, audit=True)
+                    assert cleanup_audit is not None
+                finally:
+                    cleanup_release.set()
+                try:
+                    cleanup_future.result(timeout=10)
+                except ArtifactError as error:
+                    assert error.code == "artifact_unavailable"
+                else:
+                    raise AssertionError("cleanup deleted the last good copy during audit")
+        assert path.read_bytes() == data
+        verify(service.sink, cleanup_audit.blob)
+        manifest.verified(cleanup_audit)
+        require_first_reference()
+
         second_blob = BlobIdentity(hashlib.sha256(b"required text").hexdigest(), 13)
         for required in (True, False):
             try:
@@ -404,6 +487,10 @@ def run_manifest_checks() -> dict[str, object]:
             "pending_agenda_preserves_prior_revision": True,
             "verified_agenda_replaces_four_collections_atomically": True,
             "invalid_multipart_checkpoint_recovers": True,
+            "active_audit_blocks_publication": True,
+            "expired_audit_blocks_publication_until_reverified": True,
+            "expired_audit_worker_cannot_restore_verified": True,
+            "cleanup_preserves_local_copy_during_audit": True,
         }
 
 

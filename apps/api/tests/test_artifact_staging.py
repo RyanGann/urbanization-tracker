@@ -3,6 +3,7 @@ from __future__ import annotations
 import hashlib
 from concurrent.futures import ThreadPoolExecutor
 from concurrent.futures import TimeoutError as FuturesTimeoutError
+from contextlib import nullcontext
 from pathlib import Path
 from threading import Event
 from types import SimpleNamespace
@@ -62,7 +63,10 @@ def test_cleanup_requires_verified_matching_bytes(
     def lookup(_reference_id: object, _sink_id: object) -> tuple[BlobIdentity, str]:
         return expected, state
 
-    service.manifest = SimpleNamespace(lookup=lookup)  # type: ignore[assignment]
+    service.manifest = SimpleNamespace(  # type: ignore[assignment]
+        lookup=lookup,
+        verified_cleanup=lambda *_: nullcontext(expected),
+    )
     with pytest.raises(ArtifactError, match="artifact_unavailable"):
         service.cleanup_verified(reference_id, path)
     assert path.exists()
@@ -112,6 +116,7 @@ def test_pipeline_relative_path_uses_checked_in_data_root(
     service.manifest = SimpleNamespace(  # type: ignore[assignment]
         reserve=lambda **_kwargs: reference_id,
         lookup=lambda _reference_id, _sink_id: (blob, "verified"),
+        verified_cleanup=lambda *_: nullcontext(blob),
     )
     resumed: list[Path] = []
     monkeypatch.setattr(service, "resume", lambda _reference_id, path: resumed.append(path))
@@ -180,7 +185,8 @@ def test_cleanup_cannot_unlink_a_concurrent_replacement(
         write_staged_bytes(tmp_path, path, b"verified")
         blob = BlobIdentity(hashlib.sha256(b"verified").hexdigest(), 8)
         service.manifest = SimpleNamespace(  # type: ignore[assignment]
-            lookup=lambda _reference_id, _sink_id: (blob, "verified")
+            lookup=lambda _reference_id, _sink_id: (blob, "verified"),
+            verified_cleanup=lambda *_: nullcontext(blob),
         )
         hashed = Event()
         release = Event()

@@ -146,6 +146,11 @@ class ArtifactService:
                     local = hash_stream(source, max_bytes=self.settings.artifact_max_bytes)
                 if local != blob:
                     raise ArtifactError("artifact_integrity")
-                path.unlink()
+                # Hash outside the mutation transaction, then recheck under
+                # the same lock that revokes verification for remote audits.
+                with self.manifest.verified_cleanup(reference_id, self.sink_id) as durable:
+                    if local != durable:
+                        raise ArtifactError("artifact_integrity")
+                    path.unlink()
             except OSError:
                 raise ArtifactError("artifact_path") from None
