@@ -55,7 +55,7 @@ def _retryable_database_error(error: Exception) -> bool:
         return False
     state = getattr(error.orig, "sqlstate", None) or getattr(error.orig, "pgcode", None)
     return error.connection_invalidated or isinstance(state, str) and (
-        state in RETRYABLE_SQLSTATES or state.startswith(("08", "53"))
+        state in RETRYABLE_SQLSTATES or state.startswith(("08", "53", "58"))
     )
 
 
@@ -78,6 +78,7 @@ def _report(
         "source_snapshot_sha256": build.source_snapshot_sha256,
         "display_version": build.display_version,
         "config_sha256": build.config_sha256,
+        "postgis_execution_version": build.config_json["postgis_execution_version"],
         "status": build.status,
         "display_status": build.status,
         "import_status": layer.import_status,
@@ -142,18 +143,31 @@ def _source_snapshot(session: Session, layer: EnvironmentalLayer) -> str:
         "duplicate_count": layer.duplicate_count,
     }) + b"\n")
     rows = session.execute(text("""
-        SELECT source_feature_id, import_fingerprint
+        SELECT source_feature_id, import_fingerprint,
+               CASE WHEN octet_length(ST_AsEWKB(geometry)) <= :max_bytes
+                    THEN encode(sha256(ST_AsEWKB(geometry)), 'hex') END AS geometry_sha256
         FROM environmental_features
         WHERE environmental_layer_id = :layer_id AND import_managed IS TRUE
         ORDER BY source_feature_id COLLATE "C"
-    """).execution_options(yield_per=128), {"layer_id": layer.id})
-    for source_id, fingerprint in rows:
-        digest.update(canonical_bytes([source_id, fingerprint]) + b"\n")
+    """).execution_options(yield_per=128), {"layer_id": layer.id, "max_bytes": MAX_INPUT_BYTES})
+    for source_id, fingerprint, geometry_sha in rows:
+        if geometry_sha is None:
+            raise DisplayBuildError("canonical_snapshot_input_oversized")
+        digest.update(canonical_bytes([source_id, fingerprint, geometry_sha]) + b"\n")
     return digest.hexdigest()
 
 
+def _backend_version(session: Session) -> str:
+    # Includes the actual PostGIS, GEOS and PROJ implementations, not an image tag.
+    value = session.scalar(text("SELECT postgis_full_version()"))
+    if not isinstance(value, str) or not value:
+        raise DisplayBuildError("postgis_execution_version_missing")
+    return value
+
+
 def _ensure_build(
-    session: Session, layer: EnvironmentalLayer, version: str, snapshot_sha: str
+    session: Session, layer: EnvironmentalLayer, version: str, snapshot_sha: str,
+    backend_version: str,
 ) -> tuple[EnvironmentalDisplayBuild, list[EnvironmentalDisplayBand]]:
     existing = session.scalar(select(EnvironmentalDisplayBuild).where(
         EnvironmentalDisplayBuild.environmental_layer_id == layer.id,
@@ -167,8 +181,8 @@ def _ensure_build(
             source_checksum=str(layer.source_checksum),
             source_snapshot_sha256=snapshot_sha,
             display_version=version,
-            config_sha256=config_hash(),
-            config_json=recipe(),
+            config_sha256=config_hash(backend_version),
+            config_json=recipe(backend_version),
             status="building",
             summary_json={},
         )
@@ -191,8 +205,8 @@ def _ensure_build(
         or build.data_version != layer.data_version
         or build.source_checksum != layer.source_checksum
         or build.source_snapshot_sha256 != snapshot_sha
-        or build.config_sha256 != config_hash()
-        or build.config_json != recipe()
+        or build.config_sha256 != config_hash(backend_version)
+        or build.config_json != recipe(backend_version)
     ):
         raise DisplayBuildError("immutable_build_identity_mismatch")
     bands = list(session.scalars(select(EnvironmentalDisplayBand).where(
@@ -650,8 +664,9 @@ def build_environmental_display(
         if layer.accepted_count != _feature_count(session, layer.id):
             raise DisplayBuildError("canonical_import_count_mismatch")
         snapshot_sha = _source_snapshot(session, layer)
-        version = display_version(data_version, snapshot_sha)
-        build, stored_bands = _ensure_build(session, layer, version, snapshot_sha)
+        backend_version = _backend_version(session)
+        version = display_version(data_version, snapshot_sha, backend_version)
+        build, stored_bands = _ensure_build(session, layer, version, snapshot_sha, backend_version)
         by_key = {band.band_key: band for band in stored_bands}
         if build.status == "validated":
             for spec in BANDS:

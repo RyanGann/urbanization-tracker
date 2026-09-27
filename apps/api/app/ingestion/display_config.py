@@ -7,7 +7,7 @@ import json
 from dataclasses import dataclass
 from typing import Any
 
-ALGORITHM_VERSION = "p04a-transform-simplify-subdivide-validate-v2"
+ALGORITHM_VERSION = "p04a-transform-simplify-subdivide-validate-v3"
 MAX_VERTICES = 256
 MAX_INPUT_BYTES = 32 * 1024 * 1024
 MAX_INPUT_VERTICES = 1_000_000
@@ -41,9 +41,12 @@ def sha256(value: bytes) -> str:
     return hashlib.sha256(value).hexdigest()
 
 
-def recipe() -> dict[str, Any]:
+def recipe(backend_version: str) -> dict[str, Any]:
+    if not backend_version:
+        raise ValueError("PostGIS execution version is required")
     return {
         "algorithm": ALGORITHM_VERSION,
+        "postgis_execution_version": backend_version,
         "source_srid": 4326,
         "display_srid": 3857,
         "geometry_family": "polygon_or_multipolygon_only",
@@ -68,16 +71,16 @@ def recipe() -> dict[str, Any]:
     }
 
 
-def config_hash() -> str:
-    return sha256(canonical_bytes(recipe()))
+def config_hash(backend_version: str) -> str:
+    return sha256(canonical_bytes(recipe(backend_version)))
 
 
-def display_version(data_version: str, source_snapshot_sha256: str) -> str:
+def display_version(data_version: str, source_snapshot_sha256: str, backend_version: str) -> str:
     for value in (data_version, source_snapshot_sha256):
         if len(value) != 64 or any(c not in "0123456789abcdef" for c in value):
             raise ValueError("version inputs must be lowercase SHA-256 digests")
     return sha256(canonical_bytes({
         "data_version": data_version,
         "source_snapshot_sha256": source_snapshot_sha256,
-        "recipe": recipe(),
+        "recipe": recipe(backend_version),
     }))

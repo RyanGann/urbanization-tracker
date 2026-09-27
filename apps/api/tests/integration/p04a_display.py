@@ -217,8 +217,9 @@ def _selective_plan(build_id: int) -> object:
     with SessionLocal() as session:
         layer = display_builder._canonical_layer(session, background, background_version)
         snapshot = display_builder._source_snapshot(session, layer)
-        version = display_builder.display_version(background_version, snapshot)
-        build, _ = display_builder._ensure_build(session, layer, version, snapshot)
+        backend = display_builder._backend_version(session)
+        version = display_builder.display_version(background_version, snapshot, backend)
+        build, _ = display_builder._ensure_build(session, layer, version, snapshot, backend)
         background_build_id = build.id
         feature_id = session.scalar(text("""
             SELECT id FROM environmental_features WHERE environmental_layer_id = :id
@@ -330,6 +331,24 @@ def run(output: Path) -> dict:
             raise AssertionError("statement timeout became a permanent feature verdict")
     assert _checkpoint_snapshot(_build_id(layer_id)) == checkpoint_before
     assert _canonical_hash(layer_id) == original_hash
+
+    def system_failure(session, feature_id, tolerance):
+        if feature_id == timeout_feature_id:
+            session.execute(text("""
+                DO $$ BEGIN
+                    RAISE EXCEPTION 'synthetic storage failure' USING ERRCODE = '58030';
+                END $$
+            """))
+        return original_project(session, feature_id, tolerance)
+
+    with patch.object(display_builder, "_simplified", system_failure):
+        try:
+            build_environmental_display(LAYER, VERSION, batch_size=3)
+        except DBAPIError as exc:
+            assert getattr(exc.orig, "sqlstate", None) == "58030"
+        else:
+            raise AssertionError("database system failure became a permanent feature verdict")
+    assert _checkpoint_snapshot(_build_id(layer_id)) == checkpoint_before
     first = build_environmental_display(LAYER, VERSION, batch_size=3)
     assert first["display_status"] == "validated" and not first["publicly_active"]
     assert first["coverage_status"] == "unknown"
@@ -410,7 +429,7 @@ def run(output: Path) -> dict:
             try:
                 build_environmental_display(LAYER, VERSION)
             except DisplayBuildError as exc:
-                assert str(exc) == "canonical_geometry_changed_since_checkpoint"
+                assert str(exc) == "canonical_snapshot_input_oversized"
             else:
                 raise AssertionError("enlarged canonical input passed replay transfer guard")
     finally:
@@ -422,6 +441,55 @@ def run(output: Path) -> dict:
     assert build_environmental_display(LAYER, VERSION)["replayed"]
     assert _canonical_hash(layer_id) == original_hash
     assert _screening(layer_id) == original_screening
+
+    # A geometry-only edit to an unprocessed row must change identity even
+    # when a privileged writer leaves the P03 fingerprint unchanged.
+    mutation_layer = "p04a_unprocessed_mutation"
+    mutation_version = "9" * 64
+    mutation_id = _seed_layer(mutation_layer, mutation_version, fixture)
+    try:
+        build_environmental_display(
+            mutation_layer, mutation_version, batch_size=2, fail_after_batches=1,
+        )
+    except RuntimeError as exc:
+        assert str(exc) == "injected_after_display_checkpoint"
+    mutation_build_id = _build_id(mutation_id)
+    mutation_checkpoint = _checkpoint_snapshot(mutation_build_id)
+    with SessionLocal.begin() as session:
+        unprocessed_id, unprocessed_ewkb = session.execute(text("""
+            SELECT id, ST_AsEWKB(geometry) FROM environmental_features
+            WHERE environmental_layer_id = :id ORDER BY id OFFSET 2 LIMIT 1
+        """), {"id": mutation_id}).one()
+        original_mutation_version = session.scalar(text("""
+            SELECT display_version FROM environmental_display_builds WHERE id = :id
+        """), {"id": mutation_build_id})
+        session.execute(text("""
+            UPDATE environmental_features SET geometry = ST_Translate(geometry, 0.001, 0)
+            WHERE id = :id
+        """), {"id": unprocessed_id})
+    try:
+        try:
+            build_environmental_display(
+                mutation_layer, mutation_version, batch_size=2, fail_after_batches=1,
+            )
+        except RuntimeError as exc:
+            assert str(exc) == "injected_after_display_checkpoint"
+        with SessionLocal() as session:
+            versions = session.scalars(text("""
+                SELECT display_version FROM environmental_display_builds
+                WHERE environmental_layer_id = :id
+            """), {"id": mutation_id}).all()
+        assert len(versions) == 2 and len(set(versions)) == 2
+        assert original_mutation_version in versions
+        assert _checkpoint_snapshot(mutation_build_id) == mutation_checkpoint
+    finally:
+        with SessionLocal.begin() as session:
+            session.execute(text("""
+                UPDATE environmental_features SET geometry = ST_GeomFromEWKB(:ewkb)
+                WHERE id = :id
+            """), {"id": unprocessed_id, "ewkb": bytes(unprocessed_ewkb)})
+    mutation_resume = build_environmental_display(mutation_layer, mutation_version)
+    assert mutation_resume["display_version"] == original_mutation_version
     with SessionLocal() as session:
         hole = session.execute(text("""
             SELECT r.source_holes, r.display_holes FROM environmental_display_feature_results r
@@ -587,6 +655,9 @@ def run(output: Path) -> dict:
         "metadata_only_input_batches": True,
         "enlarged_canonical_replay_refused": True,
         "statement_timeout_preserves_committed_checkpoint": True,
+        "system_failure_preserves_committed_checkpoint": True,
+        "unprocessed_geometry_mutation_changes_identity": True,
+        "postgis_execution_version": first["postgis_execution_version"],
         "bands": first["bands"],
         "hole_counts": list(hole), "multipart_components": list(multipart),
         "dense_parts": dense_parts, "maximum_part_vertices": maximum_vertices,

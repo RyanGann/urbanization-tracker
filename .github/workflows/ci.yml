@@ -103,6 +103,9 @@ jobs:
       - name: Check environmental shadow imports and recovery
         run: node scripts/run-integration.mjs --suite live --scenario layer-import
 
+      - name: Check immutable display builder and checkpoint recovery
+        run: node scripts/run-integration.mjs --suite api --scenario display-builder
+
       - name: Upload integration artifacts
         if: always()
         uses: actions/upload-artifact@v4
