@@ -277,6 +277,10 @@ def run(output: Path) -> dict:
     original_hash = _canonical_hash(layer_id)
     original_screening = _screening(layer_id)
     with SessionLocal() as session:
+        metadata = display_builder._next_features(session, layer_id, 0, 64)
+        assert len(metadata) == len(fixture)
+        assert all("input_ewkb" not in feature for feature in metadata)
+    with SessionLocal() as session:
         catalog_before = session.scalar(text("""
             SELECT payload_json::text FROM processed_collection_items
             WHERE collection_name = 'map_layer_catalog' AND item_id = 'latest'
@@ -352,6 +356,35 @@ def run(output: Path) -> dict:
                 FROM environmental_features f
                 WHERE p.id = :id AND f.id = p.environmental_feature_id
             """), {"id": part_id})
+    # Exercise the current-size transfer guard with a small deterministic
+    # ceiling rather than allocating a 32 MiB tamper fixture. Fingerprints are
+    # unchanged deliberately, so the existing version's replay must catch it.
+    with SessionLocal.begin() as session:
+        feature_id, canonical_ewkb = session.execute(text("""
+            SELECT id, ST_AsEWKB(geometry) FROM environmental_features
+            WHERE environmental_layer_id = :id AND source_feature_id = 'hole'
+        """), {"id": layer_id}).one()
+        assert len(bytes(canonical_ewkb)) < 512
+        enlarged_bytes = session.scalar(text("""
+            UPDATE environmental_features SET geometry = ST_Segmentize(geometry, 0.0001)
+            WHERE id = :id RETURNING octet_length(ST_AsEWKB(geometry))
+        """), {"id": feature_id})
+        assert enlarged_bytes > 512
+    try:
+        with patch.object(display_builder, "MAX_INPUT_BYTES", 512):
+            try:
+                build_environmental_display(LAYER, VERSION)
+            except DisplayBuildError as exc:
+                assert str(exc) == "canonical_geometry_changed_since_checkpoint"
+            else:
+                raise AssertionError("enlarged canonical input passed replay transfer guard")
+    finally:
+        with SessionLocal.begin() as session:
+            session.execute(text("""
+                UPDATE environmental_features SET geometry = ST_GeomFromEWKB(:ewkb)
+                WHERE id = :id
+            """), {"id": feature_id, "ewkb": bytes(canonical_ewkb)})
+    assert build_environmental_display(LAYER, VERSION)["replayed"]
     assert _canonical_hash(layer_id) == original_hash
     assert _screening(layer_id) == original_screening
     with SessionLocal() as session:
@@ -516,6 +549,8 @@ def run(output: Path) -> dict:
         "config_sha256": first["config_sha256"],
         "part_sha256": first_part_hash,
         "reverse_insertion_order_checksums_match": True,
+        "metadata_only_input_batches": True,
+        "enlarged_canonical_replay_refused": True,
         "bands": first["bands"],
         "hole_counts": list(hole), "multipart_components": list(multipart),
         "dense_parts": dense_parts, "maximum_part_vertices": maximum_vertices,

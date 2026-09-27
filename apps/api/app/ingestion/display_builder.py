@@ -196,8 +196,6 @@ def _next_features(
     return [dict(row) for row in session.execute(text("""
         SELECT id, source_feature_id, import_fingerprint,
                octet_length(ST_AsEWKB(geometry)) AS input_bytes,
-               CASE WHEN octet_length(ST_AsEWKB(geometry)) <= :max_input_bytes
-                    THEN ST_AsEWKB(geometry) END AS input_ewkb,
                ST_NPoints(geometry) AS input_vertices,
                ST_SRID(geometry) AS input_srid,
                ST_IsValid(geometry) AS input_valid,
@@ -211,7 +209,6 @@ def _next_features(
         ORDER BY id LIMIT :batch_size
     """), {
         "layer_id": layer_id, "checkpoint": checkpoint, "batch_size": batch_size,
-        "max_input_bytes": MAX_INPUT_BYTES,
     }).mappings().all()]
 
 
@@ -320,6 +317,16 @@ def _build_feature(
     session: Session, build: EnvironmentalDisplayBuild, band: DisplayBand,
     feature: dict[str, Any],
 ) -> tuple[EnvironmentalDisplayFeatureResult, list[bytes]]:
+    # Batch traversal retains metadata only. At most one bounded canonical
+    # EWKB is resident while this feature's derivative is generated.
+    feature = dict(feature)
+    feature["input_ewkb"] = None
+    if feature["input_bytes"] <= MAX_INPUT_BYTES:
+        feature["input_ewkb"] = session.scalar(text("""
+            SELECT CASE WHEN octet_length(ST_AsEWKB(geometry)) <= :max_input_bytes
+                        THEN ST_AsEWKB(geometry) END
+            FROM environmental_features WHERE id = :id
+        """), {"id": feature["id"], "max_input_bytes": MAX_INPUT_BYTES})
     input_ewkb = (
         _bytes(feature["input_ewkb"])
         if feature["input_ewkb"] is not None else b""
@@ -566,8 +573,8 @@ def _validate_checkpoint(
         SELECT r.environmental_feature_id, r.input_geometry_sha256,
                r.input_fingerprint, f.import_fingerprint,
                r.source_feature_id AS result_source_id, f.source_feature_id,
-               CASE WHEN r.error_code = 'input_feature_byte_budget_exceeded'
-                    THEN NULL ELSE ST_AsEWKB(f.geometry) END AS ewkb,
+               CASE WHEN octet_length(ST_AsEWKB(f.geometry)) <= :max_input_bytes
+                    THEN ST_AsEWKB(f.geometry) END AS ewkb,
                octet_length(ST_AsEWKB(f.geometry)) AS input_bytes,
                r.error_code
         FROM environmental_display_feature_results r
@@ -575,8 +582,9 @@ def _validate_checkpoint(
         WHERE r.build_id = :build_id AND r.band_key = :band_key
           AND f.environmental_layer_id = :layer_id AND f.import_managed IS TRUE
         ORDER BY r.environmental_feature_id
-    """).execution_options(yield_per=128), {
+    """).execution_options(yield_per=1), {
         "build_id": build.id, "band_key": band.band_key, "layer_id": layer.id,
+        "max_input_bytes": MAX_INPUT_BYTES,
     }).mappings()
     checked = 0
     for row in originals:
