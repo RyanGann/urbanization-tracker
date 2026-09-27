@@ -11,17 +11,24 @@ import json
 import math
 import random
 import time
+from contextlib import nullcontext
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
-from urllib.parse import urlencode
+from urllib.parse import parse_qsl, urlencode
+from uuid import uuid4
 
 import httpx
 from shapely.errors import ShapelyError
 from shapely.geometry import MultiPolygon, Polygon, shape
 
 from app.ingestion.connectors.arcgis import ArcGISLayerConfig
+from app.ingestion.control_artifacts import (
+    MAX_PAGE_ARTIFACTS,
+    ControlArtifactError,
+    ControlArtifacts,
+)
 from app.ingestion.source_merge import SourceBatch, SourceRecord
 from app.ingestion.sources.huntsville import ALL_SOURCES as HUNTSVILLE_SOURCES
 from app.ingestion.sources.madison_county import DEVELOPMENT_SOURCES as COUNTY_SOURCES
@@ -37,6 +44,42 @@ class ScopeError(ValueError):
 
 class BudgetExceeded(ScopeError):
     """A hard safety budget stopped collection."""
+
+
+def _authority_matches(request: httpx.Request) -> bool:
+    values = request.headers.get_list("host")
+    if len(values) != 1 or request.url.scheme not in {"http", "https"}:
+        return False
+    try:
+        authority = httpx.URL(f"{request.url.scheme}://{values[0]}")
+    except httpx.InvalidURL:
+        return False
+    if (authority.username or authority.password or authority.path != "/"
+        or authority.query or authority.fragment):
+        return False
+    default_port = 443 if request.url.scheme == "https" else 80
+    expected_port = request.url.port if request.url.port is not None else default_port
+    host_port = authority.port if authority.port is not None else default_port
+    return (authority.raw_host.lower() == request.url.raw_host.lower()
+            and host_port == expected_port)
+
+
+def _form_encoding_matches(request: httpx.Request) -> bool:
+    types = request.headers.get_list("content-type")
+    encodings = request.headers.get_list("content-encoding")
+    if len(types) != 1 or len(encodings) > 1:
+        return False
+    if encodings and encodings[0].strip().lower() != "identity":
+        return False
+    parts = [part.strip() for part in types[0].split(";")]
+    if parts[0].lower() != "application/x-www-form-urlencoded" or len(parts) > 2:
+        return False
+    if len(parts) == 2:
+        key, separator, value = parts[1].partition("=")
+        if (not separator or key.strip().lower() != "charset"
+            or value.strip().lower() not in {"utf-8", '"utf-8"'}):
+            return False
+    return True
 
 
 def _canonical(value: Any) -> bytes:
@@ -218,7 +261,8 @@ class CollectionBudget:
 
 class _Session:
     def __init__(
-        self, client: httpx.Client, budget: CollectionBudget, *, sleep: Any = time.sleep
+        self, client: httpx.Client, budget: CollectionBudget, *, sleep: Any = time.sleep,
+        controls: ControlArtifacts | None = None,
     ) -> None:
         self.client = client
         self.budget = budget
@@ -229,12 +273,27 @@ class _Session:
         self.staged_bytes = 0
         self.retries = 0
         self.request_log: list[dict[str, Any]] = []
+        self.controls = controls
 
     def get(
-        self, url: str, params: dict[str, str], *, byte_limit: int | None = None
+        self, url: str, params: dict[str, str], *, byte_limit: int | None = None,
+        control_role: str | None = None,
     ) -> dict[str, Any]:
         cap = byte_limit or self.budget.max_response_bytes
         for attempt in range(self.budget.max_attempts):
+            # Hooks can mutate identity or install laundering response hooks.
+            # Supported injected clients are hook-free; recheck every send.
+            if any(self.client.event_hooks.get(kind) for kind in ("request", "response")):
+                raise ScopeError("source_client_hooks_refused")
+            if self.client.auth is not None:
+                raise ScopeError("source_client_auth_refused")
+            credential_headers = (
+                "authorization", "proxy-authorization", "cookie", "x-esri-authorization",
+            )
+            if self.client.cookies or any(
+                name in self.client.headers for name in credential_headers
+            ):
+                raise ScopeError("source_client_credentials_refused")
             if self.requests >= self.budget.max_requests:
                 raise BudgetExceeded("request_budget_exceeded")
             now = time.monotonic()
@@ -261,10 +320,43 @@ class _Session:
             try:
                 # A full city polygon is too large for a URL. ArcGIS accepts
                 # form-encoded POST for long read-only query operations.
-                stream = (self.client.stream("POST", url, data=params) if long_query
-                          else self.client.stream("GET", url, params=params))
+                stream = (self.client.stream("POST", url, data=params, follow_redirects=False)
+                          if long_query else
+                          self.client.stream("GET", url, params=params, follow_redirects=False))
                 with stream as response:
                     event["status"] = response.status_code
+                    # A redirect can change host/path, method or scoped query.
+                    # Never label its body as the original allowlisted operation,
+                    # including when a caller supplied a redirect-following client.
+                    if response.is_redirect or response.history:
+                        raise ScopeError("source_redirect_refused")
+                    actual = response.request
+                    if any(name in actual.headers for name in credential_headers):
+                        raise ScopeError("source_client_credentials_refused")
+                    if actual.method != event["method"] or str(
+                        actual.url.copy_with(query=None, fragment=None)
+                    ) != url:
+                        raise ScopeError("actual_request_identity_mismatch")
+                    if not _authority_matches(actual):
+                        raise ScopeError("actual_request_authority_mismatch")
+                    try:
+                        if long_query:
+                            if not _form_encoding_matches(actual):
+                                raise ScopeError("actual_request_form_encoding_mismatch")
+                            # Client-level URL params are not part of this form query.
+                            if actual.url.query:
+                                raise ScopeError("actual_request_query_mismatch")
+                            pairs = parse_qsl(actual.content.decode(), keep_blank_values=True,
+                                              strict_parsing=True)
+                        else:
+                            pairs = list(actual.url.params.multi_items())
+                        if (len(pairs) != len(dict(pairs))
+                            or _digest(dict(pairs)) != _digest(params)):
+                            raise ScopeError("actual_request_query_mismatch")
+                    except ScopeError:
+                        raise
+                    except (ValueError, UnicodeDecodeError) as exc:
+                        raise ScopeError("actual_request_query_mismatch") from exc
                     if (
                         response.status_code in TRANSIENT_STATUS
                         and attempt + 1 < self.budget.max_attempts
@@ -274,14 +366,24 @@ class _Session:
                         self.sleep(delay)
                         continue
                     body = bytearray()
-                    for chunk in response.iter_bytes():
-                        body.extend(chunk)
-                        event["response_bytes"] += len(chunk)
-                        self.staged_bytes += len(chunk)
-                        if len(body) > cap:
-                            raise BudgetExceeded("response_byte_budget_exceeded")
-                        if self.staged_bytes > self.budget.max_staged_bytes:
-                            raise BudgetExceeded("staged_byte_budget_exceeded")
+                    retained = (
+                        self.controls.capture(control_role, event)
+                        if control_role is not None and self.controls is not None
+                        else nullcontext(None)
+                    )
+                    with retained as control_body:
+                        for chunk in response.iter_bytes():
+                            body.extend(chunk)
+                            event["response_bytes"] += len(chunk)
+                            self.staged_bytes += len(chunk)
+                            if len(body) > cap:
+                                raise BudgetExceeded("response_byte_budget_exceeded")
+                            if self.staged_bytes > self.budget.max_staged_bytes:
+                                raise BudgetExceeded("staged_byte_budget_exceeded")
+                            if time.monotonic() - self.started >= self.budget.max_seconds:
+                                raise BudgetExceeded("time_budget_exceeded")
+                            if control_body is not None:
+                                control_body.write(chunk)
                     response.raise_for_status()
             except (httpx.TimeoutException, httpx.TransportError):
                 if attempt + 1 >= self.budget.max_attempts:
@@ -488,6 +590,8 @@ def _stage_page(
     if requested is not None and set(returned) != set(requested):
         raise ScopeError("batch_id_reconciliation_failed")
     page_number = len(report["pages"])
+    if page_number >= MAX_PAGE_ARTIFACTS:
+        raise BudgetExceeded("page_artifact_budget_exceeded")
     page_path = destination / f"page-{page_number:05}.geojson"
     page_bytes = _canonical(payload)
     page_path.write_bytes(page_bytes)
@@ -548,14 +652,16 @@ def _offset_pages(
     if len(seen) != expected:
         raise ScopeError("offset_count_reconciliation_failed")
     final_count = _count(session.get(
-        config.query_url, {**base, "f": "json", "returnCountOnly": "true"}
+        config.query_url, {**base, "f": "json", "returnCountOnly": "true"},
+        control_role="final_count",
     ))
     if final_count != expected:
         raise ScopeError("upstream_count_changed")
     start_edit = metadata.get("editingInfo", {}).get("lastEditDate") if isinstance(
         metadata.get("editingInfo"), dict
     ) else None
-    final_metadata = session.get(config.layer_url, {"f": "json"})
+    final_metadata = session.get(config.layer_url, {"f": "json"},
+                                 control_role="final_metadata")
     end_edit = final_metadata.get("editingInfo", {}).get("lastEditDate") if isinstance(
         final_metadata.get("editingInfo"), dict
     ) else None
@@ -586,10 +692,26 @@ def stage_scoped_source(
         if canary else CollectionBudget()
     )
     owned_client = client is None
-    client = client or httpx.Client(timeout=httpx.Timeout(20.0, connect=5.0), follow_redirects=True)
-    session = _Session(client, budget)
-    destination.mkdir(parents=True, exist_ok=True)
+    client = client or httpx.Client(
+        timeout=httpx.Timeout(20.0, connect=5.0), follow_redirects=False
+    )
+    run_id = str(uuid4())
+    base = _base_query(config, scope)
+    controls = ControlArtifacts(destination, {
+        "source_key": config.key, "run_id": run_id,
+        "scope_id": scope.scope_id_for(config), "scope_version": scope.version,
+        "scope_query_sha256": _digest(base),
+    }, metadata_url=config.layer_url, query_url=config.query_url, expected_queries={
+        **{role: _digest({"f": "json"})
+           for role in ("initial_metadata", "final_metadata")},
+        **{role: _digest({**base, "f": "json", "returnCountOnly": "true"})
+           for role in ("initial_count", "final_count")},
+        **{role: _digest({**base, "f": "json", "returnIdsOnly": "true"})
+           for role in ("initial_ids", "final_ids")},
+    })
+    session = _Session(client, budget, controls=controls)
     report: dict[str, Any] = {
+        "run_id": run_id,
         "source_key": config.key,
         "source_url": config.layer_url,
         "scope_id": scope.scope_id_for(config),
@@ -609,10 +731,17 @@ def stage_scoped_source(
         "rejected": 0,
         "pages": [],
         "canary": canary,
+        "control_artifacts": controls.descriptors,
     }
-    base = _base_query(config, scope)
+    owns_destination = False
     try:
-        metadata = session.get(config.layer_url, {"f": "json"})
+        try:
+            destination.mkdir(parents=True, exist_ok=False)
+        except FileExistsError:
+            raise ScopeError("stage_destination_exists") from None
+        owns_destination = True
+        metadata = session.get(config.layer_url, {"f": "json"},
+                               control_role="initial_metadata")
         fields = metadata.get("fields")
         extent = metadata.get("extent")
         reference = extent.get("spatialReference") if isinstance(extent, dict) else None
@@ -627,7 +756,8 @@ def stage_scoped_source(
         oid_field = _oid_field(metadata, config)
         report["object_id_field"] = oid_field
         count = _count(session.get(
-            config.query_url, {**base, "f": "json", "returnCountOnly": "true"}
+            config.query_url, {**base, "f": "json", "returnCountOnly": "true"},
+            control_role="initial_count",
         ))
         report["expected"] = count
         if count > budget.max_ids:
@@ -639,6 +769,7 @@ def stage_scoped_source(
             initial_payload = session.get(
                 config.query_url, {**base, "f": "json", "returnIdsOnly": "true"},
                 byte_limit=budget.max_ids_bytes,
+                control_role="initial_ids",
             )
             initial_ids = _ids(initial_payload, oid_field, budget.max_ids)
             if len(initial_ids) != count:
@@ -657,6 +788,7 @@ def stage_scoped_source(
                 final_payload = session.get(
                     config.query_url, {**base, "f": "json", "returnIdsOnly": "true"},
                     byte_limit=budget.max_ids_bytes,
+                    control_role="final_ids",
                 )
                 final_ids = _ids(final_payload, oid_field, budget.max_ids)
                 if final_ids != initial_ids:
@@ -676,9 +808,10 @@ def stage_scoped_source(
             report["coverage"] = "partial"
         elif report["fetched"] == count:
             report["coverage"] = "complete"
-    except (ScopeError, httpx.HTTPError, OSError) as exc:
+    except (ScopeError, ControlArtifactError, httpx.HTTPError, OSError) as exc:
         report["error_code"] = (
-            str(exc) if isinstance(exc, ScopeError) else "transport_or_stage_failure"
+            str(exc) if isinstance(exc, (ScopeError, ControlArtifactError))
+            else "transport_or_stage_failure"
         )
         report["coverage"] = (
             "partial" if isinstance(exc, BudgetExceeded) or report["fetched"] else "failed"
@@ -688,7 +821,8 @@ def stage_scoped_source(
         report["retries"] = session.retries
         report["response_bytes"] = session.staged_bytes
         report["request_log"] = session.request_log
-        (destination / "report.json").write_bytes(_canonical(report) + b"\n")
+        if owns_destination:
+            (destination / "report.json").write_bytes(_canonical(report) + b"\n")
         if owned_client:
             client.close()
     return report
@@ -863,6 +997,11 @@ def scoped_attempt_health(existing: dict[str, Any], report: dict[str, Any]) -> d
 
 def record_scoped_attempts(reports: list[dict[str, Any]]) -> None:
     """Short PostgreSQL write for attempt visibility; it publishes no source rows."""
+    reports = [
+        report for report in reports if report.get("error_code") != "stage_destination_exists"
+    ]
+    if not reports:
+        return
     from app.config import get_settings
     from app.db import SessionLocal
     from app.transactional_store import CollectionUnitOfWork

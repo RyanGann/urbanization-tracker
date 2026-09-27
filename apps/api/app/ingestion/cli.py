@@ -306,6 +306,8 @@ def main() -> None:
         selected = list(dict.fromkeys(args.source or sorted(SOURCE_CONFIGS)))
         if args.canary and len(selected) > 5:
             parser.error("--canary permits at most five unique sources (20 requests total)")
+        if any((args.output_dir / key).exists() for key in selected):
+            parser.error("source destination exists; choose a fresh --output-dir for each run")
         reports = []
         for index, key in enumerate(selected):
             if args.canary and index:

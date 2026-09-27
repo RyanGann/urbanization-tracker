@@ -5,9 +5,9 @@ Execution status: [plan.json](plan.json), entry `P04`. Guide baseline: `dbdaf099
 | Field | Assignment |
 | --- | --- |
 | Track / gate | Performance / G1 |
-| Depends on | [P03](P03-canonical-environmental-storage.md), [D01](D01-source-scope-pagination-canaries.md), [O01](O01-durable-artifact-uploads.md) |
+| Depends on | [P03](P03-canonical-environmental-storage.md), [D01](D01-source-scope-pagination-canaries.md), [O01](O01-durable-artifact-uploads.md), [B02](B02-environmental-provenance-attestation.md), [O04](O04-release-data-use-decisions.md) |
 | Review | Lead review |
-| PR boundary | One spatial display-preprocessing/activation PR. |
+| PR boundary | P04a shadow derivative builder, then P04b checked activation/retention. |
 
 Read the shared [contracts](CONTRACTS.md), [testing instructions](TESTING.md) and [handoff rules](DISPATCH.md) first. The [performance plan](PERFORMANCE.md) fixes the architecture, budgets and measurement protocol for this PR. The steps below define this guide's scope; use its manifest entry and evidence to determine current capability.
 
@@ -25,6 +25,33 @@ Full-resolution geometry cannot be clipped and serialized repeatedly on every ma
 These are inspection starting points, not a requirement to put all new code in existing large modules. Prefer a small purpose-specific module where the guide introduces a new service. Add migrations at the current Alembic head; never edit an applied migration.
 
 ## Implementation steps
+
+Split implementation into two PRs. **P04a** depends on P03/D01 and adds immutable
+projected parts, deterministic bounded resumable builds and band/topology validation;
+it has no active pointer, public tile URL or activation. It may proceed while B02
+and O04 remain pending. **P04b** depends on P04a, final O01, B02's exact import
+attestation and O04's source-specific public-display clearance. It adds checked
+pointer/catalog publication, rollback and retention cleanup. P04 remains incomplete
+until both pass; P05 depends on the completed guide.
+
+[B01](B01-control-response-evidence.md) retains original control response bytes;
+[B02](B02-environmental-provenance-attestation.md) independently reconciles durable
+controls/pages and binds new canonical input to exact P03 data_version/checksum.
+Neither count equality nor caller digest assertions can substitute that proof.
+
+P04b must reread the exact public source/use/decision revision; pending, denied,
+wrong-use or stale rights refuse activation. Use an operator command with expected
+active-pointer revision, exact data/input/display versions and attestation digest.
+Its short DB-only transaction atomically records activation history, active/previous
+bindings and catalog revision; stale tokens conflict and failures roll everything
+back. Rollback rechecks retained proof/copies/rights. Keep version URLs at least
+seven days after their last issuance/retirement using database time, without
+shortening that clock on subsequent refresh. Cleanup uses no-write dry run and
+bounded per-version fencing/batches: mark deletion candidates so concurrent
+activation cannot adopt them, recheck active/previous/retained/in-use state before
+each deletion, and preserve canonical geometry/provenance. Do not hold C02 over
+a large delete. Synthetic positive fixtures require explicit test-local rights
+records; production has no fixture or approval flag bypass.
 
 1. Create a derived display-parts table keyed by layer version, feature ID, zoom band and part number, with EPSG:3857 geometry and a GiST index. Canonical EPSG:4326 features remain the only source for environmental analysis.
 

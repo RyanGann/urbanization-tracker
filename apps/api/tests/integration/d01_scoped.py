@@ -168,6 +168,21 @@ def stage(api_url: str, result_path: Path) -> None:
                 "complete", 2, 2
             ):
                 raise AssertionError(f"local HTTP complete page failed: {complete!r}")
+            controls = complete["control_artifacts"]
+            if [item["role"] for item in controls] != [
+                "initial_metadata", "initial_count", "initial_ids", "final_ids"
+            ]:
+                raise AssertionError("complete control roles missing")
+            for item in controls:
+                raw = (root / "complete" / item["path"]).read_bytes()
+                if hashlib.sha256(raw).hexdigest() != item["sha256"] or len(raw) != item["bytes"]:
+                    raise AssertionError("original control checksum/byte count differs")
+                if item["run_id"] != complete["run_id"] or item["source_key"] != SOURCE_KEY:
+                    raise AssertionError("control source/run identity differs")
+            id_controls = [json.loads((root / "complete" / item["path"]).read_bytes())
+                           for item in controls if item["role"].endswith("ids")]
+            if any(item["objectIds"] != [1, 2] for item in id_controls):
+                raise AssertionError("original control ID sets differ")
             record_scoped_attempts([complete])
             staged = _source_row(_public_health(api_url))
             if (staged["status"] != "staged"
@@ -180,6 +195,10 @@ def stage(api_url: str, result_path: Path) -> None:
                 "count_id_mismatch"
             ) or failed["expected"] != 2 or failed["fetched"] != 0:
                 raise AssertionError(f"mismatch did not fail closed: {failed!r}")
+            if [item["role"] for item in failed["control_artifacts"]] != [
+                "initial_metadata", "initial_count", "initial_ids"
+            ]:
+                raise AssertionError("mismatch retained false final control evidence")
             record_scoped_attempts([failed])
         finally:
             server.shutdown()
@@ -198,6 +217,10 @@ def stage(api_url: str, result_path: Path) -> None:
     result = {"fixture_http_requests": FixtureHandler.request_count,
               "complete_requests": complete["requests"],
               "failed_requests": failed["requests"],
+              "complete_control_sha256": {
+                  item["role"]: item["sha256"] for item in complete["control_artifacts"]
+              },
+              "failed_control_roles": [item["role"] for item in failed["control_artifacts"]],
               "before_development_sha256": before_records,
               "after_development_sha256": _hash_records(),
               "source_row": row, "source_health_status": after["status"]}

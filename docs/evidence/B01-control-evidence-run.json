@@ -1,0 +1,47 @@
+{
+  "run_id": "2026-09-27T06-58-18-882Z-cbf9e9f2",
+  "project": "urbanization_t01_04f72b64697e",
+  "suite": "api",
+  "performance": null,
+  "scenario": "d01-scoped",
+  "api_url": "http://127.0.0.1:63445",
+  "fixture_sha256": "932eacb03655a3dee1a2838abf9ddf8d5dfa44f744482408611b61a2561bbee2",
+  "fixture": {
+    "id": "t01-postgis-7820550b2819",
+    "title": "T01 PostGIS Fixture 7820550b2819"
+  },
+  "scenario_artifacts": {
+    "d01_results_sha256": "89698fb1631a7d07bdc734ca20b78c842de2bce70af1ef04da00dc86e2c561ba"
+  },
+  "command": "node scripts/run-integration.mjs --suite api --scenario d01-scoped",
+  "options": {
+    "suite": "api",
+    "scenario": "d01-scoped",
+    "keep_on_failure": false,
+    "assert_failure": false,
+    "isolation_check": false
+  },
+  "outcome": "passed",
+  "failure": null,
+  "commit_sha": "47af8c193825fb90880eb782ece26061e8020af4",
+  "working_tree_dirty": false,
+  "images": {
+    "database": "postgis/postgis:16-3.4",
+    "mail": "axllent/mailpit:v1.27.1",
+    "browser": "mcr.microsoft.com/playwright:v1.60.0-noble"
+  },
+  "image_digests": {
+    "database": "postgis/postgis@sha256:44126d872ac91993766c341e369c539e8196614321765d36a6f1bab0419a5fa5",
+    "mail": "axllent/mailpit@sha256:986b14ff7b253e62883ea19fd3112806f116e5e2f221e03f12fb81c7312ff532",
+    "browser": "mcr.microsoft.com/playwright@sha256:9bd26ad900bb5e0f4dee75839e957a89ae89c2b7ab1e76050e559790e946b948"
+  },
+  "image_ids": {
+    "urbanization_t01_04f72b64697e-api-gateway-1": "sha256:6769dc3a703c719c1d2756bda113659be28ae16cf0da58dd5fd823d6b9a050ea",
+    "urbanization_t01_04f72b64697e-api-1": "sha256:093eb520f2901777f034cfa79db43485542ea22afcf64627aa01f4c063e654b7",
+    "urbanization_t01_04f72b64697e-db-1": "sha256:06287eb8e12c43f425773085c48d6ad02d73f8b442ac209810c1b211eb0a643b",
+    "urbanization_t01_04f72b64697e-mail-1": "sha256:774f5f77986b98051deecb040426ec57c259fd0d61f85724500e6737cadb1747"
+  },
+  "retained": false,
+  "cleanup_result": "removed",
+  "cleanup_failure": null
+}

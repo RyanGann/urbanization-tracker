@@ -100,8 +100,8 @@
       "id": "D01",
       "title": "Fetch a declared pilot scope completely and report source coverage",
       "path": "D01-source-scope-pagination-canaries.md",
-      "status": "in_progress",
-      "status_note": "The scoped-ingestion implementation is merged and the bounded live Python staging CLI ran on 2026-09-27 (evidence: docs/evidence/D01-live-cli.md). It correctly exited 1 on wetlands/county count-ID mismatches. Keep upstream completeness, source activation and dependent release gates open.",
+      "status": "complete",
+      "status_note": "Implementation acceptance complete after merged PR28 and PR33 (bounded actual Python CLI). Wetlands/county count-ID reconciliation, unknown canary coverage and O04 public-display rights remain source activation/release gates; no real snapshot activated.",
       "track": "Data quality",
       "gate": "G1",
       "depends_on": [
@@ -110,8 +110,8 @@
       ],
       "review": "Lead review",
       "pr_boundary": "One ingestion coverage PR across the current ArcGIS connectors; no new sources.",
-      "implementation_pr": "https://github.com/RyanGann/urbanization-tracker/pull/28",
-      "evidence": "../../evidence/D01-scoped-ingestion.md"
+      "implementation_pr": "https://github.com/RyanGann/urbanization-tracker/pull/33",
+      "evidence": "../../evidence/D01-live-cli.md"
     },
     {
       "id": "C04",
@@ -285,10 +285,12 @@
       "depends_on": [
         "P03",
         "D01",
-        "O01"
+        "O01",
+        "B02",
+        "O04"
       ],
       "review": "Lead review",
-      "pr_boundary": "One spatial display-preprocessing/activation PR.",
+      "pr_boundary": "P04a shadow derivative builder, then P04b checked activation/retention.",
       "implementation_pr": null,
       "evidence": null
     },
@@ -651,7 +653,7 @@
       "id": "S04",
       "title": "Patch frontend development tools and retain application compatibility",
       "path": "S04-development-toolchain-security.md",
-      "status": "in_review",
+      "status": "complete",
       "track": "Security",
       "gate": "G0",
       "depends_on": [
@@ -662,6 +664,39 @@
       "pr_boundary": "One development dependency and lockfile PR; no application redesign.",
       "implementation_pr": "https://github.com/RyanGann/urbanization-tracker/pull/35",
       "evidence": "../../evidence/2026-09-27-s04-development-toolchain.md"
+    },
+    {
+      "id": "B01",
+      "title": "Retain bounded original source-control response evidence",
+      "path": "B01-control-response-evidence.md",
+      "status": "in_review",
+      "track": "Data quality",
+      "gate": "G1",
+      "depends_on": [
+        "D01"
+      ],
+      "review": "Lead review",
+      "pr_boundary": "One bounded collector retention PR; staging only.",
+      "implementation_pr": "https://github.com/RyanGann/urbanization-tracker/pull/34",
+      "evidence": "../../evidence/B01-control-evidence.md",
+      "status_note": "Bounded original control retention and deterministic fixtures implemented; clean real API/PostGIS d01-scoped run passed. Awaiting exact-head review/CI. No durable seal, attestation or activation; B02 remains planned."
+    },
+    {
+      "id": "B02",
+      "title": "Bind durable complete scoped evidence to the exact environmental import",
+      "path": "B02-environmental-provenance-attestation.md",
+      "status": "planned",
+      "track": "Data quality",
+      "gate": "G1",
+      "depends_on": [
+        "B01",
+        "P03",
+        "O01"
+      ],
+      "review": "Lead review",
+      "pr_boundary": "One additive shadow-only provenance bridge PR.",
+      "implementation_pr": null,
+      "evidence": null
     }
   ],
   "topological_order": [
@@ -679,9 +714,11 @@
     "S02",
     "C04",
     "D01",
-    "P04",
+    "B01",
+    "B02",
     "C05",
     "O04",
+    "P04",
     "P05",
     "C06",
     "P06",

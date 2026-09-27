@@ -151,12 +151,12 @@ redistributed.
 ```text
 python -m app.ingestion.cli stage-scoped-arcgis \
   --scope-file /isolated/reviewed-scope.json \
-  --output-dir /isolated/staging \
+  --output-dir /isolated/staging-canary \
   --source huntsville_building_permits --canary
 
 python -m app.ingestion.cli stage-scoped-arcgis \
   --scope-file /isolated/reviewed-scope.json \
-  --output-dir /isolated/staging \
+  --output-dir /isolated/staging-full \
   --source huntsville_building_permits --record-attempt
 ```
 
