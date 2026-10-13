@@ -72,6 +72,25 @@ def main() -> None:
     display.add_argument("--batch-size", type=int, default=8)
     display.add_argument("--report", type=Path)
 
+    provenance = subparsers.add_parser(
+        "attest-environmental-scoped",
+        help="Bind durable scoped observations to a shadow P03 import.",
+    )
+    provenance.add_argument("--source", choices=sorted(
+        key for key, config in SOURCE_CONFIGS.items() if config.category
+    ), required=True)
+    provenance_input = provenance.add_mutually_exclusive_group(required=True)
+    provenance_input.add_argument("--run-id",
+                                  help="Existing O01 observation UUID; no upstream requests.")
+    provenance_input.add_argument("--staged-dir", type=Path,
+                                  help="Upload an existing complete D01 staging observation.")
+    provenance.add_argument("--scope-file", type=Path,
+                            help="Required with --staged-dir; exact reviewed scope artifact.")
+    provenance.add_argument("--workspace", type=Path, required=True,
+                            help="Fresh directory beneath ingestion_data_dir/raw.")
+    provenance.add_argument("--apply", action="store_true",
+                            help="Upload generated input/import/attest; never activate.")
+
     huntsville = subparsers.add_parser(
         "ingest-huntsville",
         help="Fetch Huntsville New Subdivisions, Building Permits, and selected context layers.",
@@ -302,6 +321,30 @@ def main() -> None:
         if args.report:
             args.report.write_text(output + "\n", encoding="utf-8")
         print(output)
+        if result["status"] == "failed":
+            raise SystemExit(1)
+    elif args.command == "attest-environmental-scoped":
+        if not args.apply:
+            parser.error("--apply is required for the shadow provenance bridge")
+        if args.staged_dir and not args.scope_file:
+            parser.error("--scope-file is required with --staged-dir")
+        from app.db import SessionLocal
+        from app.ingestion.environmental_bridge import bridge_environmental_observation
+        from app.ingestion.environmental_proof import ProvenanceError, upload_observation
+
+        try:
+            service = ArtifactService(get_settings(), SessionLocal)
+            run_id = args.run_id or upload_observation(
+                service, args.source, args.scope_file, args.staged_dir,
+            )
+            result = bridge_environmental_observation(service, args.source, run_id, args.workspace)
+        except Exception as exc:
+            # Private bodies, geometry, database parameters and credentials stay
+            # out of operator summaries; exact evidence remains in private refs.
+            result = {"status": "failed", "code": (
+                str(exc) if isinstance(exc, ProvenanceError) else "environmental_provenance_failed"
+            )}
+        print(json.dumps(result, indent=2, sort_keys=True))
         if result["status"] == "failed":
             raise SystemExit(1)
     elif args.command == "ingest-huntsville":

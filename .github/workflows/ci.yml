@@ -103,6 +103,9 @@ jobs:
       - name: Check agenda revisions and retained reviewer decisions
         run: node scripts/run-integration.mjs --suite api --scenario c04-agenda-revisions
 
+      - name: Check durable environmental attestation, SQL fences and copied recovery
+        run: node scripts/run-integration.mjs --suite api --scenario b02-provenance
+
       - name: Check public input limits and shared two-worker quotas
         run: node scripts/run-integration.mjs --suite api --scenario input-limits
 
@@ -117,5 +120,16 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: integration-artifacts
-          path: tmp/integration
+          # Diagnostics only: private objects/staging, env files and DB dumps
+          # are outside this explicit artifact allowlist.
+          path: |
+            tmp/integration/*/*.json
+            tmp/integration/*/*.log
+            tmp/integration/*/*.png
+            tmp/integration/*/playwright/**
+            tmp/integration/*/p04a/*.json
+            tmp/integration/*/p04a/*.svg
+            tmp/integration/*/p04a/*.png
+            tmp/integration/*/p03/results.json
+            tmp/integration/*/*-data/results.json
           if-no-files-found: ignore

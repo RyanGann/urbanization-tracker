@@ -1,0 +1,299 @@
+{
+  "bands": [
+    {
+      "checkpoint_feature_id": 5,
+      "checkpoint_sha256": "6a9cf235cbc42aa4b1d27207772584715ffa1f2610411f519b49eac04158a4ce",
+      "collapsed": 0,
+      "diagnostics": {
+        "samples": []
+      },
+      "invalid": 0,
+      "key": "z08_10",
+      "parts": 6,
+      "parts_sha256": "a772ec5ef39c3d8104b9084dafe2b76a0d579469c5784e5e6e79e274fdffe820",
+      "processed": 5,
+      "status": "validated"
+    },
+    {
+      "checkpoint_feature_id": 5,
+      "checkpoint_sha256": "14d938c667cdd651416f135bc337c95d63bdb0816996ec4a08b781b660ccaa86",
+      "collapsed": 0,
+      "diagnostics": {
+        "samples": []
+      },
+      "invalid": 0,
+      "key": "z11_12",
+      "parts": 6,
+      "parts_sha256": "712d93a48c285cde6eed09e82cf8810e4af963ea2697a587517dcf6c05fdc7d2",
+      "processed": 5,
+      "status": "validated"
+    },
+    {
+      "checkpoint_feature_id": 5,
+      "checkpoint_sha256": "89f4c82e74c435658f9ec5976ae6050799d1c1335038ce25f26a28c6109792e7",
+      "collapsed": 0,
+      "diagnostics": {
+        "samples": []
+      },
+      "invalid": 0,
+      "key": "z13_14",
+      "parts": 6,
+      "parts_sha256": "4ea7696ba72127de4ff4500a9a65ecb32bd3a3a623806e6155e8b2919c7bad13",
+      "processed": 5,
+      "status": "validated"
+    },
+    {
+      "checkpoint_feature_id": 5,
+      "checkpoint_sha256": "247fea2301b36c2a777e2ca8cebd7a4074b37f683bb546c2a4b24658f96e20f0",
+      "collapsed": 0,
+      "diagnostics": {
+        "samples": []
+      },
+      "invalid": 0,
+      "key": "z15_16",
+      "parts": 6,
+      "parts_sha256": "6b92a87cbbf2a7e872d7d19a8388b83ca97b35ff2b7c1141253dbe0e7adecabb",
+      "processed": 5,
+      "status": "validated"
+    },
+    {
+      "checkpoint_feature_id": 5,
+      "checkpoint_sha256": "b6d09dc54aab8d5e56a983fedc60d4febb01d14feb9664eb8822090cbfddfb6f",
+      "collapsed": 0,
+      "diagnostics": {
+        "samples": []
+      },
+      "invalid": 0,
+      "key": "z17_18",
+      "parts": 9,
+      "parts_sha256": "604ddea793b85bc97fe05019316a600b638de897c15398b6bc656f7f22defeb7",
+      "processed": 5,
+      "status": "validated"
+    }
+  ],
+  "batch_lock_blocks_hash_to_derivation_edit_restore": true,
+  "config_sha256": "1696d0bf4df7c344c66216dfa514e86938efdbec8564e066adf1fb80d28add1d",
+  "default_plan": [
+    {
+      "Execution Time": 0.069,
+      "Plan": {
+        "Actual Loops": 1,
+        "Actual Rows": 0,
+        "Actual Startup Time": 0.028,
+        "Actual Total Time": 0.028,
+        "Alias": "environmental_display_parts",
+        "Async Capable": false,
+        "Filter": "((build_id = '1'::smallint) AND ((band_key)::text = 'z17_18'::text))",
+        "Index Cond": "(geometry && '0103000020110F0000010000000500000000000000804F62C10000000080844E4100000000804F62C100000000D0474F4100000000AC1E62C100000000D0474F4100000000AC1E62C10000000080844E4100000000804F62C10000000080844E41'::geometry)",
+        "Index Name": "ix_environmental_display_parts_geometry",
+        "Local Dirtied Blocks": 0,
+        "Local Hit Blocks": 0,
+        "Local Read Blocks": 0,
+        "Local Written Blocks": 0,
+        "Node Type": "Index Scan",
+        "Parallel Aware": false,
+        "Plan Rows": 1,
+        "Plan Width": 4,
+        "Relation Name": "environmental_display_parts",
+        "Rows Removed by Filter": 0,
+        "Rows Removed by Index Recheck": 0,
+        "Scan Direction": "Forward",
+        "Shared Dirtied Blocks": 0,
+        "Shared Hit Blocks": 1,
+        "Shared Read Blocks": 0,
+        "Shared Written Blocks": 0,
+        "Startup Cost": 0.14,
+        "Temp Read Blocks": 0,
+        "Temp Written Blocks": 0,
+        "Total Cost": 8.16
+      },
+      "Planning": {
+        "Local Dirtied Blocks": 0,
+        "Local Hit Blocks": 0,
+        "Local Read Blocks": 0,
+        "Local Written Blocks": 0,
+        "Shared Dirtied Blocks": 0,
+        "Shared Hit Blocks": 0,
+        "Shared Read Blocks": 0,
+        "Shared Written Blocks": 0,
+        "Temp Read Blocks": 0,
+        "Temp Written Blocks": 0
+      },
+      "Planning Time": 1.726,
+      "Triggers": []
+    }
+  ],
+  "dense_parts": 4,
+  "diagnostic_count_and_sample_tamper_refused": true,
+  "display_version": "5c7f1051d9bf2168dc45233abcfb30556cc658d901cdaadd865946798ae1d480",
+  "enlarged_canonical_replay_refused": true,
+  "final_snapshot_blocks_noncooperating_writer": true,
+  "final_snapshot_blocks_unmanaged_to_managed_toggle": true,
+  "fixture_sha256": "40f3c8bae8f81416ea52a19965364fb3792bd8604efe1f29a715573d756a37ca",
+  "forced_plan": [
+    {
+      "Execution Time": 0.048,
+      "Plan": {
+        "Actual Loops": 1,
+        "Actual Rows": 0,
+        "Actual Startup Time": 0.028,
+        "Actual Total Time": 0.029,
+        "Alias": "environmental_display_parts",
+        "Async Capable": false,
+        "Index Cond": "(geometry && '0103000020110F0000010000000500000000000000804F62C10000000080844E4100000000804F62C100000000D0474F4100000000AC1E62C100000000D0474F4100000000AC1E62C10000000080844E4100000000804F62C10000000080844E41'::geometry)",
+        "Index Name": "ix_environmental_display_parts_geometry",
+        "Local Dirtied Blocks": 0,
+        "Local Hit Blocks": 0,
+        "Local Read Blocks": 0,
+        "Local Written Blocks": 0,
+        "Node Type": "Index Scan",
+        "Parallel Aware": false,
+        "Plan Rows": 1,
+        "Plan Width": 4,
+        "Relation Name": "environmental_display_parts",
+        "Rows Removed by Index Recheck": 0,
+        "Scan Direction": "Forward",
+        "Shared Dirtied Blocks": 0,
+        "Shared Hit Blocks": 1,
+        "Shared Read Blocks": 0,
+        "Shared Written Blocks": 0,
+        "Startup Cost": 0.14,
+        "Temp Read Blocks": 0,
+        "Temp Written Blocks": 0,
+        "Total Cost": 8.15
+      },
+      "Planning": {
+        "Local Dirtied Blocks": 0,
+        "Local Hit Blocks": 0,
+        "Local Read Blocks": 0,
+        "Local Written Blocks": 0,
+        "Shared Dirtied Blocks": 0,
+        "Shared Hit Blocks": 0,
+        "Shared Read Blocks": 0,
+        "Shared Written Blocks": 0,
+        "Temp Read Blocks": 0,
+        "Temp Written Blocks": 0
+      },
+      "Planning Time": 0.126,
+      "Triggers": []
+    }
+  ],
+  "hole_counts": [
+    1,
+    1
+  ],
+  "inflight_canonical_mutation_prevents_validation": true,
+  "initial_count_snapshot_race_prevents_validation": true,
+  "maximum_part_vertices": 153,
+  "metadata_only_input_batches": true,
+  "multipart_components": [
+    2,
+    2
+  ],
+  "original_geometry_sha256": "ac3b7a0c5522893ca5cb578d5925fb86b6e17e06d8554ed1a30d877291b7d96f",
+  "original_source_identity_unchanged": true,
+  "part_sha256": "ddd817b079733fea98e6b8c48ad347fb59a375570f83390cb15720c318b69e78",
+  "partial_import_display_status": "validated",
+  "plan_background_parts": 6000,
+  "postgis_execution_version": "POSTGIS=\"3.4.3 e365945\" [EXTENSION] PGSQL=\"160\" GEOS=\"3.9.0-CAPI-1.16.2\" PROJ=\"7.2.1 NETWORK_ENABLED=OFF URL_ENDPOINT=https://cdn.proj.org USER_WRITABLE_DIRECTORY=/var/lib/postgresql/.local/share/proj DATABASE_PATH=/usr/share/proj/proj.db\" LIBXML=\"2.9.10\" LIBJSON=\"0.15\" LIBPROTOBUF=\"1.3.3\" WAGYU=\"0.5.0 (Internal)\" TOPOLOGY",
+  "projection_failed_bands": 5,
+  "publicly_active": false,
+  "replica_separate_migrated_database": true,
+  "resumed_display_version": "8c0129c16e608a30104a1daaf910443bd0776b81b255eafbf96f3d5b73dd02f5",
+  "reverse_insertion_order_checksums_match": true,
+  "savepoint_statuses": [
+    [
+      "hole",
+      "failed"
+    ],
+    [
+      "multipart",
+      "built"
+    ]
+  ],
+  "screening_hits": 1,
+  "selective_default_plan": [
+    {
+      "Execution Time": 0.149,
+      "Plan": {
+        "Actual Loops": 1,
+        "Actual Rows": 1,
+        "Actual Startup Time": 0.106,
+        "Actual Total Time": 0.107,
+        "Alias": "environmental_display_parts",
+        "Async Capable": false,
+        "Exact Heap Blocks": 1,
+        "Filter": "((build_id = '10'::smallint) AND ((band_key)::text = 'z17_18'::text))",
+        "Local Dirtied Blocks": 0,
+        "Local Hit Blocks": 0,
+        "Local Read Blocks": 0,
+        "Local Written Blocks": 0,
+        "Lossy Heap Blocks": 0,
+        "Node Type": "Bitmap Heap Scan",
+        "Parallel Aware": false,
+        "Plan Rows": 10,
+        "Plan Width": 4,
+        "Plans": [
+          {
+            "Actual Loops": 1,
+            "Actual Rows": 1,
+            "Actual Startup Time": 0.098,
+            "Actual Total Time": 0.099,
+            "Async Capable": false,
+            "Index Cond": "(geometry && '0103000020110F0000010000000500000000000000804F62C10000000080844E4100000000804F62C100000000D0474F4100000000AC1E62C100000000D0474F4100000000AC1E62C10000000080844E4100000000804F62C10000000080844E41'::geometry)",
+            "Index Name": "ix_environmental_display_parts_geometry",
+            "Local Dirtied Blocks": 0,
+            "Local Hit Blocks": 0,
+            "Local Read Blocks": 0,
+            "Local Written Blocks": 0,
+            "Node Type": "Bitmap Index Scan",
+            "Parallel Aware": false,
+            "Parent Relationship": "Outer",
+            "Plan Rows": 10,
+            "Plan Width": 0,
+            "Shared Dirtied Blocks": 0,
+            "Shared Hit Blocks": 7,
+            "Shared Read Blocks": 0,
+            "Shared Written Blocks": 0,
+            "Startup Cost": 0.0,
+            "Temp Read Blocks": 0,
+            "Temp Written Blocks": 0,
+            "Total Cost": 4.22
+          }
+        ],
+        "Recheck Cond": "(geometry && '0103000020110F0000010000000500000000000000804F62C10000000080844E4100000000804F62C100000000D0474F4100000000AC1E62C100000000D0474F4100000000AC1E62C10000000080844E4100000000804F62C10000000080844E41'::geometry)",
+        "Relation Name": "environmental_display_parts",
+        "Rows Removed by Filter": 0,
+        "Rows Removed by Index Recheck": 0,
+        "Shared Dirtied Blocks": 0,
+        "Shared Hit Blocks": 8,
+        "Shared Read Blocks": 0,
+        "Shared Written Blocks": 0,
+        "Startup Cost": 4.23,
+        "Temp Read Blocks": 0,
+        "Temp Written Blocks": 0,
+        "Total Cost": 38.4
+      },
+      "Planning": {
+        "Local Dirtied Blocks": 0,
+        "Local Hit Blocks": 0,
+        "Local Read Blocks": 0,
+        "Local Written Blocks": 0,
+        "Shared Dirtied Blocks": 0,
+        "Shared Hit Blocks": 51,
+        "Shared Read Blocks": 0,
+        "Shared Written Blocks": 0,
+        "Temp Read Blocks": 0,
+        "Temp Written Blocks": 0
+      },
+      "Planning Time": 0.586,
+      "Triggers": []
+    }
+  ],
+  "statement_timeout_preserves_committed_checkpoint": true,
+  "status_only_promotion_of_failed_build_refused": true,
+  "system_failure_preserves_committed_checkpoint": true,
+  "topology_metadata_tamper_refused": true,
+  "unprocessed_geometry_mutation_changes_identity": true,
+  "visual_sample": "fill-only-bands.svg"
+}

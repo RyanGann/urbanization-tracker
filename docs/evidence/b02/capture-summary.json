@@ -1,0 +1,91 @@
+{
+  "transformation": "Selected counts and original-control/page checksums from generated reports; geometry, query bodies and private attributes excluded.",
+  "source_report_sha256": {
+    "nonempty": "ca7be3c30136e9360962d3f40af54262fa6815e118014db1156b5089c8ea41d6",
+    "empty": "6cb5dac99fbc15de4aaf2ea20afa0be24c9da0f204178dae32e7a651bf14014b"
+  },
+  "nonempty": {
+    "coverage": "complete",
+    "canary": false,
+    "requests": 7,
+    "response_bytes": 17160,
+    "retries": 0,
+    "expected": 70,
+    "fetched": 70,
+    "accepted": 70,
+    "rejected": 0,
+    "control_artifacts": [
+      {
+        "role": "initial_metadata",
+        "sha256": "993b3864e39806aa110619780e85c122f823c281910ad2a1b88f184006016b10",
+        "bytes": 255
+      },
+      {
+        "role": "initial_count",
+        "sha256": "96cd2957142940a92ff297eb12ec53a6640c31cb555adfdae543d0a0059b8e27",
+        "bytes": 13
+      },
+      {
+        "role": "initial_ids",
+        "sha256": "a65e55f995d22fd9f68a6b16f735e63d8912859aba530428553de00189b1bbdf",
+        "bytes": 285
+      },
+      {
+        "role": "final_ids",
+        "sha256": "a65e55f995d22fd9f68a6b16f735e63d8912859aba530428553de00189b1bbdf",
+        "bytes": 285
+      }
+    ],
+    "pages": [
+      {
+        "sha256": "4b3cced38a02c5dd3bcb172172812b2187f40890e48686482237c16c4876ea42",
+        "bytes": 6776,
+        "returned": 32
+      },
+      {
+        "sha256": "43b0aba2306f3c02c41e2cf2ec0dc8c455e1698f990b0df6ee34938b93009ddb",
+        "bytes": 6633,
+        "returned": 32
+      },
+      {
+        "sha256": "abdfb00bda8d419e35bdd6269f69e79074e4a184ed7d938dd5348fa976e308e6",
+        "bytes": 1277,
+        "returned": 6
+      }
+    ]
+  },
+  "empty": {
+    "coverage": "complete",
+    "canary": false,
+    "requests": 4,
+    "response_bytes": 301,
+    "retries": 0,
+    "expected": 0,
+    "fetched": 0,
+    "accepted": 0,
+    "rejected": 0,
+    "control_artifacts": [
+      {
+        "role": "initial_metadata",
+        "sha256": "993b3864e39806aa110619780e85c122f823c281910ad2a1b88f184006016b10",
+        "bytes": 255
+      },
+      {
+        "role": "initial_count",
+        "sha256": "c6cc7b37f9ae0b151c84386bd0479ee71de549774311fd07f9e1da87c660b96d",
+        "bytes": 12
+      },
+      {
+        "role": "initial_ids",
+        "sha256": "1bfb33988471f5de039986c580194c8554bfa3e2ca99a13705c750547386ab32",
+        "bytes": 17
+      },
+      {
+        "role": "final_ids",
+        "sha256": "1bfb33988471f5de039986c580194c8554bfa3e2ca99a13705c750547386ab32",
+        "bytes": 17
+      }
+    ],
+    "pages": []
+  }
+}

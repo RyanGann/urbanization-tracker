@@ -1,0 +1,32 @@
+{
+  "band_keys": [
+    "z08_10",
+    "z11_12",
+    "z13_14",
+    "z15_16",
+    "z17_18"
+  ],
+  "band_parts_sha256": [
+    "a772ec5ef39c3d8104b9084dafe2b76a0d579469c5784e5e6e79e274fdffe820",
+    "712d93a48c285cde6eed09e82cf8810e4af963ea2697a587517dcf6c05fdc7d2",
+    "4ea7696ba72127de4ff4500a9a65ecb32bd3a3a623806e6155e8b2919c7bad13",
+    "6b92a87cbbf2a7e872d7d19a8388b83ca97b35ff2b7c1141253dbe0e7adecabb",
+    "604ddea793b85bc97fe05019316a600b638de897c15398b6bc656f7f22defeb7"
+  ],
+  "data_version": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+  "database": "p04a_replica",
+  "display_version": "10a41722461e5054ee73e7aeec5065884354517d4dd2f038c965c3fc0d32ee28",
+  "fixture_sha256": "40f3c8bae8f81416ea52a19965364fb3792bd8604efe1f29a715573d756a37ca",
+  "layer_key": "p04a_synthetic_wetland",
+  "part_sha256": "ddd817b079733fea98e6b8c48ad347fb59a375570f83390cb15720c318b69e78",
+  "postgis_execution_version": "POSTGIS=\"3.4.3 e365945\" [EXTENSION] PGSQL=\"160\" GEOS=\"3.9.0-CAPI-1.16.2\" PROJ=\"7.2.1 NETWORK_ENABLED=OFF URL_ENDPOINT=https://cdn.proj.org USER_WRITABLE_DIRECTORY=/var/lib/postgresql/.local/share/proj DATABASE_PATH=/usr/share/proj/proj.db\" LIBXML=\"2.9.10\" LIBJSON=\"0.15\" LIBPROTOBUF=\"1.3.3\" WAGYU=\"0.5.0 (Internal)\"",
+  "replayed": true,
+  "source_order": [
+    "dense",
+    "adjacent",
+    "channel",
+    "multipart",
+    "hole"
+  ],
+  "source_snapshot_sha256": "f6f009386f2063b4223d7d1ea444ea1061a85779a8c156c1d8c48ce140d753a6"
+}

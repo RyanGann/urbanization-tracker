@@ -1,0 +1,38 @@
+{
+  "original": [
+    {
+      "name": "fuzzystrmatch",
+      "version": "1.2"
+    },
+    {
+      "name": "postgis",
+      "version": "3.4.3"
+    },
+    {
+      "name": "postgis_tiger_geocoder",
+      "version": "3.4.3"
+    },
+    {
+      "name": "postgis_topology",
+      "version": "3.4.3"
+    }
+  ],
+  "replica": [
+    {
+      "name": "fuzzystrmatch",
+      "version": "1.2"
+    },
+    {
+      "name": "postgis",
+      "version": "3.4.3"
+    },
+    {
+      "name": "postgis_tiger_geocoder",
+      "version": "3.4.3"
+    },
+    {
+      "name": "postgis_topology",
+      "version": "3.4.3"
+    }
+  ]
+}

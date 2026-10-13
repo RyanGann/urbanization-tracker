@@ -1,0 +1,48 @@
+{
+  "run_id": "2026-09-27T09-56-28-530Z-afb79c6c",
+  "project": "urbanization_t01_e8e8b2fca0f6",
+  "suite": "api",
+  "performance": null,
+  "scenario": "b02-provenance",
+  "api_url": "http://127.0.0.1:57685",
+  "fixture_sha256": "932eacb03655a3dee1a2838abf9ddf8d5dfa44f744482408611b61a2561bbee2",
+  "fixture": {
+    "id": "t01-postgis-beaf06a2f991",
+    "title": "T01 PostGIS Fixture beaf06a2f991"
+  },
+  "scenario_artifacts": {
+    "b02_results_sha256": "2ba0c61bc79be08f3593fa723750a76504f2385acce65e6ec7798a87a93517a3",
+    "b02_copied_restore_application_gate": true
+  },
+  "command": "node scripts/run-integration.mjs --suite api --scenario b02-provenance",
+  "options": {
+    "suite": "api",
+    "scenario": "b02-provenance",
+    "keep_on_failure": false,
+    "assert_failure": false,
+    "isolation_check": false
+  },
+  "outcome": "passed",
+  "failure": null,
+  "commit_sha": "932988169f4387c27f2f059b04fd72727072a031",
+  "working_tree_dirty": false,
+  "images": {
+    "database": "postgis/postgis:16-3.4",
+    "mail": "axllent/mailpit:v1.27.1",
+    "browser": "mcr.microsoft.com/playwright:v1.60.0-noble"
+  },
+  "image_digests": {
+    "database": "postgis/postgis@sha256:44126d872ac91993766c341e369c539e8196614321765d36a6f1bab0419a5fa5",
+    "mail": "axllent/mailpit@sha256:986b14ff7b253e62883ea19fd3112806f116e5e2f221e03f12fb81c7312ff532",
+    "browser": "mcr.microsoft.com/playwright@sha256:9bd26ad900bb5e0f4dee75839e957a89ae89c2b7ab1e76050e559790e946b948"
+  },
+  "image_ids": {
+    "urbanization_t01_e8e8b2fca0f6-api-gateway-1": "sha256:6769dc3a703c719c1d2756bda113659be28ae16cf0da58dd5fd823d6b9a050ea",
+    "urbanization_t01_e8e8b2fca0f6-mail-1": "sha256:774f5f77986b98051deecb040426ec57c259fd0d61f85724500e6737cadb1747",
+    "urbanization_t01_e8e8b2fca0f6-api-1": "sha256:61e0933be42fc720df72bfe326676ddb4ae271cc930ffbfce9407d3b267a7a14",
+    "urbanization_t01_e8e8b2fca0f6-db-1": "sha256:06287eb8e12c43f425773085c48d6ad02d73f8b442ac209810c1b211eb0a643b"
+  },
+  "retained": false,
+  "cleanup_result": "removed",
+  "cleanup_failure": null
+}
