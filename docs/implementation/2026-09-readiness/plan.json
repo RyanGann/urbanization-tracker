@@ -147,7 +147,7 @@
       "id": "C05",
       "title": "Make review actions explicit, durable, and revision checked",
       "path": "C05-review-action-policy.md",
-      "status": "planned",
+      "status": "in_review",
       "track": "Correctness",
       "gate": "G1",
       "depends_on": [
@@ -157,7 +157,7 @@
       "review": "Routine with lead review",
       "pr_boundary": "One review API/UI policy PR.",
       "implementation_pr": null,
-      "evidence": null
+      "evidence": "../../evidence/C05-review-actions.md"
     },
     {
       "id": "C06",
