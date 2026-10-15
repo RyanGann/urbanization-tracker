@@ -195,15 +195,10 @@ def test_import_classifies_ambiguous_public_ownership_as_conflict(monkeypatch: A
     from app.ingestion.agenda_store import AgendaIdentityConflict
     from app.seed_store import import_reviewer_decisions
 
-    monkeypatch.setattr(
-        "app.phase3_store.get_phase3_staged_record",
-        lambda staged_id: {"state_revision": 1, "review_status": "pending"},
-    )
-
-    def approve(*args: Any, **kwargs: Any) -> None:
+    def import_one(*args: Any, **kwargs: Any) -> None:
         raise AgendaIdentityConflict("public record has ambiguous store ownership")
 
-    monkeypatch.setattr("app.seed_store.approve_staged_record", approve)
+    monkeypatch.setattr("app.review_repository.import_one", import_one)
     assert import_reviewer_decisions(
         [{"staged_id": "stage-agenda-owned", "review_status": "approved", "expected_revision": 1}]
     ) == {"applied": 0, "missing": [], "conflicts": ["stage-agenda-owned"]}
@@ -957,7 +952,10 @@ def test_artifact_decision_round_trip_and_failed_validation(
             health={"status": "healthy"},
             run_id="a-replay",
         )
-        assert get_phase3_staged_record(candidate["id"]) == rejected
+        stored = get_phase3_staged_record(candidate["id"])
+        assert stored is not None
+        # C05 returns derived reviewer policy/history alongside the stored candidate.
+        assert stored == {key: rejected[key] for key in stored}
         changed = _document("b" * 64)
         merge_agenda_artifacts(
             source_documents=[changed],

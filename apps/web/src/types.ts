@@ -9,6 +9,18 @@ export type DevelopmentStatus =
   | "proposed";
 
 export type ReviewStatus = "pending" | "needs_info" | "rejected" | "approved" | "published";
+export interface ReviewHistoryEvent {
+  id: string;
+  candidate_id: string;
+  content_revision: number;
+  state_revision: number;
+  previous_status: ReviewStatus | null;
+  action: ReviewStatus;
+  notes: string | null;
+  actor: string;
+  decided_at: string | null;
+  baseline: boolean;
+}
 export type ConfidenceLevel = "low" | "medium" | "high";
 
 export interface ProximityFlag {
@@ -76,6 +88,13 @@ export interface StagedDevelopmentRecord {
   content_revision?: number | null;
   state_revision?: number | null;
   review_notes?: string | null;
+  review_actor?: string | null;
+  reviewed_at?: string | null;
+  origin: "processed" | "agenda" | "submission" | "demo";
+  revision: number;
+  allowed_actions: ("approve" | "reject" | "needs_info")[];
+  actionability_reason: string;
+  review_history: ReviewHistoryEvent[];
   location_required?: boolean;
   record_confidence: ConfidenceLevel;
   geometry_source: string;
@@ -302,6 +321,9 @@ export interface ReviewerDecisionSnapshot {
   review_notes: string | null;
   content_revision?: number | null;
   state_revision?: number | null;
+  review_actor?: string | null;
+  reviewed_at?: string | null;
+  review_history: ReviewHistoryEvent[];
   exported_at: string;
 }
 
@@ -310,6 +332,12 @@ export interface ReviewerDecisionImportItem {
   review_status: ReviewStatus;
   notes: string | null;
   expected_revision?: number | null;
+  state_revision?: number | null;
+  content_revision?: number | null;
+  review_notes?: string | null;
+  review_actor?: string | null;
+  reviewed_at?: string | null;
+  review_history?: ReviewHistoryEvent[];
 }
 
 export interface ReviewerDecisionImportResult {

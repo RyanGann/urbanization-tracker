@@ -6,7 +6,8 @@ export default defineConfig({
     "**/performance/**",
     "**/production-preview.spec.ts",
     "**/live-smoke.spec.ts",
-    "**/u00-filters.live.spec.ts"
+    "**/u00-filters.live.spec.ts",
+    "**/c05-review.live.spec.ts"
   ],
   fullyParallel: true,
   use: {

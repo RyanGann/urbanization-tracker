@@ -95,6 +95,26 @@ class DatasetStatus(BaseModel):
     declared_scope: str | None = None
 
 
+class ReviewHistoryEvent(BaseModel):
+    id: str
+    candidate_id: str
+    content_revision: int = Field(ge=1)
+    state_revision: int = Field(ge=0)
+    previous_status: ReviewStatus | None
+    action: ReviewStatus
+    notes: str | None = Field(default=None, max_length=1000)
+    actor: str = Field(min_length=1, max_length=100)
+    decided_at: str | None
+    baseline: bool = False
+
+    @field_validator("decided_at")
+    @classmethod
+    def valid_decision_time(cls, value: str | None) -> str | None:
+        if value is not None and datetime.fromisoformat(value).tzinfo is None:
+            raise ValueError("Decision time requires a timezone")
+        return value
+
+
 class StagedDevelopmentRecord(BaseModel):
     id: str
     title: str
@@ -111,6 +131,11 @@ class StagedDevelopmentRecord(BaseModel):
     review_notes: str | None = None
     review_actor: str | None = None
     reviewed_at: str | None = None
+    origin: Literal["processed", "agenda", "submission", "demo"] = "processed"
+    revision: int = 0
+    allowed_actions: list[Literal["approve", "reject", "needs_info"]] = Field(default_factory=list)
+    actionability_reason: str = "Review policy unavailable. Reload before deciding."
+    review_history: list[ReviewHistoryEvent] = Field(default_factory=list)
     location_required: bool = False
     record_confidence: ConfidenceLevel
     geometry_source: str
@@ -122,7 +147,12 @@ class StagedDevelopmentRecord(BaseModel):
 
 class ReviewDecision(BaseModel):
     notes: str | None = Field(default=None, max_length=1000)
-    expected_revision: int | None = Field(default=None, ge=0)
+    expected_revision: int | None = Field(default=None, ge=0, strict=True)
+
+
+class ReviewRetraction(BaseModel):
+    reason: str = Field(min_length=1, max_length=1000, pattern=r"\S")
+    expected_revision: int = Field(ge=0)
 
 
 class SourceDocument(BaseModel):
@@ -587,6 +617,7 @@ class ReviewerDecisionSnapshot(BaseModel):
     state_revision: int | None = None
     review_actor: str | None = None
     reviewed_at: str | None = None
+    review_history: list[ReviewHistoryEvent] = Field(default_factory=list)
     exported_at: str
 
 
@@ -594,11 +625,17 @@ class ReviewerDecisionImportItem(BaseModel):
     staged_id: str
     review_status: ReviewStatus
     notes: str | None = Field(default=None, max_length=1000)
-    expected_revision: int | None = Field(default=None, ge=0)
+    review_notes: str | None = Field(default=None, max_length=1000)
+    expected_revision: int | None = Field(default=None, ge=0, strict=True)
+    state_revision: int | None = Field(default=None, ge=0, strict=True)
+    content_revision: int | None = Field(default=None, ge=1)
+    review_actor: str | None = None
+    reviewed_at: str | None = None
+    review_history: list[ReviewHistoryEvent] | None = Field(default=None, max_length=1000)
 
 
 class ReviewerDecisionImport(BaseModel):
-    decisions: list[ReviewerDecisionImportItem]
+    decisions: list[ReviewerDecisionImportItem] = Field(max_length=1000)
 
 
 class ReviewerDecisionImportResult(BaseModel):

@@ -39,6 +39,7 @@ from app.public_body import PublicWriteBodyLimit
 from app.public_geometry import validate_public_geometry
 from app.public_quota import enforce_public_write_quota
 from app.public_rejections import record_public_rejection
+from app.review_repository import ReviewNotActionable, decide
 from app.schemas import (
     AgendaDocumentResolution,
     AgendaObservationResolution,
@@ -64,6 +65,7 @@ from app.schemas import (
     ReviewerDecisionImport,
     ReviewerDecisionImportResult,
     ReviewerDecisionSnapshot,
+    ReviewRetraction,
     SourceDocument,
     StagedDevelopmentRecord,
     UnsubscribeReceipt,
@@ -106,9 +108,17 @@ def agenda_revision_conflict(_request: Request, _exc: AgendaRevisionConflict) ->
         content={
             "detail": {
                 "code": "review_revision_conflict",
-                "message": "Agenda state changed. Reload before deciding.",
+                "message": "Review state changed. Reload before deciding.",
             }
         },
+    )
+
+
+@app.exception_handler(ReviewNotActionable)
+def review_not_actionable(_request: Request, exc: ReviewNotActionable) -> JSONResponse:
+    return JSONResponse(
+        status_code=409,
+        content={"detail": {"code": "review_not_actionable", "message": str(exc)}},
     )
 
 
@@ -429,6 +439,28 @@ def get_reviewer_queue() -> list[StagedDevelopmentRecord]:
     return list_staged_records()
 
 
+@reviewer_router.get("/staged-records/{staged_id}", response_model=StagedDevelopmentRecord)
+def get_reviewer_record(staged_id: str) -> StagedDevelopmentRecord:
+    record = next((r for r in list_staged_records() if r.id == staged_id), None)
+    if record is None:
+        raise HTTPException(
+            404, detail={"code": "review_not_found", "message": "Unknown staged ID."},
+        )
+    return record
+
+
+@reviewer_router.post("/staged-records/{staged_id}/retract")
+def retract_reviewer_record(staged_id: str, decision: ReviewRetraction) -> None:
+    result = decide(
+        staged_id, action="retracted", notes=decision.reason,
+        expected_revision=decision.expected_revision,
+    )
+    if result is None:
+        raise HTTPException(
+            404, detail={"code": "review_not_found", "message": "Unknown staged ID."},
+        )
+
+
 @reviewer_router.get(
     "/agenda-documents/unresolved", response_model=list[AgendaUnresolvedDocument]
 )
@@ -486,7 +518,7 @@ def resolve_reviewer_agenda_observation(
             status_code=404,
             detail={"code": "agenda_observation_missing", "message": "Observation not found."},
         )
-    return StagedDevelopmentRecord.model_validate(record)
+    return get_reviewer_record(str(record["id"]))
 
 
 @reviewer_router.get(
@@ -514,10 +546,13 @@ def import_reviewer_decision_snapshot(
 @reviewer_router.post("/staged-records/{staged_id}/approve", response_model=DevelopmentRecord)
 def approve_reviewer_record(staged_id: str, decision: ReviewDecision) -> DevelopmentRecord:
     record = approve_staged_record(
-        staged_id, notes=decision.notes, expected_revision=decision.expected_revision,
+        staged_id, notes=decision.notes,
+        expected_revision=decision.expected_revision,
     )
     if record is None:
-        raise HTTPException(status_code=404, detail="Staged record not found")
+        raise HTTPException(
+            404, detail={"code": "review_not_found", "message": "Unknown staged ID."},
+        )
     return record
 
 
@@ -528,7 +563,9 @@ def reject_reviewer_record(staged_id: str, decision: ReviewDecision) -> StagedDe
         expected_revision=decision.expected_revision,
     )
     if staged is None:
-        raise HTTPException(status_code=404, detail="Staged record not found")
+        raise HTTPException(
+            404, detail={"code": "review_not_found", "message": "Unknown staged ID."},
+        )
     return staged
 
 
@@ -544,7 +581,9 @@ def mark_reviewer_record_needs_info(
         expected_revision=decision.expected_revision,
     )
     if staged is None:
-        raise HTTPException(status_code=404, detail="Staged record not found")
+        raise HTTPException(
+            404, detail={"code": "review_not_found", "message": "Unknown staged ID."},
+        )
     return staged
 
 
@@ -555,7 +594,10 @@ def get_reviewer_submissions() -> list[UserSubmission]:
 
 @reviewer_router.post("/submissions/{submission_id}/approve", response_model=UserSubmission)
 def approve_public_submission(submission_id: str, decision: ReviewDecision) -> UserSubmission:
-    submission = set_public_submission_status(submission_id, "approved", notes=decision.notes)
+    submission = set_public_submission_status(
+        submission_id, "approved", notes=decision.notes,
+        expected_revision=decision.expected_revision,
+    )
     if submission is None:
         raise HTTPException(status_code=404, detail="Submission not found")
     return UserSubmission.model_validate(submission)
@@ -563,7 +605,10 @@ def approve_public_submission(submission_id: str, decision: ReviewDecision) -> U
 
 @reviewer_router.post("/submissions/{submission_id}/reject", response_model=UserSubmission)
 def reject_public_submission(submission_id: str, decision: ReviewDecision) -> UserSubmission:
-    submission = set_public_submission_status(submission_id, "rejected", notes=decision.notes)
+    submission = set_public_submission_status(
+        submission_id, "rejected", notes=decision.notes,
+        expected_revision=decision.expected_revision,
+    )
     if submission is None:
         raise HTTPException(status_code=404, detail="Submission not found")
     return UserSubmission.model_validate(submission)
@@ -573,7 +618,10 @@ def reject_public_submission(submission_id: str, decision: ReviewDecision) -> Us
 def mark_public_submission_needs_info(
     submission_id: str, decision: ReviewDecision
 ) -> UserSubmission:
-    submission = set_public_submission_status(submission_id, "needs_info", notes=decision.notes)
+    submission = set_public_submission_status(
+        submission_id, "needs_info", notes=decision.notes,
+        expected_revision=decision.expected_revision,
+    )
     if submission is None:
         raise HTTPException(status_code=404, detail="Submission not found")
     return UserSubmission.model_validate(submission)

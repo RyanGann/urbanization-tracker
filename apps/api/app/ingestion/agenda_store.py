@@ -928,102 +928,76 @@ def review_agenda_candidate(
     expected_revision: int | None,
     actor: str = "reviewer",
 ) -> tuple[dict[str, Any], dict[str, Any] | None] | None:
-    """Review and optional first publication commit together with state history."""
-    from datetime import UTC, datetime
+    """Compatibility entry point through the C05 review policy and transaction."""
+    from app.review_repository import decide
 
+    return decide(
+        staged_id, action=action, notes=notes, expected_revision=expected_revision, actor=actor
+    )
+
+
+def publish_review_candidate(uow: Any, record: dict[str, Any], actor: str) -> dict[str, Any]:
+    """Retain C04 first-publication behavior; changed snapshots remain fenced for C06."""
     from app.ingestion.source_merge import public_fingerprint
+    from app.phase3_store import _publish_record_from_staged
     from app.public_fields import public_source_fields
     from app.public_geometry import require_publishable_geometry
 
-    with _agenda_mutation() as uow:
-        record = uow.get_phase3("agenda_staged_records", staged_id)
-        if record is None:
-            return None
-        if expected_revision is None or expected_revision != int(record.get("state_revision", 0)):
-            raise AgendaRevisionConflict("agenda decision revision changed")
-        published: dict[str, Any] | None = None
-        if action == "approved":
-            require_publishable_geometry(record)
-            published = copy.deepcopy(record["publish_record"])
-            # A reviewer geometry correction may be stored on the staged row.
-            published["geometry"] = copy.deepcopy(record["geometry"])
-            published["centroid"] = record.get("centroid") or _point_centroid(record["geometry"])
-            published["geometry_source"] = record["geometry_source"]
-            published["geometry_confidence"] = record["geometry_confidence"]
-            require_publishable_geometry(published)
-            published["source_fields"] = public_source_fields(published.get("source_fields", {}))
-            published["review_status"] = "published"
-            published["date_last_checked"] = datetime.now(UTC).date().isoformat()
-            public_id = str(published["public_id"])
-            operational_public = uow.get_phase3("development_records", public_id)
-            processed_public = _processed_public_record(uow, public_id)
-            if operational_public is not None and processed_public is not None:
-                raise AgendaIdentityConflict("public record has ambiguous store ownership")
-            existing_public = operational_public or processed_public
-            if existing_public is not None:
-                if public_fingerprint(existing_public) != public_fingerprint(published):
-                    raise AgendaPublicationPending(
-                        "changed agenda publication requires versioned update"
-                    )
-                published = existing_public
-            else:
-                uow.upsert_phase3("development_records", public_id, published)
-                version_id = f"version-{public_id}-1"
-                uow.upsert_phase3(
-                    "record_versions",
-                    version_id,
-                    {
-                        "id": version_id,
-                        "public_id": public_id,
-                        "version_number": 1,
-                        "changed_at": datetime.now(UTC).isoformat(),
-                        "changed_by": actor,
-                        "change_type": "published",
-                        "snapshot": copy.deepcopy(published),
-                    },
-                )
-                change_id = f"change-{public_id}-published"
-                uow.upsert_phase3(
-                    "change_log",
-                    change_id,
-                    {
-                        "id": change_id,
-                        "public_id": public_id,
-                        "title": published["title"],
-                        "changed_at": datetime.now(UTC).isoformat(),
-                        "change_type": "published",
-                        "summary": (
-                            f"{published['title']} was published from a reviewer-gated source."
-                        ),
-                    },
-                )
-        elif action not in {"rejected", "needs_info"}:
-            raise ValueError("Unsupported agenda review action")
-        previous_status = record["review_status"]
-        record["review_status"] = action
-        record["review_notes"] = notes
-        record["review_actor"] = actor
-        record["reviewed_at"] = datetime.now(UTC).isoformat()
-        record["state_revision"] = expected_revision + 1
-        uow.upsert_phase3("agenda_staged_records", staged_id, record)
-        event_id = f"{staged_id}:{record['state_revision']}"
-        _immutable(
-            uow,
-            "agenda_decision_events",
-            event_id,
+    require_publishable_geometry(record)
+    published = copy.deepcopy(record.get("publish_record") or _publish_record_from_staged(record))
+    # A reviewer geometry correction may be stored on the staged row.
+    published["geometry"] = copy.deepcopy(record["geometry"])
+    published["centroid"] = record.get("centroid") or _point_centroid(record["geometry"])
+    published["geometry_source"] = record["geometry_source"]
+    published["geometry_confidence"] = record["geometry_confidence"]
+    require_publishable_geometry(published)
+    published["source_fields"] = public_source_fields(published.get("source_fields", {}))
+    published["review_status"] = "published"
+    published["date_last_checked"] = datetime.now(UTC).date().isoformat()
+    public_id = str(published["public_id"])
+    operational_public = uow.get_phase3("development_records", public_id)
+    processed_public = _processed_public_record(uow, public_id)
+    if operational_public is not None and processed_public is not None:
+        raise AgendaIdentityConflict("public record has ambiguous store ownership")
+    existing_public = operational_public or processed_public
+    if existing_public is not None:
+        if public_fingerprint(existing_public) != public_fingerprint(published):
+            raise AgendaPublicationPending(
+                "changed agenda publication requires versioned update"
+            )
+        published = existing_public
+    else:
+        uow.upsert_phase3("development_records", public_id, published)
+        version_id = f"version-{public_id}-1"
+        uow.upsert_phase3(
+            "record_versions",
+            version_id,
             {
-                "id": event_id,
-                "candidate_id": staged_id,
-                "content_revision": record["content_revision"],
-                "previous_status": previous_status,
-                "action": action,
-                "notes": notes,
-                "actor": actor,
-                "decided_at": record["reviewed_at"],
-                "state_revision": record["state_revision"],
+                "id": version_id,
+                "public_id": public_id,
+                "version_number": 1,
+                "changed_at": datetime.now(UTC).isoformat(),
+                "changed_by": actor,
+                "change_type": "published",
+                "snapshot": copy.deepcopy(published),
             },
         )
-        return record, published
+        change_id = f"change-{public_id}-published"
+        uow.upsert_phase3(
+            "change_log",
+            change_id,
+            {
+                "id": change_id,
+                "public_id": public_id,
+                "title": published["title"],
+                "changed_at": datetime.now(UTC).isoformat(),
+                "change_type": "published",
+                "summary": (
+                    f"{published['title']} was published from a reviewer-gated source."
+                ),
+            },
+        )
+    return published
 
 
 def _point_centroid(geometry: dict[str, Any]) -> list[float] | None:
