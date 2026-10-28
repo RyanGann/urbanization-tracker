@@ -147,7 +147,7 @@
       "id": "C05",
       "title": "Make review actions explicit, durable, and revision checked",
       "path": "C05-review-action-policy.md",
-      "status": "in_review",
+      "status": "complete",
       "track": "Correctness",
       "gate": "G1",
       "depends_on": [
@@ -158,7 +158,7 @@
       "pr_boundary": "One review API/UI policy PR.",
       "implementation_pr": "https://github.com/RyanGann/urbanization-tracker/pull/40",
       "evidence": "../../evidence/C05-review-actions.md",
-      "status_note": "PR40 preserves the October 15 milestone and fixes both Codex findings. Clean 5667da5 passes 500 API tests, full web checks, both owning C05 browser tests and C04/S02/generic live acceptance. Fresh exact-head CI and Codex review remain required. Merge also awaits actual Render trigger verification; preserve [skip render] in the explicit final merge message. Live release separately requires remediation of unchanged dependency findings."
+      "status_note": "C05 implementation accepted in PR40 after 500 API tests, full web checks, C05/C04/S02/generic real-stack acceptance, successful full CI40632330532 and clean exact-head Codex review of ef34c9b. Confirmed Render inventory includes previews and has no Urbanization service; repository hooks are empty, CI has no deploy command and render.yaml is unchanged. Final metadata checks and an explicit [skip render] merge message preserve the no-deployment boundary. This does not authorize live release or clear unchanged dependency/source/provider gates."
     },
     {
       "id": "C06",
