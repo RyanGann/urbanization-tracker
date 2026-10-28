@@ -194,7 +194,7 @@ def run(api: str, token: str, result: Path, phase: str) -> None:
         headers=reviewer,
     )
     assert approval.status_code == 409
-    assert approval.json()["detail"]["code"] == "review_not_actionable"
+    assert approval.json()["detail"]["code"] == "location_required", approval.text
     imported = client.post(
         "/api/reviewer/decisions/import",
         headers=reviewer,
@@ -211,6 +211,7 @@ def run(api: str, token: str, result: Path, phase: str) -> None:
     ).json()
     assert retained["revision"] == staged["revision"]
     assert retained["review_status"] == staged["review_status"]
+    assert retained["review_notes"] == staged["review_notes"]
     assert retained["review_history"] == staged["review_history"]
     assertions.append("unknown_location_null_staging_both_publication_paths_blocked")
 
