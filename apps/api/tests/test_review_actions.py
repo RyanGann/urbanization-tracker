@@ -221,3 +221,44 @@ def test_review_dependency_error_is_safe_503(
     )
     assert response.status_code == 503 and response.json()["detail"]["code"] == "data_unavailable"
     assert "private database connection" not in response.text
+
+
+def test_demo_imported_approval_publishes_before_becoming_terminal(
+    api: TestClient, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from app.seed_store import demo_seed_development_records, get_staged_record, reset_seed_state
+
+    monkeypatch.setenv("DATA_MODE", "demo")
+    get_settings.cache_clear()
+    reset_seed_state()
+    staged_id = "stage-bradford-crossing-layout"
+    staged = get_staged_record(staged_id)
+    assert staged is not None
+    public_id = staged["publish_record"]["public_id"]
+    assert not any(row["public_id"] == public_id for row in demo_seed_development_records())
+    current = api.get(f"/api/reviewer/staged-records/{staged_id}").json()
+    response = api.post(
+        "/api/reviewer/decisions/import",
+        json={"decisions": [{
+            "staged_id": staged_id,
+            "review_status": "approved",
+            "notes": "Imported demo approval",
+            "expected_revision": current["revision"],
+        }]},
+    )
+    assert response.status_code == 200, response.text
+    assert response.json() == {"applied": 1, "missing": [], "conflicts": []}
+    assert api.get(f"/api/development-records/{public_id}").status_code == 200
+    assert sum(row["public_id"] == public_id for row in demo_seed_development_records()) == 1
+    reviewed = api.get(f"/api/reviewer/staged-records/{staged_id}").json()
+    assert reviewed["review_status"] == "approved"
+    assert reviewed["revision"] == current["revision"] + 1
+    assert reviewed["review_notes"] == "Imported demo approval"
+    assert len(reviewed["review_history"]) == len(current["review_history"]) + 1
+    repeated = api.post(
+        f"/api/reviewer/staged-records/{staged_id}/approve",
+        json={"expected_revision": reviewed["revision"]},
+    )
+    assert repeated.status_code == 409
+    assert repeated.json()["detail"]["code"] == "review_not_actionable"
+    assert sum(row["public_id"] == public_id for row in demo_seed_development_records()) == 1
