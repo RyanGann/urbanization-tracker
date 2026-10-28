@@ -421,6 +421,8 @@ def import_reviewer_decisions(decisions: list[dict[str, Any]]) -> dict[str, Any]
     from app.review_repository import import_decisions
 
     if get_settings().data_mode == "demo":
+        from fastapi import HTTPException
+
         from app.ingestion.agenda_store import AgendaRevisionConflict
         from app.review_repository import ReviewNotActionable
 
@@ -441,12 +443,18 @@ def import_reviewer_decisions(decisions: list[dict[str, Any]]) -> dict[str, Any]
                     conflicts.append(str(decision["staged_id"]))
                 continue
             try:
-                _review_demo_record(
-                    staged, str(decision["review_status"]), decision.get("notes"),
-                    decision.get("expected_revision"),
-                )
+                if decision["review_status"] == "approved":
+                    approve_staged_record(
+                        str(decision["staged_id"]), notes=decision.get("notes"),
+                        expected_revision=decision.get("expected_revision"),
+                    )
+                else:
+                    _review_demo_record(
+                        staged, str(decision["review_status"]), decision.get("notes"),
+                        decision.get("expected_revision"),
+                    )
                 applied += 1
-            except (AgendaRevisionConflict, ReviewNotActionable):
+            except (AgendaRevisionConflict, ReviewNotActionable, HTTPException):
                 conflicts.append(str(decision["staged_id"]))
         result = import_decisions(remaining)
         result["applied"] += applied

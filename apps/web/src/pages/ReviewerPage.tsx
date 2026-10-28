@@ -73,6 +73,19 @@ interface MutationInput {
   expectedRevision?: number | null;
 }
 
+interface ReviewDraft {
+  notes: string;
+  revision: number;
+  status: ReviewStatus;
+}
+
+interface ReviewConflict {
+  id: string;
+  previousRevision: number | null;
+  previousStatus?: string;
+  current?: StagedDevelopmentRecord;
+}
+
 function sourcePayloadRows(record: StagedDevelopmentRecord) {
   return Object.entries(record.source_payload).map(([key, value]) => (
     <div key={key}>
@@ -245,11 +258,8 @@ function importResultMessage(result: { applied: number; missing: string[]; confl
 }
 
 export function ReviewerPage() {
-  const [notesById, setNotesById] = useState<Record<string, string>>({});
-  const [conflict, setConflict] = useState<{
-    id: string; previousRevision: number | null; previousStatus?: string;
-    current?: StagedDevelopmentRecord;
-  } | null>(null);
+  const [notesById, setNotesById] = useState<Record<string, ReviewDraft>>({});
+  const [conflict, setConflict] = useState<ReviewConflict | null>(null);
   const [tokenInput, setTokenInput] = useState(() => getReviewerToken());
   const [handoffMessage, setHandoffMessage] = useState<HandoffMessage | null>(null);
   const [alertLimit, setAlertLimit] = useState("25");
@@ -321,7 +331,7 @@ export function ReviewerPage() {
         const previous = stagedQuery.data?.find((row) => row.id === input.id);
         const before = {
           id: input.id, previousRevision: input.expectedRevision ?? null,
-          previousStatus: previous?.review_status
+          previousStatus: notesById[input.id]?.status ?? previous?.review_status
         };
         setConflict(before);
         const refreshed = await stagedQuery.refetch();
@@ -818,8 +828,17 @@ export function ReviewerPage() {
 
       <div className="review-grid">
         {records.map((record) => {
-          const notes = notesById[record.id] ?? record.review_notes ?? "";
-          const disabled = reviewMutation.isPending || stagedQuery.isFetching || conflict?.id === record.id;
+          const draft = notesById[record.id];
+          const notes = draft?.notes ?? record.review_notes ?? "";
+          const expectedRevision = draft?.revision ?? record.revision;
+          const requestConflict = conflict?.id === record.id ? {
+            ...conflict, current: conflict.current && !stagedQuery.isError ? record : undefined
+          } : null;
+          const recordConflict: ReviewConflict | null = draft && draft.revision !== record.revision
+            ? { id: record.id, previousRevision: draft.revision, previousStatus: draft.status,
+              current: stagedQuery.isError ? undefined : record }
+            : requestConflict;
+          const disabled = reviewMutation.isPending || stagedQuery.isFetching || !!recordConflict;
           const allowed = record.allowed_actions ?? [];
           const approveDisabled = disabled || !allowed.includes("approve");
 
@@ -841,22 +860,28 @@ export function ReviewerPage() {
 
               <p className="muted">Origin: {record.origin} · Revision {record.revision}</p>
               <p>{record.actionability_reason}</p>
-              {conflict?.id === record.id ? (
+              {recordConflict ? (
                 <section role="alert" className="detail-section">
                   <h3>Review changed</h3>
-                  <p>Your decision was not applied. Revision {conflict.previousRevision} ({conflict.previousStatus})
-                    {conflict.current ? ` is now revision ${conflict.current.revision} (${conflict.current.review_status}).`
+                  <p>Review state changed. Revision {recordConflict.previousRevision} ({recordConflict.previousStatus})
+                    {recordConflict.current ? ` is now revision ${recordConflict.current.revision} (${recordConflict.current.review_status}).`
                       : " could not be reloaded. Reload the queue before deciding."}</p>
-                  {conflict.current ? <>
-                    <p>Current saved notes: {conflict.current.review_notes || "No notes"}</p>
+                  {recordConflict.current ? <>
+                    <p>Current saved notes: {recordConflict.current.review_notes || "No notes"}</p>
                     <p>Your draft is preserved below. Review the saved decision before continuing.</p>
-                    <button type="button" className="secondary-action" onClick={() => {
-                      setConflict(null);
+                    <button type="button" className="secondary-action" disabled={stagedQuery.isFetching} onClick={() => {
+                      const currentRecord = recordConflict.current;
+                      if (!currentRecord) return;
+                      setNotesById((current) => current[record.id] ? {
+                        ...current, [record.id]: { ...current[record.id],
+                          revision: currentRecord.revision, status: currentRecord.review_status }
+                      } : current);
+                      setConflict((current) => current?.id === record.id ? null : current);
                       reviewMutation.reset();
                     }}>I reviewed the current decision</button>
                   </> : <button type="button" className="secondary-action" onClick={async () => {
                     const refreshed = await stagedQuery.refetch();
-                    setConflict({ ...conflict, current: refreshed.isError ? undefined
+                    setConflict({ ...recordConflict, current: refreshed.isError ? undefined
                       : refreshed.data?.find((row) => row.id === record.id) });
                   }}>Reload current decision</button>}
                 </section>
@@ -917,7 +942,9 @@ export function ReviewerPage() {
                   onChange={(event) =>
                     setNotesById((current) => ({
                       ...current,
-                      [record.id]: event.target.value
+                      [record.id]: { notes: event.target.value,
+                        revision: current[record.id]?.revision ?? record.revision,
+                        status: current[record.id]?.status ?? record.review_status }
                     }))
                   }
                   rows={4}
@@ -934,7 +961,7 @@ export function ReviewerPage() {
                   type="button"
                   disabled={approveDisabled}
                   onClick={() =>
-                    reviewMutation.mutate({ id: record.id, action: "approve", notes, expectedRevision: record.state_revision })
+                    reviewMutation.mutate({ id: record.id, action: "approve", notes, expectedRevision })
                   }
                 >
                   <Check size={16} aria-hidden />
@@ -945,7 +972,7 @@ export function ReviewerPage() {
                   type="button"
                   disabled={disabled || !allowed.includes("needs_info")}
                   onClick={() =>
-                    reviewMutation.mutate({ id: record.id, action: "needs_info", notes, expectedRevision: record.state_revision })
+                    reviewMutation.mutate({ id: record.id, action: "needs_info", notes, expectedRevision })
                   }
                 >
                   <AlertCircle size={16} aria-hidden />
@@ -956,7 +983,7 @@ export function ReviewerPage() {
                   type="button"
                   disabled={disabled || !allowed.includes("reject")}
                   onClick={() =>
-                    reviewMutation.mutate({ id: record.id, action: "reject", notes, expectedRevision: record.state_revision })
+                    reviewMutation.mutate({ id: record.id, action: "reject", notes, expectedRevision })
                   }
                 >
                   <X size={16} aria-hidden />

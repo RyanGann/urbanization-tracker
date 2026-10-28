@@ -921,7 +921,7 @@ async function runSuite(options) {
       if (options.scenario === "u00-filters") {
         await runU00BrowserAssertions();
       } else if (options.scenario === "c05-review-actions") {
-        await run("docker", [...compose, "run", "--rm", "browser", "c05-review.live.spec.ts", "--workers=1"], { log, timeoutMs: 300_000 });
+        await run("docker", [...compose, "run", "--rm", "--env", "C05_REVIEW_ACTIONS=1", "browser", "c05-review.live.spec.ts", "--workers=1"], { log, timeoutMs: 300_000 });
       } else if (options.scenario === "layer-import") {
         await run("docker", [...compose, "run", "--rm", "--env", "P03_IMPORTS=1", ...(options.snapshotDir ? ["--env", "P03_SNAPSHOT=1"] : []), "browser"], { log, timeoutMs: 300_000 });
       } else {

@@ -1,5 +1,9 @@
 import { expect, test } from "@playwright/test";
 
+test.beforeEach(() => {
+  test.skip(process.env.C05_REVIEW_ACTIONS !== "1", "C05 fixtures are created by the owning scenario.");
+});
+
 test("C05 read-only provenance and stale reviewer recovery against the real API", async ({ page, request }, testInfo) => {
   const token = process.env.INTEGRATION_REVIEWER_TOKEN;
   if (!token) throw new Error("C05 requires the isolated reviewer token");

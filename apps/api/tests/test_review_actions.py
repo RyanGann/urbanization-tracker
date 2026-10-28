@@ -262,3 +262,27 @@ def test_demo_imported_approval_publishes_before_becoming_terminal(
     assert repeated.status_code == 409
     assert repeated.json()["detail"]["code"] == "review_not_actionable"
     assert sum(row["public_id"] == public_id for row in demo_seed_development_records()) == 1
+
+
+def test_demo_imported_approval_keeps_geometry_refusal_nonmutating(
+    api: TestClient, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from app.seed_store import demo_seed_development_records, get_staged_record, reset_seed_state
+
+    monkeypatch.setenv("DATA_MODE", "demo")
+    get_settings.cache_clear()
+    reset_seed_state()
+    staged_id = "stage-bradford-crossing-layout"
+    staged = get_staged_record(staged_id)
+    assert staged is not None
+    staged["geometry"] = None
+    before = copy.deepcopy(staged)
+    public_before = demo_seed_development_records()
+    response = api.post(
+        "/api/reviewer/decisions/import",
+        json={"decisions": [{"staged_id": staged_id, "review_status": "approved"}]},
+    )
+    assert response.status_code == 200, response.text
+    assert response.json() == {"applied": 0, "missing": [], "conflicts": [staged_id]}
+    assert get_staged_record(staged_id) == before
+    assert demo_seed_development_records() == public_before
