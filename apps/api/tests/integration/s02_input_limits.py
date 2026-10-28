@@ -189,15 +189,29 @@ def run(api: str, token: str, result: Path, phase: str) -> None:
     )
     assert staged["geometry"] is None
     approval = client.post(
-        f"/api/reviewer/staged-records/{staged['id']}/approve", json={}, headers=reviewer
+        f"/api/reviewer/staged-records/{staged['id']}/approve",
+        json={"expected_revision": staged["revision"]},
+        headers=reviewer,
     )
     assert approval.status_code == 409
+    assert approval.json()["detail"]["code"] == "review_not_actionable"
     imported = client.post(
         "/api/reviewer/decisions/import",
         headers=reviewer,
-        json={"decisions": [{"staged_id": staged["id"], "review_status": "approved"}]},
+        json={"decisions": [{
+            "staged_id": staged["id"],
+            "review_status": "approved",
+            "expected_revision": staged["revision"],
+        }]},
     )
-    assert imported.status_code == 409
+    assert imported.status_code == 200
+    assert imported.json() == {"applied": 0, "missing": [], "conflicts": [staged["id"]]}
+    retained = client.get(
+        f"/api/reviewer/staged-records/{staged['id']}", headers=reviewer
+    ).json()
+    assert retained["revision"] == staged["revision"]
+    assert retained["review_status"] == staged["review_status"]
+    assert retained["review_history"] == staged["review_history"]
     assertions.append("unknown_location_null_staging_both_publication_paths_blocked")
 
     reset_quota()
@@ -209,7 +223,9 @@ def run(api: str, token: str, result: Path, phase: str) -> None:
         if row["source_payload"].get("submission_id") == response.json()["id"]
     )
     approval = client.post(
-        f"/api/reviewer/staged-records/{staged['id']}/approve", json={}, headers=reviewer
+        f"/api/reviewer/staged-records/{staged['id']}/approve",
+        json={"expected_revision": staged["revision"]},
+        headers=reviewer,
     )
     assert approval.status_code == 200, approval.text
     assert_private_absent(approval)
