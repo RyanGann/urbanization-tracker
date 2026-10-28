@@ -117,7 +117,7 @@
       "id": "C04",
       "title": "Retain agenda documents and reviewer decisions across refreshes",
       "path": "C04-agenda-revision-retention.md",
-      "status": "in_review",
+      "status": "complete",
       "track": "Correctness",
       "gate": "G1",
       "depends_on": [
