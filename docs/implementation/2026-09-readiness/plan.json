@@ -156,8 +156,9 @@
       ],
       "review": "Routine with lead review",
       "pr_boundary": "One review API/UI policy PR.",
-      "implementation_pr": null,
-      "evidence": "../../evidence/C05-review-actions.md"
+      "implementation_pr": "https://github.com/RyanGann/urbanization-tracker/pull/40",
+      "evidence": "../../evidence/C05-review-actions.md",
+      "status_note": "Exact October 15 implementation recovered and local full checks plus C05/C04/S02 real-stack acceptance passed. Draft PR40 awaits exact-head CI and established Codex review. Preserve [skip render] on PR and merge to suppress previews/auto-deploys. Live release separately requires remediation of the unchanged affected certifi pin."
     },
     {
       "id": "C06",
