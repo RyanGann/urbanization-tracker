@@ -158,7 +158,7 @@
       "pr_boundary": "One review API/UI policy PR.",
       "implementation_pr": "https://github.com/RyanGann/urbanization-tracker/pull/40",
       "evidence": "../../evidence/C05-review-actions.md",
-      "status_note": "Exact October 15 implementation recovered and local full checks plus C05/C04/S02 real-stack acceptance passed. Draft PR40 awaits exact-head CI and established Codex review. Preserve [skip render] on PR and merge to suppress previews/auto-deploys. Live release separately requires remediation of the unchanged affected certifi pin."
+      "status_note": "PR40 preserves the October 15 milestone and fixes both Codex findings. Clean 5667da5 passes 500 API tests, full web checks, both owning C05 browser tests and C04/S02/generic live acceptance. Fresh exact-head CI and Codex review remain required. Merge also awaits actual Render trigger verification; preserve [skip render] in the explicit final merge message. Live release separately requires remediation of unchanged dependency findings."
     },
     {
       "id": "C06",
