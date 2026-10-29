@@ -19,7 +19,6 @@ from app.artifact_files import write_json_atomically
 from app.config import get_settings
 from app.data_availability import Availability, DataUnavailableError
 from app.public_fields import public_source_fields
-from app.public_geometry import require_publishable_geometry
 from app.schemas import DevelopmentRecord
 
 HUNTSVILLE_CENTER: tuple[float, float] = (-86.5861, 34.7304)
@@ -35,6 +34,7 @@ PHASE3_COLLECTIONS = (
     "agenda_candidate_revisions",
     "agenda_identity_resolutions",
     "agenda_decision_events",
+    "review_decision_events",
     "agenda_staged_records",
     "submission_staged_records",
     "development_records",
@@ -110,70 +110,23 @@ def set_phase3_staged_review_status(
     notes: str | None = None,
     expected_revision: int | None = None,
 ) -> dict[str, Any] | None:
-    if staged_id.startswith("stage-agenda-") and (
-        _use_transactional_postgres()
-        or (get_phase3_staged_record(staged_id) or {}).get("content_revision") is not None
-    ):
-        from app.ingestion.agenda_store import review_agenda_candidate
+    from app.review_repository import decide
 
-        reviewed = review_agenda_candidate(
-            staged_id, action=review_status, notes=notes,
-            expected_revision=expected_revision,
-        )
-        return reviewed[0] if reviewed is not None else None
-    for collection_name in ("agenda_staged_records", "submission_staged_records"):
-        records = _read_collection(collection_name)
-        for record in records:
-            if record["id"] == staged_id:
-                record["review_status"] = review_status
-                record["review_notes"] = notes
-                _write_collection(collection_name, records)
-                _sync_submission_status(record, review_status)
-                return copy.deepcopy(record)
-    return None
+    reviewed = decide(
+        staged_id, action=review_status, notes=notes, expected_revision=expected_revision
+    )
+    return reviewed[0] if reviewed is not None else None
 
 
 def publish_phase3_staged_record(
-    staged_id: str,
-    notes: str | None,
-    expected_revision: int | None = None,
+    staged_id: str, notes: str | None, expected_revision: int | None = None,
 ) -> dict[str, Any] | None:
-    if staged_id.startswith("stage-agenda-") and (
-        _use_transactional_postgres()
-        or (get_phase3_staged_record(staged_id) or {}).get("content_revision") is not None
-    ):
-        from app.ingestion.agenda_store import review_agenda_candidate
+    from app.review_repository import decide
 
-        reviewed = review_agenda_candidate(
-            staged_id, action="approved", notes=notes,
-            expected_revision=expected_revision,
-        )
-        return reviewed[1] if reviewed is not None else None
-    staged = get_phase3_staged_record(staged_id)
-    if staged is None:
-        return None
-
-    require_publishable_geometry(staged)
-    staged["review_status"] = "approved"
-    staged["review_notes"] = notes
-    published = copy.deepcopy(staged.get("publish_record") or _publish_record_from_staged(staged))
-    require_publishable_geometry(published)
-    published["source_fields"] = public_source_fields(published.get("source_fields", {}))
-    published["review_status"] = "published"
-    published["date_last_checked"] = _today()
-
-    records = _read_collection("development_records")
-    if not any(record["public_id"] == published["public_id"] for record in records):
-        records.append(published)
-        _write_collection("development_records", records)
-        _append_record_version(published, changed_by="reviewer", change_type="published")
-        _append_change_log(
-            published,
-            change_type="published",
-            summary=f"{published['title']} was published from a reviewer-gated source.",
-        )
-    set_phase3_staged_review_status(staged_id, "approved", notes=notes)
-    return published
+    reviewed = decide(
+        staged_id, action="approved", notes=notes, expected_revision=expected_revision
+    )
+    return reviewed[1] if reviewed is not None else None
 
 
 def create_public_submission(
@@ -203,6 +156,8 @@ def create_public_submission(
         "id": staged_id,
         "title": payload["title"],
         "description": "Public submission awaiting reviewer validation.",
+        "state_revision": 1,
+        "content_revision": 1,
         "development_type": "public_submission",
         "source_status": "submitted",
         "normalized_status": "proposed",
@@ -315,18 +270,16 @@ def set_public_submission_status(
     submission_id: str,
     status: str,
     notes: str | None = None,
+    expected_revision: int | None = None,
 ) -> dict[str, Any] | None:
-    submissions = _read_collection("public_submissions")
-    for submission in submissions:
-        if submission["id"] == submission_id:
-            submission["status"] = status
-            submission["review_notes"] = notes
-            _write_collection("public_submissions", submissions)
-            staged_id = str(submission["staged_record_id"])
-            staged_status = "needs_info" if status == "needs_info" else status
-            set_phase3_staged_review_status(staged_id, staged_status, notes=notes)
-            return copy.deepcopy(submission)
-    return None
+    submission = next((s for s in list_public_submissions() if s["id"] == submission_id), None)
+    if submission is None:
+        return None
+    set_phase3_staged_review_status(
+        str(submission["staged_record_id"]), status, notes=notes,
+        expected_revision=expected_revision,
+    )
+    return next((s for s in list_public_submissions() if s["id"] == submission_id), None)
 
 
 def create_watch_area(

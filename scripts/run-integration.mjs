@@ -33,7 +33,7 @@ for (const signal of ["SIGINT", "SIGTERM"]) {
 
 function usage(message) {
   if (message) console.error(`Error: ${message}`);
-  console.error("Usage: node scripts/run-integration.mjs --suite api|live|concurrency|performance [--scenario functional|representative|snapshot|catalog-development|c01-data-modes|u00-filters|c03-source-identity|c04-agenda-revisions|input-limits|layer-import|d01-scoped|display-builder|o01-artifacts|b02-provenance] [--snapshot-dir DISPOSABLE_COPY] [--profile desktop|mobile] [--smoke] [--keep-on-failure]");
+  console.error("Usage: node scripts/run-integration.mjs --suite api|live|concurrency|performance [--scenario functional|representative|snapshot|catalog-development|c01-data-modes|u00-filters|c03-source-identity|c04-agenda-revisions|c05-review-actions|input-limits|layer-import|d01-scoped|display-builder|o01-artifacts|b02-provenance] [--snapshot-dir DISPOSABLE_COPY] [--profile desktop|mobile] [--smoke] [--keep-on-failure]");
   process.exitCode = 2;
 }
 
@@ -65,7 +65,7 @@ function parseArgs(argv) {
     if (!["desktop", "mobile"].includes(options.profile)) throw new Error("Performance profile must be desktop or mobile");
   } else {
     if (options.profile || options.smoke || (options.snapshotDir && options.scenario !== "layer-import")) throw new Error("Performance options require --suite performance");
-    if (options.scenario && !["c01-data-modes", "u00-filters", "c03-source-identity", "c04-agenda-revisions", "input-limits", "layer-import", "d01-scoped", "display-builder", "o01-artifacts", "b02-provenance"].includes(options.scenario)) throw new Error(`Scenario '${options.scenario}' is not implemented`);
+    if (options.scenario && !["c01-data-modes", "u00-filters", "c03-source-identity", "c04-agenda-revisions", "c05-review-actions", "input-limits", "layer-import", "d01-scoped", "display-builder", "o01-artifacts", "b02-provenance"].includes(options.scenario)) throw new Error(`Scenario '${options.scenario}' is not implemented`);
     if (options.scenario === "display-builder" && (options.suite !== "api" || options.assertFailure || options.isolationCheck || options.child)) {
       throw new Error("--scenario display-builder requires the top-level api suite");
     }
@@ -95,6 +95,9 @@ function parseArgs(argv) {
     }
     if (options.scenario === "c04-agenda-revisions" && (options.suite !== "api" || options.assertFailure || options.isolationCheck || options.child)) {
       throw new Error("--scenario c04-agenda-revisions requires the top-level api suite without assertion or isolation flags");
+    }
+    if (options.scenario === "c05-review-actions" && (!["api", "live"].includes(options.suite) || options.assertFailure || options.isolationCheck || options.child)) {
+      throw new Error("--scenario c05-review-actions requires the top-level api or live suite without assertion or isolation flags");
     }
   }
   if (options.assertFailure && options.suite !== "api") {
@@ -290,7 +293,7 @@ async function runIsolationCheck() {
 async function runSuite(options) {
   const runId = `${new Date().toISOString().replace(/[:.]/g, "-")}-${randomUUID().slice(0, 8)}`;
   const project = `urbanization_t01_${randomBytes(6).toString("hex")}`;
-  const artifactDir = join(root, "tmp", "integration", runId);
+  const artifactDir = join(process.env.INTEGRATION_ARTIFACT_ROOT ?? join(root, "tmp", "integration"), runId);
   const envFile = join(artifactDir, ".compose.env");
   const cleanupEnv = join(artifactDir, "cleanup.env");
   const log = [];
@@ -815,6 +818,19 @@ async function runSuite(options) {
     }
   };
 
+  const runC05 = async (mode) => {
+    await run("docker", [
+      ...compose, "run", "--rm", "--no-deps",
+      "--volume", `${join(root, "apps", "api", "tests", "integration").replaceAll("\\", "/")}:/integration:ro`,
+      "--volume", `${artifactDir.replaceAll("\\", "/")}:/results`,
+      "api", "python", "/integration/c05_review_actions.py", "--mode", mode,
+      "--api-url", "http://api-gateway:8000", `--reviewer-token=${reviewerToken}`,
+      "--result", "/results/c05-review-actions.json"
+    ], { log, timeoutMs: 180_000 });
+    scenarioArtifacts.c05_results_sha256 = createHash("sha256")
+      .update(await readFile(join(artifactDir, "c05-review-actions.json"))).digest("hex");
+  };
+
   const runC04AgendaRevisions = async () => {
     const resultPath = "/results/c04-agenda-revisions.json";
     await run("docker", [
@@ -871,13 +887,15 @@ async function runSuite(options) {
       if (options.scenario === "layer-import") await runP03Import("verify");
       if (options.suite === "concurrency") await runC02Transactions("create");
       if (options.scenario === "input-limits") await runS02InputLimits("create");
+      if (options.scenario === "c05-review-actions") await runC05("create");
       await run("docker", [...compose, "restart", "api"], { log });
       apiUrl = await publishedPort(compose, "api-gateway", 8000, log);
       await waitForHealth(apiUrl);
-      await assertApi(apiUrl, reviewerToken, fixture, false);
+      if (options.scenario !== "c05-review-actions") await assertApi(apiUrl, reviewerToken, fixture, false);
       if (options.scenario === "c03-source-identity") await runC03SourceIdentity();
       if (options.scenario === "display-builder") await runP04aDisplay();
       if (options.scenario === "c04-agenda-revisions") await runC04AgendaRevisions();
+      if (options.scenario === "c05-review-actions") await runC05("verify");
       if (options.scenario === "o01-artifacts") await runO01Artifacts();
       if (options.scenario === "input-limits") {
         await runS02InputLimits("verify");
@@ -902,6 +920,8 @@ async function runSuite(options) {
       await waitForWeb(compose, log);
       if (options.scenario === "u00-filters") {
         await runU00BrowserAssertions();
+      } else if (options.scenario === "c05-review-actions") {
+        await run("docker", [...compose, "run", "--rm", "--env", "C05_REVIEW_ACTIONS=1", "browser", "c05-review.live.spec.ts", "--workers=1"], { log, timeoutMs: 300_000 });
       } else if (options.scenario === "layer-import") {
         await run("docker", [...compose, "run", "--rm", "--env", "P03_IMPORTS=1", ...(options.snapshotDir ? ["--env", "P03_SNAPSHOT=1"] : []), "browser"], { log, timeoutMs: 300_000 });
       } else {

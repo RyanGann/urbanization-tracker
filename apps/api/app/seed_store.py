@@ -254,22 +254,51 @@ def list_environmental_overlays() -> list[EnvironmentalOverlay]:
 
 
 def list_staged_records() -> list[StagedDevelopmentRecord]:
+    from app.phase3_store import _read_collection, _use_transactional_postgres
+    from app.review_repository import COLLECTIONS, EVENTS, list_postgres_records, projection
+
+    if _use_transactional_postgres() and get_settings().processed_store_backend == "postgres":
+        try:
+            return [StagedDevelopmentRecord.model_validate(row) for row in list_postgres_records()]
+        except ValidationError as exc:
+            raise DataUnavailableError(
+                collection="staged_development_records", availability=Availability.UNAVAILABLE,
+            ) from exc
+
     if get_settings().data_mode == "demo":
         _ensure_loaded()
-        records = copy.deepcopy(_staged_records)
+        records = [(r, "demo") for r in copy.deepcopy(_staged_records)]
     else:
-        processed_staged = _load_processed_staged_records()
-        if processed_staged is None:
+        processed = _load_processed_staged_records()
+        if processed is None:
             raise DataUnavailableError(
-                collection="staged_development_records",
-                availability=Availability.UNINITIALIZED,
+                collection="staged_development_records", availability=Availability.UNINITIALIZED,
             )
-        records = copy.deepcopy(processed_staged)
-    from app.phase3_store import list_phase3_staged_records
+        records = [(r, "processed") for r in processed]
+    records.extend(
+        (r, origin) for origin, collection in COLLECTIONS.items()
+        for r in _read_collection(collection)
+    )
+    events = {origin: _read_collection(name) for origin, name in EVENTS.items()}
+    public_records = (
+        demo_seed_development_records() if get_settings().data_mode == "demo"
+        else _load_processed_records() or []
+    )
+    public_records.extend(_read_collection("development_records"))
+    if len({r["id"] for r, _ in records}) != len(records):
+        from app.ingestion.agenda_store import AgendaIdentityConflict
 
-    records.extend(list_phase3_staged_records())
+        raise AgendaIdentityConflict("staged ID has ambiguous store ownership")
     try:
-        return [StagedDevelopmentRecord.model_validate(copy.deepcopy(record)) for record in records]
+        return [
+            StagedDevelopmentRecord.model_validate(projection(
+                r, origin, sorted(
+                    [e for e in events.get(origin, r.get("review_history", []))
+                     if e["candidate_id"] == r["id"]], key=lambda e: e["state_revision"],
+                ), public_records,
+            ))
+            for r, origin in records
+        ]
     except ValidationError as exc:
         raise DataUnavailableError(
             collection="staged_development_records", availability=Availability.UNAVAILABLE
@@ -294,8 +323,7 @@ def approve_staged_record(
     expected_revision: int | None = None,
 ) -> DevelopmentRecord | None:
     if get_settings().data_mode == "live":
-        # Processed ingestion rows are read-only until the durable C05 review path.
-        # Only independently persisted phase3 staged rows may use the legacy action.
+        # The C05 adapter resolves both audit IDs and manual candidates under one lock.
         from app.phase3_store import publish_phase3_staged_record
 
         published = publish_phase3_staged_record(
@@ -323,8 +351,7 @@ def approve_staged_record(
 
     require_publishable_geometry(staged)
     require_publishable_geometry(staged["publish_record"])
-    staged["review_status"] = "approved"
-    staged["review_notes"] = notes
+    _review_demo_record(staged, "approved", notes, expected_revision)
     published = copy.deepcopy(staged["publish_record"])
     if not any(record["public_id"] == published["public_id"] for record in _development_records):
         _development_records.append(published)
@@ -362,9 +389,12 @@ def set_staged_review_status(
         if phase3_staged is None:
             return None
         return StagedDevelopmentRecord.model_validate(copy.deepcopy(phase3_staged))
-    staged["review_status"] = review_status
-    staged["review_notes"] = notes
-    return StagedDevelopmentRecord.model_validate(copy.deepcopy(staged))
+    _review_demo_record(staged, review_status, notes, expected_revision)
+    from app.review_repository import projection
+
+    return StagedDevelopmentRecord.model_validate(
+        projection(staged, "demo", staged.get("review_history", []))
+    )
 
 
 def export_reviewer_decisions() -> list[dict[str, Any]]:
@@ -380,6 +410,7 @@ def export_reviewer_decisions() -> list[dict[str, Any]]:
             "state_revision": record.state_revision,
             "review_actor": record.review_actor,
             "reviewed_at": record.reviewed_at,
+            "review_history": [event.model_dump() for event in record.review_history],
             "exported_at": exported_at,
         }
         for record in list_staged_records()
@@ -387,57 +418,70 @@ def export_reviewer_decisions() -> list[dict[str, Any]]:
 
 
 def import_reviewer_decisions(decisions: list[dict[str, Any]]) -> dict[str, Any]:
-    from app.ingestion.agenda_store import (
-        AgendaIdentityConflict,
-        AgendaPublicationPending,
-        AgendaRevisionConflict,
+    from app.review_repository import import_decisions
+
+    if get_settings().data_mode == "demo":
+        from fastapi import HTTPException
+
+        from app.ingestion.agenda_store import AgendaRevisionConflict
+        from app.review_repository import ReviewNotActionable
+
+        # Explicit demo seed rows are session-only; operational candidates still use C05.
+        remaining = []
+        applied = 0
+        conflicts = []
+        for decision in decisions:
+            staged = get_staged_record(str(decision["staged_id"]))
+            if staged is None:
+                remaining.append(decision)
+                continue
+            if decision.get("review_history") is not None:
+                snapshot = next(d for d in export_reviewer_decisions()
+                                if d["staged_id"] == decision["staged_id"])
+                keys = ("review_history", "state_revision", "review_notes", "review_status")
+                if any(snapshot[k] != decision.get(k) for k in keys):
+                    conflicts.append(str(decision["staged_id"]))
+                continue
+            try:
+                if decision["review_status"] == "approved":
+                    approve_staged_record(
+                        str(decision["staged_id"]), notes=decision.get("notes"),
+                        expected_revision=decision.get("expected_revision"),
+                    )
+                else:
+                    _review_demo_record(
+                        staged, str(decision["review_status"]), decision.get("notes"),
+                        decision.get("expected_revision"),
+                    )
+                applied += 1
+            except (AgendaRevisionConflict, ReviewNotActionable, HTTPException):
+                conflicts.append(str(decision["staged_id"]))
+        result = import_decisions(remaining)
+        result["applied"] += applied
+        result["conflicts"].extend(conflicts)
+        return result
+    return import_decisions(decisions)
+
+
+def _review_demo_record(
+    record: dict[str, Any], action: str, notes: str | None, expected_revision: int | None,
+) -> None:
+    from app.ingestion.agenda_store import AgendaRevisionConflict
+    from app.review_repository import TRANSITIONS, ReviewNotActionable, revision
+
+    if expected_revision is not None and expected_revision != revision(record):
+        raise AgendaRevisionConflict("demo review revision changed")
+    if action not in TRANSITIONS.get(record["review_status"], ()):
+        raise ReviewNotActionable("This revision has a final decision.")
+    event = {
+        "id": f"{record['id']}:{revision(record) + 1}", "candidate_id": record["id"],
+        "content_revision": 1, "state_revision": revision(record) + 1,
+        "previous_status": record["review_status"], "action": action,
+        "notes": notes if notes is not None else record.get("review_notes"),
+        "actor": "reviewer", "decided_at": datetime.now(UTC).isoformat(),
+    }
+    record.setdefault("review_history", []).append(event)
+    record.update(
+        review_status=action, review_notes=event["notes"], state_revision=event["state_revision"],
+        review_actor=event["actor"], reviewed_at=event["decided_at"],
     )
-
-    applied = 0
-    missing: list[str] = []
-    conflicts: list[str] = []
-    for decision in decisions:
-        staged_id = str(decision["staged_id"])
-        review_status = str(decision["review_status"])
-        notes = decision.get("notes")
-        expected_revision = decision.get("expected_revision")
-        if staged_id.startswith("stage-agenda-"):
-            from app.phase3_store import get_phase3_staged_record
-
-            current = get_phase3_staged_record(staged_id)
-            if current is None:
-                missing.append(staged_id)
-                continue
-            if expected_revision is None or expected_revision != current.get("state_revision"):
-                conflicts.append(staged_id)
-                continue
-            if review_status == "published":
-                review_status = "approved"
-            if current["review_status"] == review_status and current.get("review_notes") == notes:
-                continue
-            if review_status == "pending":
-                conflicts.append(staged_id)
-                continue
-        result: DevelopmentRecord | StagedDevelopmentRecord | None
-        try:
-            if review_status in {"approved", "published"}:
-                result = approve_staged_record(
-                    staged_id,
-                    notes=notes,
-                    expected_revision=expected_revision,
-                )
-            else:
-                result = set_staged_review_status(
-                    staged_id,
-                    review_status,
-                    notes=notes,
-                    expected_revision=expected_revision,
-                )
-        except (AgendaIdentityConflict, AgendaRevisionConflict, AgendaPublicationPending):
-            conflicts.append(staged_id)
-            continue
-        if result is None:
-            missing.append(staged_id)
-        else:
-            applied += 1
-    return {"applied": applied, "missing": missing, "conflicts": conflicts}

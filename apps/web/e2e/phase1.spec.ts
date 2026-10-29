@@ -359,6 +359,7 @@ test("reviewer operations import decisions and enforce alert limits", async ({ p
             review_notes: "Please verify geometry",
             state_revision: 7,
             content_revision: 3,
+            review_history: [],
             origin: "agenda",
             title: "Exported title",
             source_url: "https://example.test/source",
@@ -376,7 +377,11 @@ test("reviewer operations import decisions and enforce alert limits", async ({ p
         staged_id: "staged-1",
         review_status: "needs_info",
         notes: "Please verify geometry",
-        expected_revision: 7
+        expected_revision: 7,
+        state_revision: 7,
+        content_revision: 3,
+        review_notes: "Please verify geometry",
+        review_history: []
       }
     ]
   });

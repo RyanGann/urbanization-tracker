@@ -73,6 +73,19 @@ interface MutationInput {
   expectedRevision?: number | null;
 }
 
+interface ReviewDraft {
+  notes: string;
+  revision: number;
+  status: ReviewStatus;
+}
+
+interface ReviewConflict {
+  id: string;
+  previousRevision: number | null;
+  previousStatus?: string;
+  current?: StagedDevelopmentRecord;
+}
+
 function sourcePayloadRows(record: StagedDevelopmentRecord) {
   return Object.entries(record.source_payload).map(([key, value]) => (
     <div key={key}>
@@ -220,11 +233,20 @@ function reviewerDecisionImportItem(decision: unknown): ReviewerDecisionImportIt
     throw new Error(`Decision ${stagedId} has an unsupported review_status.`);
   }
   const notes = item.review_notes ?? item.notes ?? null;
+  if (notes !== null && typeof notes !== "string") {
+    throw new Error(`Decision ${stagedId} notes must be text or null.`);
+  }
+  const metadata = Object.fromEntries(
+    ["state_revision", "content_revision", "review_notes", "review_actor", "reviewed_at", "review_history"]
+      .filter((key) => item[key] !== undefined).map((key) => [key, item[key]])
+  );
   return {
+    ...metadata,
     staged_id: stagedId,
     review_status: reviewStatus as ReviewStatus,
     notes: typeof notes === "string" ? notes : null,
-    expected_revision: typeof item.state_revision === "number" ? item.state_revision : null
+    expected_revision: typeof item.expected_revision === "number" ? item.expected_revision
+      : typeof item.state_revision === "number" ? item.state_revision : null
   };
 }
 
@@ -236,7 +258,8 @@ function importResultMessage(result: { applied: number; missing: string[]; confl
 }
 
 export function ReviewerPage() {
-  const [notesById, setNotesById] = useState<Record<string, string>>({});
+  const [notesById, setNotesById] = useState<Record<string, ReviewDraft>>({});
+  const [conflict, setConflict] = useState<ReviewConflict | null>(null);
   const [tokenInput, setTokenInput] = useState(() => getReviewerToken());
   const [handoffMessage, setHandoffMessage] = useState<HandoffMessage | null>(null);
   const [alertLimit, setAlertLimit] = useState("25");
@@ -293,14 +316,27 @@ export function ReviewerPage() {
       if (action === "reject") return rejectStagedRecord(id, notes, expectedRevision);
       return markStagedRecordNeedsInfo(id, notes, expectedRevision);
     },
-    onSuccess: () => {
+    onSuccess: (_result, input) => {
+      setNotesById((current) => {
+        const next = { ...current };
+        delete next[input.id];
+        return next;
+      });
       queryClient.invalidateQueries({ queryKey: ["reviewer", "staged-records"] });
       queryClient.invalidateQueries({ queryKey: ["reviewer", "public-submissions"] });
       queryClient.invalidateQueries({ queryKey: ["development-records"] });
     },
-    onError: (error) => {
+    onError: async (error, input) => {
       if (error instanceof ApiError && error.code === "review_revision_conflict") {
-        queryClient.invalidateQueries({ queryKey: ["reviewer", "staged-records"] });
+        const previous = stagedQuery.data?.find((row) => row.id === input.id);
+        const before = {
+          id: input.id, previousRevision: input.expectedRevision ?? null,
+          previousStatus: notesById[input.id]?.status ?? previous?.review_status
+        };
+        setConflict(before);
+        const refreshed = await stagedQuery.refetch();
+        setConflict({ ...before, current: refreshed.isError ? undefined
+          : refreshed.data?.find((row) => row.id === input.id) });
       }
     }
   });
@@ -792,9 +828,19 @@ export function ReviewerPage() {
 
       <div className="review-grid">
         {records.map((record) => {
-          const notes = notesById[record.id] ?? "";
-          const disabled = reviewMutation.isPending || record.review_status !== "pending";
-          const approveDisabled = disabled || record.geometry === null;
+          const draft = notesById[record.id];
+          const notes = draft?.notes ?? record.review_notes ?? "";
+          const expectedRevision = draft?.revision ?? record.revision;
+          const requestConflict = conflict?.id === record.id ? {
+            ...conflict, current: conflict.current && !stagedQuery.isError ? record : undefined
+          } : null;
+          const recordConflict: ReviewConflict | null = draft && draft.revision !== record.revision
+            ? { id: record.id, previousRevision: draft.revision, previousStatus: draft.status,
+              current: stagedQuery.isError ? undefined : record }
+            : requestConflict;
+          const disabled = reviewMutation.isPending || stagedQuery.isFetching || !!recordConflict;
+          const allowed = record.allowed_actions ?? [];
+          const approveDisabled = disabled || !allowed.includes("approve");
 
           return (
             <article key={record.id} className="panel review-card">
@@ -811,6 +857,48 @@ export function ReviewerPage() {
                 <StatusBadge value={record.record_confidence} kind="confidence" />
                 <StatusBadge value={record.geometry_confidence} kind="confidence" />
               </div>
+
+              <p className="muted">Origin: {record.origin} · Revision {record.revision}</p>
+              <p>{record.actionability_reason}</p>
+              {recordConflict ? (
+                <section role="alert" className="detail-section">
+                  <h3>Review changed</h3>
+                  <p>Review state changed. Revision {recordConflict.previousRevision} ({recordConflict.previousStatus})
+                    {recordConflict.current ? ` is now revision ${recordConflict.current.revision} (${recordConflict.current.review_status}).`
+                      : " could not be reloaded. Reload the queue before deciding."}</p>
+                  {recordConflict.current ? <>
+                    <p>Current saved notes: {recordConflict.current.review_notes || "No notes"}</p>
+                    <p>Your draft is preserved below. Review the saved decision before continuing.</p>
+                    <button type="button" className="secondary-action" disabled={stagedQuery.isFetching} onClick={() => {
+                      const currentRecord = recordConflict.current;
+                      if (!currentRecord) return;
+                      setNotesById((current) => current[record.id] ? {
+                        ...current, [record.id]: { ...current[record.id],
+                          revision: currentRecord.revision, status: currentRecord.review_status }
+                      } : current);
+                      setConflict((current) => current?.id === record.id ? null : current);
+                      reviewMutation.reset();
+                    }}>I reviewed the current decision</button>
+                  </> : <button type="button" className="secondary-action" onClick={async () => {
+                    const refreshed = await stagedQuery.refetch();
+                    setConflict({ ...recordConflict, current: refreshed.isError ? undefined
+                      : refreshed.data?.find((row) => row.id === record.id) });
+                  }}>Reload current decision</button>}
+                </section>
+              ) : null}
+
+              <section className="detail-section">
+                <h3>Saved review</h3>
+                <p>{record.review_notes || "No saved notes."}</p>
+                {record.reviewed_at ? <p>{record.review_actor} · {record.reviewed_at}</p> : null}
+                <details>
+                  <summary>Review history ({record.review_history?.length ?? 0})</summary>
+                  {(record.review_history ?? []).map((event) => (
+                    <p key={event.id}>Revision {event.state_revision} · {event.previous_status} → {event.action}
+                      {` · ${event.actor} · ${event.decided_at}: ${event.notes ?? "No notes"}`}</p>
+                  ))}
+                </details>
+              </section>
 
               <dl className="facts detail-facts">
                 <div>
@@ -849,10 +937,14 @@ export function ReviewerPage() {
                 <span>Reviewer notes</span>
                 <textarea
                   value={notes}
+                  maxLength={1000}
+                  disabled={!allowed.length || disabled}
                   onChange={(event) =>
                     setNotesById((current) => ({
                       ...current,
-                      [record.id]: event.target.value
+                      [record.id]: { notes: event.target.value,
+                        revision: current[record.id]?.revision ?? record.revision,
+                        status: current[record.id]?.status ?? record.review_status }
                     }))
                   }
                   rows={4}
@@ -869,7 +961,7 @@ export function ReviewerPage() {
                   type="button"
                   disabled={approveDisabled}
                   onClick={() =>
-                    reviewMutation.mutate({ id: record.id, action: "approve", notes, expectedRevision: record.state_revision })
+                    reviewMutation.mutate({ id: record.id, action: "approve", notes, expectedRevision })
                   }
                 >
                   <Check size={16} aria-hidden />
@@ -878,9 +970,9 @@ export function ReviewerPage() {
                 <button
                   className="secondary-action"
                   type="button"
-                  disabled={disabled}
+                  disabled={disabled || !allowed.includes("needs_info")}
                   onClick={() =>
-                    reviewMutation.mutate({ id: record.id, action: "needs_info", notes, expectedRevision: record.state_revision })
+                    reviewMutation.mutate({ id: record.id, action: "needs_info", notes, expectedRevision })
                   }
                 >
                   <AlertCircle size={16} aria-hidden />
@@ -889,9 +981,9 @@ export function ReviewerPage() {
                 <button
                   className="danger-action"
                   type="button"
-                  disabled={disabled}
+                  disabled={disabled || !allowed.includes("reject")}
                   onClick={() =>
-                    reviewMutation.mutate({ id: record.id, action: "reject", notes, expectedRevision: record.state_revision })
+                    reviewMutation.mutate({ id: record.id, action: "reject", notes, expectedRevision })
                   }
                 >
                   <X size={16} aria-hidden />

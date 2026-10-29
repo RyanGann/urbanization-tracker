@@ -8,7 +8,8 @@ on:
 
 jobs:
   verify:
-    runs-on: ubuntu-latest
+    # Playwright 1.60 supports 24.04; ubuntu-latest now resolves to unsupported 26.04.
+    runs-on: ubuntu-24.04
     timeout-minutes: 40
 
     steps:
@@ -102,6 +103,9 @@ jobs:
 
       - name: Check agenda revisions and retained reviewer decisions
         run: node scripts/run-integration.mjs --suite api --scenario c04-agenda-revisions
+
+      - name: Check revision-checked review actions, durable history and live UI recovery
+        run: node scripts/run-integration.mjs --suite live --scenario c05-review-actions
 
       - name: Check durable environmental attestation, SQL fences and copied recovery
         run: node scripts/run-integration.mjs --suite api --scenario b02-provenance

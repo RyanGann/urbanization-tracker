@@ -357,8 +357,14 @@ def run(api_url: str, reviewer_token: str, result: Path) -> None:
                         "expected_revision": current["state_revision"],
                     },
                 )
-                assert same_approval.status_code == 200, same_approval.text
-                assert same_approval.json() == persisted_public
+                # C05 makes the reviewed revision terminal; replay cannot append a
+                # decision or replace its notes/publication even with the current token.
+                assert same_approval.status_code == 409, same_approval.text
+                assert same_approval.json()["detail"]["code"] == "review_not_actionable"
+                assert api.get(
+                    f"/api/reviewer/staged-records/{candidate_id}"
+                ).json() == current
+                assert api.get(f"/api/development-records/{public_id}").json() == persisted_public
 
                 third_run = "c04-third-" + uuid4().hex
                 third, third_records, third_refs = setup_document(
@@ -764,6 +770,7 @@ def run(api_url: str, reviewer_token: str, result: Path) -> None:
                             fixture["centroid"] = snapshot["centroid"]
                             fixture["geometry_source"] = snapshot["geometry_source"]
                             fixture["geometry_confidence"] = snapshot["geometry_confidence"]
+                            fixture["location_required"] = False
                             if ownership == "changed":
                                 fixture["publish_record"]["title"] = "Changed owned publication"
                             uow.upsert_processed("development_records", owned_id, snapshot)
@@ -832,6 +839,7 @@ def run(api_url: str, reviewer_token: str, result: Path) -> None:
                                     "geometry_confidence",
                                 ):
                                     fixture[key] = copy.deepcopy(snapshot[key])
+                                fixture["location_required"] = False
                                 if ownership == "changed":
                                     fixture["publish_record"]["title"] = "Changed mixed content"
                                 if ownership == "ambiguous":
@@ -1115,7 +1123,7 @@ def run(api_url: str, reviewer_token: str, result: Path) -> None:
                             "changed_unanchored_quarantined": True,
                             "stale_decision_and_resolution_409": True,
                             "resolved_revision_pending_then_one_publication": True,
-                            "same_approval_returns_persisted_snapshot": True,
+                            "same_approval_keeps_final_decision_and_persisted_snapshot": True,
                             "historical_replay_preserves_latest_decision_and_publication": True,
                             "limited_refresh_retains_unresolved_document_and_item_health": True,
                             "changed_second_approval_defers_to_c06": True,
